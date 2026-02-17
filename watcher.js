@@ -25,10 +25,11 @@ function getDefaultReplayDir() {
   );
 }
 
-const API_BASE_URL = (process.env.AOE2_API_BASE_URL || "https://aoe2hdbets.com").replace(/\/$/, "");
+const API_BASE_URL = (process.env.AOE2_API_BASE_URL || "https://api-prodn.aoe2hdbets.com").replace(/\/$/, "");
 const UPLOAD_URL = `${API_BASE_URL}/api/replay/upload`;
 const WATCH_DIR = process.env.AOE2_WATCH_DIR || getDefaultReplayDir();
 const WATCH_EXTENSIONS = new Set([".aoe2record", ".aoe2mpgame", ".mgz", ".mgx", ".mgl"]);
+const UPLOAD_API_KEY = process.env.AOE2_UPLOAD_API_KEY?.trim();
 const WATCHER_UID =
   process.env.WATCHER_USER_UID ||
   `watcher-${crypto.createHash("sha1").update(os.hostname()).digest("hex").slice(0, 12)}`;
@@ -49,15 +50,19 @@ function shouldHandle(filePath) {
 async function uploadReplay(filePath) {
   const form = new FormData();
   form.append("file", fs.createReadStream(filePath), path.basename(filePath));
+  const headers = {
+    ...form.getHeaders(),
+    "x-user-uid": WATCHER_UID,
+  };
+  if (UPLOAD_API_KEY) {
+    headers["x-api-key"] = UPLOAD_API_KEY;
+  }
 
   const res = await axios.post(UPLOAD_URL, form, {
     timeout: 60000,
     maxBodyLength: Infinity,
     maxContentLength: Infinity,
-    headers: {
-      ...form.getHeaders(),
-      "x-user-uid": WATCHER_UID,
-    },
+    headers,
   });
   return res;
 }
