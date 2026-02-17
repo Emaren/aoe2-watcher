@@ -6,23 +6,47 @@ const crypto = require("crypto");
 const axios = require("axios");
 const FormData = require("form-data");
 
+function firstExistingPath(paths) {
+  for (const candidate of paths) {
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+  return paths[0] || null;
+}
+
 function getDefaultReplayDir() {
   const home = os.homedir();
   const platform = os.platform();
 
   if (platform === "darwin") {
-    return path.join(
-      home,
-      "Library/Application Support/CrossOver/Bottles/Steam/drive_c/Program Files (x86)/Steam/steamapps/common/Age2HD/SaveGame"
-    );
+    return firstExistingPath([
+      path.join(
+        home,
+        "Library/Application Support/CrossOver/Bottles/Steam/drive_c/Program Files (x86)/Steam/steamapps/common/Age2HD/SaveGame"
+      ),
+      path.join(
+        home,
+        "Library/Application Support/CrossOver/Bottles/Steam/drive_c/users/crossover/My Documents/My Games/Age of Empires 2 HD/SaveGame"
+      ),
+      path.join(home, "Documents", "My Games", "Age of Empires 2 HD", "SaveGame"),
+      path.join(home, "Documents", "My Games", "Age of Empires 2 DE", "SaveGame"),
+    ]);
   }
   if (platform === "win32") {
-    return path.join(home, "Documents", "My Games", "Age of Empires 2 HD", "SaveGame");
+    return firstExistingPath([
+      path.join(home, "Documents", "My Games", "Age of Empires 2 HD", "SaveGame"),
+      path.join(home, "Documents", "My Games", "Age of Empires 2 DE", "SaveGame"),
+    ]);
   }
-  return path.join(
-    home,
-    ".wine/drive_c/Program Files (x86)/Microsoft Games/Age of Empires II HD/SaveGame"
-  );
+  return firstExistingPath([
+    path.join(
+      home,
+      ".wine/drive_c/Program Files (x86)/Microsoft Games/Age of Empires II HD/SaveGame"
+    ),
+    path.join(home, ".wine/drive_c/users", os.userInfo().username, "My Documents/My Games/Age of Empires 2 HD/SaveGame"),
+    path.join(home, "Documents", "My Games", "Age of Empires 2 HD", "SaveGame"),
+  ]);
 }
 
 const API_BASE_URL = (process.env.AOE2_API_BASE_URL || "https://api-prodn.aoe2hdbets.com").replace(/\/$/, "");
@@ -85,6 +109,7 @@ async function onFileDetected(filePath) {
 function startWatching() {
   if (!fs.existsSync(WATCH_DIR)) {
     console.error(`Replay directory does not exist: ${WATCH_DIR}`);
+    console.error("Set AOE2_WATCH_DIR in .env to your SaveGame folder and restart.");
     return null;
   }
 

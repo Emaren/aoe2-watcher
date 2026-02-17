@@ -17,6 +17,8 @@ npm install
 cp .env.example .env
 ```
 
+`npm run start` loads `.env` automatically.
+
 Optional environment variables:
 
 - `AOE2_API_BASE_URL` (default: `https://api-prodn.aoe2hdbets.com`)
