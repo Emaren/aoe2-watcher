@@ -1,0 +1,30 @@
+{
+  "name": "aoe2-watcher",
+  "version": "1.0.0",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron main.js",
+    "build": "electron-builder",
+    "pack": "electron-builder --dir"
+  },
+  "build": {
+    "appId": "com.aoe2hd.watcher",
+    "mac": {
+      "target": "dmg",
+      "minimumSystemVersion": "10.13"
+    }
+  },
+  "keywords": [],
+  "author": "AoE2HDBets",
+  "license": "ISC",
+  "description": "AoE2HD Replay Watcher (Firebase-free)",
+  "dependencies": {
+    "axios": "^1.8.4",
+    "chokidar": "^4.0.3",
+    "form-data": "^4.0.2"
+  },
+  "devDependencies": {
+    "electron": "^35.1.4",
+    "electron-builder": "^24.13.3"
+  }
+}
