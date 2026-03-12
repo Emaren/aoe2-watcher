@@ -58,6 +58,7 @@ const MAX_UPLOAD_RETRIES = Number(process.env.AOE2_UPLOAD_RETRY_ATTEMPTS || 4);
 const RETRY_BASE_DELAY_MS = Number(process.env.AOE2_UPLOAD_RETRY_BASE_DELAY_MS || 4000);
 const STABLE_CHECK_INTERVAL_MS = Number(process.env.AOE2_UPLOAD_STABLE_CHECK_INTERVAL_MS || 3000);
 const STABLE_CHECK_PASSES = Number(process.env.AOE2_UPLOAD_STABLE_CHECK_PASSES || 3);
+const QUIET_PERIOD_MS = Number(process.env.AOE2_UPLOAD_QUIET_PERIOD_MS || 30000);
 const WATCHER_UID =
   process.env.WATCHER_USER_UID ||
   `watcher-${crypto.createHash("sha1").update(os.hostname()).digest("hex").slice(0, 12)}`;
@@ -121,13 +122,25 @@ function sleep(ms) {
 }
 
 async function waitForStableFingerprint(filePath, startingFingerprint = null) {
-  let fingerprint = startingFingerprint || (await getFileFingerprint(filePath));
+  let stats = await fs.promises.stat(filePath);
+  let fingerprint =
+    startingFingerprint || `${stats.size}:${Math.floor(stats.mtimeMs)}`;
   let stablePasses = 1;
   let observedChanges = 0;
 
-  while (stablePasses < STABLE_CHECK_PASSES) {
-    await sleep(STABLE_CHECK_INTERVAL_MS);
-    const nextFingerprint = await getFileFingerprint(filePath);
+  while (true) {
+    const quietForMs = Date.now() - stats.mtimeMs;
+    if (stablePasses >= STABLE_CHECK_PASSES && quietForMs >= QUIET_PERIOD_MS) {
+      return fingerprint;
+    }
+
+    const waitMs = Math.max(
+      STABLE_CHECK_INTERVAL_MS,
+      Math.min(QUIET_PERIOD_MS - quietForMs, QUIET_PERIOD_MS)
+    );
+    await sleep(waitMs);
+    stats = await fs.promises.stat(filePath);
+    const nextFingerprint = `${stats.size}:${Math.floor(stats.mtimeMs)}`;
 
     if (nextFingerprint === fingerprint) {
       stablePasses += 1;
@@ -145,7 +158,6 @@ async function waitForStableFingerprint(filePath, startingFingerprint = null) {
     }
   }
 
-  return fingerprint;
 }
 
 async function uploadReplay(filePath) {

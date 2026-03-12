@@ -30,6 +30,7 @@ Optional environment variables:
 - `AOE2_UPLOAD_RETRY_BASE_DELAY_MS` (default: `4000`)
 - `AOE2_UPLOAD_STABLE_CHECK_INTERVAL_MS` (default: `3000`)
 - `AOE2_UPLOAD_STABLE_CHECK_PASSES` (default: `3`)
+- `AOE2_UPLOAD_QUIET_PERIOD_MS` (default: `30000`)
 
 ## Run
 
