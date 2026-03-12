@@ -28,6 +28,8 @@ Optional environment variables:
 - `AOE2_UPLOAD_API_KEY` (set this if backend `INTERNAL_API_KEY` is enabled)
 - `AOE2_UPLOAD_RETRY_ATTEMPTS` (default: `4`)
 - `AOE2_UPLOAD_RETRY_BASE_DELAY_MS` (default: `4000`)
+- `AOE2_UPLOAD_STABLE_CHECK_INTERVAL_MS` (default: `3000`)
+- `AOE2_UPLOAD_STABLE_CHECK_PASSES` (default: `3`)
 
 ## Run
 

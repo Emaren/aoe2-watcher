@@ -56,6 +56,8 @@ const WATCH_EXTENSIONS = new Set([".aoe2record", ".aoe2mpgame", ".mgz", ".mgx", 
 const UPLOAD_API_KEY = process.env.AOE2_UPLOAD_API_KEY?.trim();
 const MAX_UPLOAD_RETRIES = Number(process.env.AOE2_UPLOAD_RETRY_ATTEMPTS || 4);
 const RETRY_BASE_DELAY_MS = Number(process.env.AOE2_UPLOAD_RETRY_BASE_DELAY_MS || 4000);
+const STABLE_CHECK_INTERVAL_MS = Number(process.env.AOE2_UPLOAD_STABLE_CHECK_INTERVAL_MS || 3000);
+const STABLE_CHECK_PASSES = Number(process.env.AOE2_UPLOAD_STABLE_CHECK_PASSES || 3);
 const WATCHER_UID =
   process.env.WATCHER_USER_UID ||
   `watcher-${crypto.createHash("sha1").update(os.hostname()).digest("hex").slice(0, 12)}`;
@@ -75,10 +77,12 @@ function getStateEntry(filePath) {
   if (!entry) {
     entry = {
       fingerprint: null,
-      uploading: false,
+      processing: false,
       attempts: 0,
       retryTimer: null,
       uploadedFingerprint: null,
+      pendingRescan: false,
+      pendingFingerprint: null,
     };
     uploadState.set(filePath, entry);
   }
@@ -110,6 +114,38 @@ function shouldHandle(filePath) {
   if (!WATCH_EXTENSIONS.has(ext)) return false;
   if (filePath.includes("Out of Sync")) return false;
   return true;
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitForStableFingerprint(filePath, startingFingerprint = null) {
+  let fingerprint = startingFingerprint || (await getFileFingerprint(filePath));
+  let stablePasses = 1;
+  let observedChanges = 0;
+
+  while (stablePasses < STABLE_CHECK_PASSES) {
+    await sleep(STABLE_CHECK_INTERVAL_MS);
+    const nextFingerprint = await getFileFingerprint(filePath);
+
+    if (nextFingerprint === fingerprint) {
+      stablePasses += 1;
+      continue;
+    }
+
+    fingerprint = nextFingerprint;
+    stablePasses = 1;
+    observedChanges += 1;
+
+    if (observedChanges === 1) {
+      console.log(
+        `Replay is still changing on disk: ${path.basename(filePath)}. Waiting for it to stabilize before upload.`
+      );
+    }
+  }
+
+  return fingerprint;
 }
 
 async function uploadReplay(filePath) {
@@ -175,23 +211,46 @@ async function processReplayFile(filePath, options = {}) {
   const entry = getStateEntry(filePath);
   let fingerprint = options.fingerprint || null;
 
+  if (entry.processing) {
+    entry.pendingRescan = true;
+    if (fingerprint) {
+      entry.pendingFingerprint = fingerprint;
+    }
+    return;
+  }
+
+  entry.processing = true;
+
   try {
     fingerprint = fingerprint || (await getFileFingerprint(filePath));
   } catch (err) {
     console.error(`Unable to inspect ${path.basename(filePath)}:`, err.message);
-    return;
-  }
-
-  if (entry.uploading && entry.fingerprint === fingerprint) {
+    entry.processing = false;
     return;
   }
 
   if (entry.uploadedFingerprint === fingerprint) {
+    entry.processing = false;
     return;
   }
 
   clearRetryTimer(entry);
-  entry.uploading = true;
+  entry.pendingRescan = false;
+  entry.pendingFingerprint = null;
+
+  try {
+    fingerprint = await waitForStableFingerprint(filePath, fingerprint);
+  } catch (err) {
+    console.error(`Unable to wait for ${path.basename(filePath)} to stabilize:`, err.message);
+    entry.processing = false;
+    return;
+  }
+
+  if (entry.uploadedFingerprint === fingerprint) {
+    entry.processing = false;
+    return;
+  }
+
   entry.fingerprint = fingerprint;
   entry.attempts = Number.isFinite(options.attempt) ? options.attempt : 0;
 
@@ -221,7 +280,13 @@ async function processReplayFile(filePath, options = {}) {
       entry.attempts = 0;
     }
   } finally {
-    entry.uploading = false;
+    entry.processing = false;
+    if (!entry.retryTimer && entry.pendingRescan) {
+      const pendingFingerprint = entry.pendingFingerprint;
+      entry.pendingRescan = false;
+      entry.pendingFingerprint = null;
+      void processReplayFile(filePath, { fingerprint: pendingFingerprint });
+    }
   }
 }
 
