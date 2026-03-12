@@ -54,20 +54,61 @@ const UPLOAD_URL = `${API_BASE_URL}/api/replay/upload`;
 const WATCH_DIR = process.env.AOE2_WATCH_DIR || getDefaultReplayDir();
 const WATCH_EXTENSIONS = new Set([".aoe2record", ".aoe2mpgame", ".mgz", ".mgx", ".mgl"]);
 const UPLOAD_API_KEY = process.env.AOE2_UPLOAD_API_KEY?.trim();
+const MAX_UPLOAD_RETRIES = Number(process.env.AOE2_UPLOAD_RETRY_ATTEMPTS || 4);
+const RETRY_BASE_DELAY_MS = Number(process.env.AOE2_UPLOAD_RETRY_BASE_DELAY_MS || 4000);
 const WATCHER_UID =
   process.env.WATCHER_USER_UID ||
   `watcher-${crypto.createHash("sha1").update(os.hostname()).digest("hex").slice(0, 12)}`;
-const lastSeen = new Map();
+const uploadState = new Map();
+
+function getRetryDelayMs(attempt) {
+  return Math.min(RETRY_BASE_DELAY_MS * Math.max(1, 2 ** Math.max(0, attempt - 1)), 30000);
+}
+
+async function getFileFingerprint(filePath) {
+  const stats = await fs.promises.stat(filePath);
+  return `${stats.size}:${Math.floor(stats.mtimeMs)}`;
+}
+
+function getStateEntry(filePath) {
+  let entry = uploadState.get(filePath);
+  if (!entry) {
+    entry = {
+      fingerprint: null,
+      uploading: false,
+      attempts: 0,
+      retryTimer: null,
+      uploadedFingerprint: null,
+    };
+    uploadState.set(filePath, entry);
+  }
+  return entry;
+}
+
+function clearRetryTimer(entry) {
+  if (entry.retryTimer) {
+    clearTimeout(entry.retryTimer);
+    entry.retryTimer = null;
+  }
+}
+
+function formatResponseBody(data) {
+  if (data == null) return "";
+  if (typeof data === "string") return data;
+  if (typeof data.message === "string") return data.message;
+  if (typeof data.detail === "string") return data.detail;
+
+  try {
+    return JSON.stringify(data);
+  } catch {
+    return String(data);
+  }
+}
 
 function shouldHandle(filePath) {
   const ext = path.extname(filePath).toLowerCase();
   if (!WATCH_EXTENSIONS.has(ext)) return false;
   if (filePath.includes("Out of Sync")) return false;
-
-  const now = Date.now();
-  const prev = lastSeen.get(filePath) || 0;
-  if (now - prev < 5000) return false;
-  lastSeen.set(filePath, now);
   return true;
 }
 
@@ -91,19 +132,101 @@ async function uploadReplay(filePath) {
   return res;
 }
 
-async function onFileDetected(filePath) {
+function isRetryableUploadError(error) {
+  const status = error?.response?.status;
+  const detail = formatResponseBody(error?.response?.data).toLowerCase();
+
+  if (!error?.response) {
+    return true;
+  }
+
+  if (status === 422 && detail.includes("failed to parse replay file")) {
+    return true;
+  }
+
+  return status === 408 || status === 409 || status === 425 || status === 429 || status >= 500;
+}
+
+function scheduleRetry(filePath, entry, fingerprint, reason) {
+  if (entry.attempts >= MAX_UPLOAD_RETRIES) {
+    console.error(
+      `Giving up on ${path.basename(filePath)} after ${entry.attempts} failed attempts. Last reason: ${reason}`
+    );
+    return;
+  }
+
+  clearRetryTimer(entry);
+  const nextAttempt = entry.attempts + 1;
+  const delayMs = getRetryDelayMs(nextAttempt);
+
+  entry.retryTimer = setTimeout(() => {
+    entry.retryTimer = null;
+    void processReplayFile(filePath, { fingerprint, attempt: nextAttempt });
+  }, delayMs);
+
+  console.warn(
+    `Retrying ${path.basename(filePath)} in ${Math.round(delayMs / 1000)}s (attempt ${nextAttempt}/${MAX_UPLOAD_RETRIES}) because ${reason}`
+  );
+}
+
+async function processReplayFile(filePath, options = {}) {
   if (!shouldHandle(filePath)) return;
 
-  console.log("Uploading replay:", filePath);
+  const entry = getStateEntry(filePath);
+  let fingerprint = options.fingerprint || null;
+
+  try {
+    fingerprint = fingerprint || (await getFileFingerprint(filePath));
+  } catch (err) {
+    console.error(`Unable to inspect ${path.basename(filePath)}:`, err.message);
+    return;
+  }
+
+  if (entry.uploading && entry.fingerprint === fingerprint) {
+    return;
+  }
+
+  if (entry.uploadedFingerprint === fingerprint) {
+    return;
+  }
+
+  clearRetryTimer(entry);
+  entry.uploading = true;
+  entry.fingerprint = fingerprint;
+  entry.attempts = Number.isFinite(options.attempt) ? options.attempt : 0;
+
+  console.log(
+    `Uploading replay: ${filePath}${entry.attempts > 0 ? ` (retry ${entry.attempts}/${MAX_UPLOAD_RETRIES})` : ""}`
+  );
+
   try {
     const res = await uploadReplay(filePath);
-    console.log(`Uploaded (${res.status}): ${path.basename(filePath)}`);
+    const detail = formatResponseBody(res.data);
+    entry.uploadedFingerprint = fingerprint;
+    entry.attempts = 0;
+    entry.fingerprint = fingerprint;
+    console.log(
+      `Uploaded (${res.status}): ${path.basename(filePath)}${detail ? ` - ${detail}` : ""}`
+    );
   } catch (err) {
+    const responseDetail = formatResponseBody(err?.response?.data);
     console.error(`Upload failed for ${path.basename(filePath)}:`, err.message);
     if (err.response) {
       console.error("Server response:", err.response.status, err.response.data);
     }
+
+    if (isRetryableUploadError(err)) {
+      scheduleRetry(filePath, entry, fingerprint, responseDetail || err.message);
+    } else {
+      entry.attempts = 0;
+    }
+  } finally {
+    entry.uploading = false;
   }
+}
+
+async function onFileDetected(filePath) {
+  await processReplayFile(filePath);
 }
 
 function startWatching() {
@@ -133,5 +256,8 @@ function startWatching() {
 
 module.exports = {
   getDefaultReplayDir,
+  getRetryDelayMs,
+  isRetryableUploadError,
+  processReplayFile,
   startWatching,
 };

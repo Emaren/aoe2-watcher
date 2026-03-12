@@ -9,6 +9,7 @@ Electron helper that watches your AoE2 replay folder and uploads completed repla
 - Uses `x-user-uid` header for identity.
 - Optional `x-api-key` support via `AOE2_UPLOAD_API_KEY`.
 - Supports `.aoe2record`, `.aoe2mpgame`, `.mgz`, `.mgx`, and `.mgl`.
+- Retries transient parse/upload failures automatically and skips duplicate re-uploads for the same finished replay.
 
 ## Setup
 
@@ -25,6 +26,8 @@ Optional environment variables:
 - `AOE2_WATCH_DIR` (default: platform-specific AoE2HD SaveGame path)
 - `WATCHER_USER_UID` (default: hostname-derived watcher id)
 - `AOE2_UPLOAD_API_KEY` (set this if backend `INTERNAL_API_KEY` is enabled)
+- `AOE2_UPLOAD_RETRY_ATTEMPTS` (default: `4`)
+- `AOE2_UPLOAD_RETRY_BASE_DELAY_MS` (default: `4000`)
 
 ## Run
 
