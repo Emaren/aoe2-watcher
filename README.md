@@ -2,6 +2,8 @@
 
 Electron helper that watches your AoE2 replay folder, emits live replay snapshots while a match is in progress, and uploads the final replay when the file settles.
 
+Julio already got this running and parsed his own match. Keep grabbing the latest package because watcher upgrades are shipping quickly.
+
 ## What changed
 
 - Firebase has been removed completely.
@@ -12,11 +14,12 @@ Electron helper that watches your AoE2 replay folder, emits live replay snapshot
 - Supports `.aoe2record`, `.aoe2mpgame`, `.mgz`, `.mgx`, and `.mgl`.
 - Retries transient parse/upload failures automatically and skips duplicate re-uploads for the same finished replay.
 
-## Setup
+## Quick Start
 
 ```bash
-npm install
 cp .env.example .env
+npm install
+npm run start
 ```
 
 `npm run start` loads `.env` automatically.
@@ -35,10 +38,12 @@ Optional environment variables:
 - `AOE2_INITIAL_LIVE_RETRY_COOLDOWN_MS` (default: `10000`)
 - `AOE2_LIVE_UPLOAD_COOLDOWN_MS` (default: `45000`)
 
-## Run
+## Optional Env
 
 ```bash
-npm run start
+AOE2_API_BASE_URL=https://api-prodn.aoe2hdbets.com
+# optional if backend protection is enabled
+AOE2_UPLOAD_API_KEY=your_key_here
 ```
 
 ## Build (macOS DMG)
