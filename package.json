@@ -1,23 +1,72 @@
 {
   "name": "aoe2-watcher",
   "version": "1.0.0",
+  "description": "AoE2HD Replay Watcher",
+  "author": "AoE2HDBets",
+  "license": "ISC",
   "main": "main.js",
+  "productName": "AoE2HD Watcher",
   "scripts": {
     "start": "electron main.js",
     "build": "electron-builder",
-    "pack": "electron-builder --dir"
+    "pack": "electron-builder --dir",
+    "dist:mac": "electron-builder --mac dmg"
   },
   "build": {
     "appId": "com.aoe2hd.watcher",
+    "productName": "AoE2HD Watcher",
+    "artifactName": "${productName}-${version}-${arch}.${ext}",
+    "directories": {
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "watcher.js",
+      "package.json",
+      ".env.example",
+      "node_modules/**/*"
+    ],
     "mac": {
-      "target": "dmg",
-      "minimumSystemVersion": "10.13"
-    }
+      "category": "public.app-category.utilities",
+      "target": [
+        "dmg"
+      ],
+      "icon": "build/icon.icns",
+      "minimumSystemVersion": "10.13",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.inherit.plist",
+      "extendInfo": {
+        "CFBundleDisplayName": "AoE2HD Watcher",
+        "CFBundleName": "AoE2HD Watcher",
+        "NSHumanReadableCopyright": "© AoE2HDBets"
+      }
+    },
+    "dmg": {
+      "title": "AoE2HD Watcher",
+      "iconSize": 128,
+      "window": {
+        "width": 540,
+        "height": 380
+      },
+      "contents": [
+        {
+          "x": 150,
+          "y": 190,
+          "type": "file"
+        },
+        {
+          "x": 390,
+          "y": 190,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ]
+    },
+    "afterSign": "scripts/notarize.js"
   },
   "keywords": [],
-  "author": "AoE2HDBets",
-  "license": "ISC",
-  "description": "AoE2HD Replay Watcher (Firebase-free)",
   "dependencies": {
     "axios": "^1.8.4",
     "chokidar": "^4.0.3",
@@ -25,6 +74,7 @@
     "form-data": "^4.0.2"
   },
   "devDependencies": {
+    "@electron/notarize": "^3.1.0",
     "electron": "^35.1.4",
     "electron-builder": "^24.13.3"
   }
