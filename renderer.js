@@ -45,7 +45,8 @@ function addLog(line, level = "info") {
         : ""
     }`;
   row.textContent = line;
-  els.log.prepend(row);
+  els.log.appendChild(row);
+  els.log.scrollTop = els.log.scrollHeight;
 }
 
 function clearLog() {
