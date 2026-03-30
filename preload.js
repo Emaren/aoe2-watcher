@@ -16,4 +16,7 @@ contextBridge.exposeInMainWorld("watcherApi", {
   onLog: (callback) => {
     ipcRenderer.on("watcher:log", (_event, payload) => callback(payload));
   },
+  onClearLog: (callback) => {
+    ipcRenderer.on("watcher:clear-log", () => callback());
+  },
 });

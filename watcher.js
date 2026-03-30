@@ -10,8 +10,7 @@ let activeWatcher = null;
 let activeUploadState = new Map();
 let activePreferredUploadTargetBaseUrl = null;
 let activeLogger = (message, level = "info") => {
-  const method =
-    level === "error" ? "error" : level === "warn" ? "warn" : "log";
+  const method = level === "error" ? "error" : level === "warn" ? "warn" : "log";
   console[method](message);
 };
 
@@ -105,8 +104,7 @@ function buildRuntimeConfig(config = {}) {
 
   return {
     watchDir: config.watchDir || process.env.AOE2_WATCH_DIR || getDefaultReplayDir(),
-    uploadApiKey:
-      (config.uploadApiKey || process.env.AOE2_UPLOAD_API_KEY || "").trim(),
+    uploadApiKey: (config.uploadApiKey || process.env.AOE2_UPLOAD_API_KEY || "").trim(),
     uploadTargets,
     watchExtensions: new Set([".aoe2record", ".aoe2mpgame", ".mgz", ".mgx", ".mgl"]),
     maxUploadRetries: Number(process.env.AOE2_UPLOAD_RETRY_ATTEMPTS || 4),
@@ -395,12 +393,18 @@ function isNetworkUploadError(error) {
   return !error?.response;
 }
 
-async function uploadReplayWithRetry(filePath, runtimeConfig, entry, { fingerprint, parseIteration, isFinal }) {
+async function uploadReplayWithRetry(
+  filePath,
+  runtimeConfig,
+  entry,
+  { fingerprint, parseIteration, isFinal }
+) {
   const maxAttempts = runtimeConfig.maxUploadRetries + 1;
   let attemptFingerprint = fingerprint;
 
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-    const retryLabel = attempt > 0 ? ` (retry ${attempt}/${runtimeConfig.maxUploadRetries})` : "";
+    const retryLabel =
+      attempt > 0 ? ` (retry ${attempt}/${runtimeConfig.maxUploadRetries})` : "";
     const targetSequence = getUploadTargetsForAttempt(runtimeConfig);
 
     for (let targetIndex = 0; targetIndex < targetSequence.length; targetIndex += 1) {
@@ -434,7 +438,11 @@ async function uploadReplayWithRetry(filePath, runtimeConfig, entry, { fingerpri
           entry.lastLiveUploadAt = Date.now();
         }
 
-        const changedDuringUpload = await syncEntryAfterUpload(filePath, entry, attemptFingerprint);
+        const changedDuringUpload = await syncEntryAfterUpload(
+          filePath,
+          entry,
+          attemptFingerprint
+        );
 
         log(`Uploaded (${res.status}): ${path.basename(filePath)}${detail ? ` - ${detail}` : ""}`);
 
@@ -497,21 +505,32 @@ async function uploadReplayWithRetry(filePath, runtimeConfig, entry, { fingerpri
 }
 
 async function monitorReplayFile(filePath, runtimeConfig) {
-  if (!shouldHandle(filePath, runtimeConfig)) return;
+  if (!shouldHandle(filePath, runtimeConfig)) {
+    log(`Ignoring non-replay file: ${path.basename(filePath)}`, "warn");
+    return;
+  }
 
   const entry = getStateEntry(filePath);
   if (entry.monitoring) {
+    log(`Skipping duplicate monitor for ${path.basename(filePath)} because it is already active.`);
     return;
   }
 
   entry.monitoring = true;
+  log(`Starting monitor loop for ${path.basename(filePath)}.`);
 
   try {
     if (!(await waitForFirstBytes(filePath, runtimeConfig))) {
+      log(`Stopping monitor for ${path.basename(filePath)} before upload because byte floor was not reached.`, "warn");
       return;
     }
 
     if (runtimeConfig.initialLiveDelayMs > 0) {
+      log(
+        `Waiting ${Math.round(runtimeConfig.initialLiveDelayMs / 1000)}s before first live upload for ${path.basename(
+          filePath
+        )}.`
+      );
       await sleep(runtimeConfig.initialLiveDelayMs);
     }
 
@@ -537,6 +556,7 @@ async function monitorReplayFile(filePath, runtimeConfig) {
         entry.lastFinalUploadAt > 0 &&
         now - entry.lastFinalUploadAt >= runtimeConfig.finalSettleWindowMs
       ) {
+        log(`Monitor loop complete for ${path.basename(filePath)}. Replay is fully settled.`);
         return;
       }
 
@@ -545,6 +565,8 @@ async function monitorReplayFile(filePath, runtimeConfig) {
       if (changed) {
         entry.lastObservedFingerprint = fingerprint;
         entry.lastChangeAt = now;
+
+        log(`Observed replay change for ${path.basename(filePath)} with fingerprint ${fingerprint}.`);
 
         const liveCooldownMs =
           entry.liveIteration === 0
@@ -566,12 +588,22 @@ async function monitorReplayFile(filePath, runtimeConfig) {
             parseIteration: nextIteration,
             isFinal: false,
           });
+        } else if (!entry.lastFinalUploadedFingerprint) {
+          log(
+            `Live upload cooldown still active for ${path.basename(filePath)}. Waiting for next eligible pass.`
+          );
         }
       } else if (
         fingerprint !== entry.lastFinalUploadedFingerprint &&
         entry.lastChangeAt > 0 &&
         now - entry.lastChangeAt >= runtimeConfig.quietPeriodMs
       ) {
+        log(
+          `Quiet period reached for ${path.basename(filePath)} after ${Math.round(
+            runtimeConfig.quietPeriodMs / 1000
+          )}s. Attempting final upload.`
+        );
+
         const nextIteration = Math.max(1, entry.liveIteration + 1);
         const stored = await uploadReplayWithRetry(filePath, runtimeConfig, entry, {
           fingerprint,
@@ -588,10 +620,12 @@ async function monitorReplayFile(filePath, runtimeConfig) {
     }
   } finally {
     entry.monitoring = false;
+    log(`Stopped monitor loop for ${path.basename(filePath)}.`);
   }
 }
 
-async function onFileDetected(filePath, runtimeConfig) {
+async function onFileDetected(eventType, filePath, runtimeConfig) {
+  log(`Detected ${eventType} event: ${path.basename(filePath)}`);
   void monitorReplayFile(filePath, runtimeConfig).catch((err) => {
     log(`Replay monitor crashed for ${path.basename(filePath)}: ${err.message || err}`, "error");
   });
@@ -601,6 +635,7 @@ function stopWatching() {
   if (activeWatcher) {
     try {
       activeWatcher.close();
+      log("Closed chokidar watcher handle.");
     } catch (error) {
       log(`Failed closing watcher: ${error.message}`, "error");
     }
@@ -618,8 +653,7 @@ function startWatching(config = {}, hooks = {}) {
     activeLogger = hooks.onLog;
   } else {
     activeLogger = (message, level = "info") => {
-      const method =
-        level === "error" ? "error" : level === "warn" ? "warn" : "log";
+      const method = level === "error" ? "error" : level === "warn" ? "warn" : "log";
       console[method](message);
     };
   }
@@ -645,6 +679,7 @@ function startWatching(config = {}, hooks = {}) {
       .join(" -> ")}`
   );
   log(`Watcher UID: ${runtimeConfig.watcherUid}`);
+  log(`Chokidar extensions: ${Array.from(runtimeConfig.watchExtensions).join(", ")}`);
 
   activeWatcher = chokidar.watch(runtimeConfig.watchDir, {
     persistent: true,
@@ -652,8 +687,12 @@ function startWatching(config = {}, hooks = {}) {
     depth: 0,
   });
 
-  activeWatcher.on("add", (filePath) => onFileDetected(filePath, runtimeConfig));
-  activeWatcher.on("change", (filePath) => onFileDetected(filePath, runtimeConfig));
+  activeWatcher.on("ready", () => {
+    log("Chokidar watcher is ready and listening for replay events.");
+  });
+
+  activeWatcher.on("add", (filePath) => onFileDetected("add", filePath, runtimeConfig));
+  activeWatcher.on("change", (filePath) => onFileDetected("change", filePath, runtimeConfig));
   activeWatcher.on("error", (err) => log(`Watcher error: ${err.message}`, "error"));
 
   return activeWatcher;
@@ -661,7 +700,8 @@ function startWatching(config = {}, hooks = {}) {
 
 module.exports = {
   getDefaultReplayDir,
-  getRetryDelayMs: (attempt, config = {}) => getRetryDelayMsFactory(buildRuntimeConfig(config), attempt),
+  getRetryDelayMs: (attempt, config = {}) =>
+    getRetryDelayMsFactory(buildRuntimeConfig(config), attempt),
   isRetryableUploadError,
   monitorReplayFile,
   startWatching,

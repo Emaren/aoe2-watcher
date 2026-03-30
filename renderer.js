@@ -34,9 +34,22 @@ function setStatus(message, kind = "neutral") {
 
 function addLog(line, level = "info") {
   const row = document.createElement("div");
-  row.className = `log-line${level === "warn" ? " warn" : level === "error" ? " error" : ""}`;
+  row.className =
+    `log-line${
+      level === "warn"
+        ? " warn"
+        : level === "error"
+        ? " error"
+        : level === "session"
+        ? " session"
+        : ""
+    }`;
   row.textContent = line;
   els.log.prepend(row);
+}
+
+function clearLog() {
+  els.log.innerHTML = "";
 }
 
 function readForm() {
@@ -174,6 +187,10 @@ window.watcherApi.onLog(({ line, level }) => {
   if (level === "error") {
     setStatus(line, "error");
   }
+});
+
+window.watcherApi.onClearLog(() => {
+  clearLog();
 });
 
 loadInitialConfig().catch((error) => {

@@ -4,14 +4,11 @@ const fs = require("fs");
 const path = require("path");
 const { app, BrowserWindow, ipcMain, shell } = require("electron");
 
-const {
-  getDefaultReplayDir,
-  startWatching,
-  stopWatching,
-} = require("./watcher");
+const { getDefaultReplayDir, startWatching, stopWatching } = require("./watcher");
 
 let mainWindow = null;
 let watcherHandle = null;
+let watcherSession = 0;
 
 function getConfigPath() {
   return path.join(app.getPath("userData"), "watcher-config.json");
@@ -72,27 +69,57 @@ function setWatchingState(isWatching) {
   sendToRenderer("watcher:state", { isWatching });
 }
 
+function clearRendererLog() {
+  sendToRenderer("watcher:clear-log", {});
+}
+
 function appendLog(message, level = "info") {
   const line = `[${new Date().toLocaleTimeString()}] ${message}`;
+  console[level === "error" ? "error" : level === "warn" ? "warn" : "log"](line);
   sendToRenderer("watcher:log", { line, level });
 }
 
-function stopCurrentWatcher() {
+function appendSessionHeader(title) {
+  sendToRenderer("watcher:log", {
+    line: `\n──────── ${title} ────────`,
+    level: "session",
+  });
+}
+
+function stopCurrentWatcher({ quiet = false } = {}) {
+  if (!quiet) {
+    appendLog("Stopping watcher session...");
+  }
+
   if (watcherHandle && typeof watcherHandle.close === "function") {
     try {
       watcherHandle.close();
     } catch (error) {
-      console.error("Failed closing watcher:", error);
+      appendLog(`Failed closing watcher handle: ${error.message}`, "error");
     }
   }
 
   watcherHandle = null;
   stopWatching();
   setWatchingState(false);
+
+  if (!quiet) {
+    appendLog("Watcher is now idle.");
+  }
 }
 
 function startCurrentWatcher(config) {
-  stopCurrentWatcher();
+  watcherSession += 1;
+
+  stopCurrentWatcher({ quiet: true });
+  clearRendererLog();
+  appendSessionHeader(`Watcher session ${watcherSession}`);
+  appendLog("Start Watching clicked.");
+  appendLog(
+    `Resolved config: watchDir="${config.watchDir || ""}", apiBaseUrl="${config.apiBaseUrl || ""}", fallback="${config.apiFallbackBaseUrl || ""}", uploadApiKey=${
+      config.uploadApiKey ? "present" : "missing"
+    }`
+  );
 
   watcherHandle = startWatching(config, {
     onLog: (message, level = "info") => appendLog(message, level),
@@ -100,6 +127,12 @@ function startCurrentWatcher(config) {
 
   const isWatching = Boolean(watcherHandle);
   setWatchingState(isWatching);
+
+  if (isWatching) {
+    appendLog("Watcher handle created successfully.");
+  } else {
+    appendLog("Watcher start returned null.", "error");
+  }
 
   return isWatching;
 }
@@ -142,12 +175,14 @@ app.whenReady().then(() => {
 
   ipcMain.handle("watcher:save-config", async (_event, config) => {
     const saved = saveConfig(config);
+    appendLog("Settings saved locally.");
     return saved;
   });
 
   ipcMain.handle("watcher:start", async (_event, config) => {
     const saved = saveConfig(config);
     const started = startCurrentWatcher(saved);
+
     return {
       ok: started,
       config: saved,
@@ -165,7 +200,10 @@ app.whenReady().then(() => {
     }
 
     try {
-      await shell.openPath(targetPath);
+      const result = await shell.openPath(targetPath);
+      if (result) {
+        return { ok: false, error: result };
+      }
       return { ok: true };
     } catch (error) {
       return { ok: false, error: error.message || "Failed to open folder." };
@@ -180,20 +218,27 @@ app.whenReady().then(() => {
 
   mainWindow.webContents.once("did-finish-load", () => {
     sendToRenderer("watcher:config", config);
+    appendLog("UI loaded.");
+    appendLog(
+      `Initial config loaded: watchDir="${config.watchDir || ""}", apiBaseUrl="${config.apiBaseUrl || ""}", fallback="${config.apiFallbackBaseUrl || ""}", uploadApiKey=${
+        config.uploadApiKey ? "present" : "missing"
+      }`
+    );
 
     if (config.autoStartWatching) {
+      appendLog("Auto-start is enabled. Attempting watcher start...");
       const started = startCurrentWatcher(config);
       if (!started) {
         appendLog("Watcher did not start. Check replay folder and settings.", "error");
       }
     } else {
       setWatchingState(false);
-      appendLog("Watcher is idle. Press Start Watching when ready.", "info");
+      appendLog("Watcher is idle. Press Start Watching when ready.");
     }
   });
 });
 
 app.on("window-all-closed", () => {
-  stopCurrentWatcher();
+  stopCurrentWatcher({ quiet: true });
   app.quit();
 });
