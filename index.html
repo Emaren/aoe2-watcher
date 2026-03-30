@@ -1,0 +1,650 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>AoE2HD Watcher</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+          "Segoe UI", sans-serif;
+        background:
+          radial-gradient(circle at 18% 10%, rgba(251, 191, 36, 0.12), transparent 22%),
+          radial-gradient(circle at 82% 12%, rgba(96, 165, 250, 0.14), transparent 24%),
+          linear-gradient(180deg, rgba(14, 29, 56, 0.96), rgba(10, 17, 31, 0.98));
+        color: #f8fafc;
+      }
+
+      .app {
+        padding: 24px;
+      }
+
+      .shell {
+        max-width: 1120px;
+        margin: 0 auto;
+        display: grid;
+        gap: 20px;
+      }
+
+      .hero,
+      .panel {
+        border: 1px solid rgba(186, 230, 253, 0.14);
+        background: linear-gradient(180deg, rgba(18, 28, 48, 0.92), rgba(10, 16, 31, 0.88));
+        box-shadow: 0 24px 70px rgba(5, 11, 24, 0.45);
+        border-radius: 30px;
+      }
+
+      .hero {
+        padding: 28px;
+        display: grid;
+        grid-template-columns: minmax(0, 1.15fr) 320px;
+        gap: 24px;
+      }
+
+      .eyebrow {
+        font-size: 11px;
+        letter-spacing: 0.34em;
+        text-transform: uppercase;
+        color: rgba(224, 242, 254, 0.6);
+      }
+
+      h1 {
+        margin: 12px 0 0;
+        font-size: 44px;
+        line-height: 1.02;
+      }
+
+      .subhead {
+        margin: 18px 0 0;
+        max-width: 720px;
+        font-size: 15px;
+        line-height: 1.8;
+        color: #cbd5e1;
+      }
+
+      .chips {
+        margin-top: 18px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .chip {
+        border: 1px solid rgba(186, 230, 253, 0.12);
+        background: rgba(255, 255, 255, 0.05);
+        border-radius: 999px;
+        padding: 7px 12px;
+        font-size: 11px;
+        color: #f8fafc;
+      }
+
+      .chip.warn {
+        border-color: rgba(251, 191, 36, 0.22);
+        background: rgba(251, 191, 36, 0.1);
+        color: #fde68a;
+      }
+
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-top: 22px;
+      }
+
+      button,
+      input {
+        font: inherit;
+      }
+
+      .button {
+        border: 0;
+        border-radius: 999px;
+        padding: 12px 18px;
+        cursor: pointer;
+        font-weight: 700;
+        transition: 160ms ease;
+      }
+
+      .button.primary {
+        background: #fcd34d;
+        color: #0f172a;
+      }
+
+      .button.primary:hover {
+        background: #fde68a;
+      }
+
+      .button.secondary {
+        background: transparent;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        color: #f8fafc;
+      }
+
+      .button.secondary:hover {
+        background: rgba(255, 255, 255, 0.07);
+      }
+
+      .button.danger {
+        background: rgba(239, 68, 68, 0.12);
+        border: 1px solid rgba(239, 68, 68, 0.24);
+        color: #fecaca;
+      }
+
+      .notice {
+        margin-top: 16px;
+        border: 1px solid rgba(251, 191, 36, 0.18);
+        background: rgba(251, 191, 36, 0.08);
+        color: rgba(255, 248, 220, 0.92);
+        border-radius: 18px;
+        padding: 12px 14px;
+        font-size: 12px;
+        line-height: 1.7;
+      }
+
+      .release-card {
+        border-radius: 24px;
+        border: 1px solid rgba(186, 230, 253, 0.12);
+        background: rgba(2, 6, 23, 0.45);
+        padding: 18px;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+      }
+
+      .release-top {
+        display: flex;
+        gap: 14px;
+        align-items: flex-start;
+        justify-content: space-between;
+      }
+
+      .release-logo {
+        width: 88px;
+        height: 88px;
+        border-radius: 22px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        background: rgba(255, 255, 255, 0.04);
+        object-fit: contain;
+        padding: 10px;
+      }
+
+      .release-title {
+        font-size: 18px;
+        font-weight: 700;
+      }
+
+      .release-subtitle {
+        margin-top: 4px;
+        font-size: 14px;
+        color: #94a3b8;
+      }
+
+      .release-stat {
+        border: 1px solid rgba(186, 230, 253, 0.12);
+        background: rgba(255, 255, 255, 0.045);
+        border-radius: 18px;
+        padding: 14px;
+      }
+
+      .release-stat-label {
+        font-size: 11px;
+        letter-spacing: 0.28em;
+        text-transform: uppercase;
+        color: #94a3b8;
+      }
+
+      .release-stat-value {
+        margin-top: 8px;
+        font-size: 14px;
+        font-weight: 700;
+      }
+
+      .release-stat.warn {
+        border-color: rgba(251, 191, 36, 0.18);
+        background: rgba(251, 191, 36, 0.08);
+      }
+
+      .grid-two {
+        display: grid;
+        grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+        gap: 20px;
+      }
+
+      .panel {
+        padding: 22px;
+      }
+
+      .panel-title {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        font-size: 11px;
+        letter-spacing: 0.34em;
+        text-transform: uppercase;
+        color: rgba(224, 242, 254, 0.58);
+      }
+
+      .downloads-grid,
+      .cards-grid {
+        margin-top: 18px;
+        display: grid;
+        gap: 14px;
+      }
+
+      .downloads-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .cards-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .download-card,
+      .mini-card,
+      .info-card {
+        border-radius: 22px;
+        border: 1px solid rgba(186, 230, 253, 0.12);
+        background: rgba(2, 6, 23, 0.45);
+        padding: 16px;
+      }
+
+      .download-card.disabled {
+        opacity: 0.72;
+      }
+
+      .download-top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      .status-pill {
+        border-radius: 999px;
+        padding: 6px 10px;
+        font-size: 11px;
+        border: 1px solid rgba(251, 191, 36, 0.2);
+        background: rgba(251, 191, 36, 0.1);
+        color: #fde68a;
+      }
+
+      .status-pill.neutral {
+        border-color: rgba(186, 230, 253, 0.12);
+        background: rgba(255, 255, 255, 0.045);
+        color: #f8fafc;
+      }
+
+      .download-card h3,
+      .info-card h3,
+      .mini-card h3 {
+        margin: 14px 0 0;
+        font-size: 17px;
+      }
+
+      .muted {
+        margin-top: 6px;
+        color: #94a3b8;
+        font-size: 14px;
+        line-height: 1.6;
+      }
+
+      .quick-list {
+        margin-top: 18px;
+        display: grid;
+        gap: 12px;
+      }
+
+      .quick-item {
+        border-radius: 18px;
+        border: 1px solid rgba(186, 230, 253, 0.12);
+        background: rgba(2, 6, 23, 0.45);
+        padding: 14px;
+      }
+
+      .quick-top {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .step {
+        border-radius: 999px;
+        border: 1px solid rgba(251, 191, 36, 0.2);
+        background: rgba(251, 191, 36, 0.1);
+        color: #fde68a;
+        padding: 5px 9px;
+        font-size: 11px;
+        font-weight: 700;
+      }
+
+      .settings-grid {
+        margin-top: 18px;
+        display: grid;
+        gap: 14px;
+      }
+
+      .field {
+        display: grid;
+        gap: 8px;
+      }
+
+      .field label {
+        font-size: 12px;
+        color: #cbd5e1;
+      }
+
+      .field input {
+        width: 100%;
+        border-radius: 16px;
+        border: 1px solid rgba(186, 230, 253, 0.14);
+        background: rgba(2, 6, 23, 0.52);
+        color: #f8fafc;
+        padding: 12px 14px;
+      }
+
+      .field input::placeholder {
+        color: #64748b;
+      }
+
+      .settings-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+
+      .status-bar {
+        margin-top: 14px;
+        border-radius: 16px;
+        padding: 12px 14px;
+        font-size: 13px;
+        line-height: 1.6;
+        border: 1px solid rgba(186, 230, 253, 0.12);
+        background: rgba(255, 255, 255, 0.045);
+      }
+
+      .status-bar.error {
+        border-color: rgba(239, 68, 68, 0.25);
+        background: rgba(239, 68, 68, 0.1);
+        color: #fecaca;
+      }
+
+      .status-bar.success {
+        border-color: rgba(74, 222, 128, 0.25);
+        background: rgba(74, 222, 128, 0.1);
+        color: #dcfce7;
+      }
+
+      .log {
+        margin-top: 18px;
+        height: 260px;
+        overflow: auto;
+        border-radius: 18px;
+        border: 1px solid rgba(186, 230, 253, 0.12);
+        background: rgba(2, 6, 23, 0.62);
+        padding: 14px;
+        font-family:
+          ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+        font-size: 12px;
+        line-height: 1.7;
+        white-space: pre-wrap;
+      }
+
+      .log-line {
+        color: #e2e8f0;
+      }
+
+      .log-line.warn {
+        color: #fde68a;
+      }
+
+      .log-line.error {
+        color: #fecaca;
+      }
+
+      .footer-note {
+        margin-top: 14px;
+        font-size: 12px;
+        color: #94a3b8;
+        line-height: 1.7;
+      }
+
+      @media (max-width: 980px) {
+        .hero,
+        .grid-two,
+        .cards-grid,
+        .downloads-grid {
+          grid-template-columns: 1fr;
+        }
+
+        h1 {
+          font-size: 36px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <div class="shell">
+        <section class="hero">
+          <div>
+            <div class="eyebrow">Watcher</div>
+            <h1>AoE2HD Watcher</h1>
+            <div class="subhead">
+              Watches your AoE2HD SaveGame folder, sends live match snapshots, and lands
+              final replay proof automatically.
+            </div>
+
+            <div class="chips">
+              <div class="chip">DMG Release</div>
+              <div class="chip">macOS Apple Silicon</div>
+              <div class="chip">CrossOver Ready</div>
+              <div class="chip">Live Snapshots</div>
+              <div class="chip">Final Proof</div>
+              <div class="chip warn">Unsigned for now</div>
+            </div>
+
+            <div class="actions">
+              <button id="startWatchingBtn" class="button primary">Start Watching</button>
+              <button id="stopWatchingBtn" class="button danger">Stop Watching</button>
+              <button id="openFolderBtn" class="button secondary">Open Replay Folder</button>
+            </div>
+
+            <div class="notice">
+              Paste the upload API key once, save settings, and future launches will just work on
+              this Mac.
+            </div>
+          </div>
+
+          <div class="release-card">
+            <div class="release-top">
+              <div>
+                <div class="eyebrow" style="color: rgba(251, 191, 36, 0.75)">Release</div>
+                <div class="release-title">AoE2HD Watcher 1.0.0</div>
+                <div class="release-subtitle">Premium replay companion</div>
+              </div>
+
+              <img
+                src="./build/aoe2hd-watcher-logo.png"
+                alt="AoE2HD Watcher logo"
+                class="release-logo"
+              />
+            </div>
+
+            <div class="release-stat">
+              <div class="release-stat-label">Package</div>
+              <div class="release-stat-value">DMG</div>
+            </div>
+
+            <div class="release-stat">
+              <div class="release-stat-label">Platform</div>
+              <div class="release-stat-value">macOS Apple Silicon</div>
+            </div>
+
+            <div class="release-stat">
+              <div class="release-stat-label">Mode</div>
+              <div class="release-stat-value" id="watcherStateText">Idle</div>
+            </div>
+
+            <div class="release-stat warn">
+              <div class="release-stat-label">Signing</div>
+              <div class="release-stat-value">Unsigned for now</div>
+            </div>
+          </div>
+        </section>
+
+        <section class="grid-two">
+          <section class="panel">
+            <div class="panel-title">
+              <span>Downloads</span>
+            </div>
+
+            <div class="downloads-grid">
+              <div class="download-card">
+                <div class="download-top">
+                  <div class="status-pill">Live now</div>
+                </div>
+                <h3>macOS App</h3>
+                <div class="muted">Apple Silicon · DMG</div>
+                <div class="footer-note">
+                  Preferred install path once signing and notarization are restored.
+                </div>
+              </div>
+
+              <div class="download-card">
+                <div class="download-top">
+                  <div class="status-pill neutral">Fallback</div>
+                </div>
+                <h3>Manual ZIP</h3>
+                <div class="muted">Fallback while signing is offline</div>
+                <div class="footer-note">
+                  Keep this available until the DMG is fully trusted on all Macs.
+                </div>
+              </div>
+            </div>
+
+            <div class="cards-grid">
+              <div class="info-card">
+                <h3>Live Match Feed</h3>
+                <div class="muted">
+                  Uploads in-progress replay snapshots while the match is still being played.
+                </div>
+              </div>
+
+              <div class="info-card">
+                <h3>Final Replay Proof</h3>
+                <div class="muted">
+                  Sends the settled replay at the end so match results land clean.
+                </div>
+              </div>
+
+              <div class="info-card">
+                <h3>CrossOver Ready</h3>
+                <div class="muted">
+                  Built around the AoE2HD replay folder flow already being used successfully.
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-title">
+              <span>Quick Start</span>
+            </div>
+
+            <div class="quick-list">
+              <div class="quick-item">
+                <div class="quick-top">
+                  <div class="step">01</div>
+                  <strong>Save settings</strong>
+                </div>
+                <div class="muted">Confirm replay folder, API URL, and paste the API key once.</div>
+              </div>
+
+              <div class="quick-item">
+                <div class="quick-top">
+                  <div class="step">02</div>
+                  <strong>Start watching</strong>
+                </div>
+                <div class="muted">Leave the watcher running while you play.</div>
+              </div>
+
+              <div class="quick-item">
+                <div class="quick-top">
+                  <div class="step">03</div>
+                  <strong>Watch uploads land</strong>
+                </div>
+                <div class="muted">New replays get detected, uploaded, and finalized automatically.</div>
+              </div>
+            </div>
+          </section>
+        </section>
+
+        <section class="grid-two">
+          <section class="panel">
+            <div class="panel-title">
+              <span>Settings</span>
+            </div>
+
+            <div class="settings-grid">
+              <div class="field">
+                <label for="watchDirInput">Replay folder</label>
+                <input id="watchDirInput" type="text" placeholder="Replay folder path" />
+              </div>
+
+              <div class="field">
+                <label for="apiBaseUrlInput">API base URL</label>
+                <input id="apiBaseUrlInput" type="text" placeholder="https://api-prodn.aoe2hdbets.com" />
+              </div>
+
+              <div class="field">
+                <label for="apiFallbackBaseUrlInput">Fallback API URL</label>
+                <input id="apiFallbackBaseUrlInput" type="text" placeholder="https://aoe2hdbets.com" />
+              </div>
+
+              <div class="field">
+                <label for="uploadApiKeyInput">Upload API key</label>
+                <input id="uploadApiKeyInput" type="password" placeholder="Paste once and save" />
+              </div>
+
+              <div class="settings-actions">
+                <button id="saveSettingsBtn" class="button primary">Save Settings</button>
+                <button id="detectFolderBtn" class="button secondary">Auto-Detect Folder</button>
+              </div>
+
+              <div id="statusBar" class="status-bar">
+                Waiting for settings…
+              </div>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-title">
+              <span>Watcher Log</span>
+            </div>
+
+            <div id="log" class="log"></div>
+
+            <div class="footer-note">
+              This is the live watcher output. If uploads fail, the error should appear here
+              instead of forcing you back into Terminal.
+            </div>
+          </section>
+        </section>
+      </div>
+    </div>
+
+    <script src="./renderer.js"></script>
+  </body>
+</html>

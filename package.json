@@ -22,6 +22,10 @@
     "files": [
       "main.js",
       "watcher.js",
+      "preload.js",
+      "index.html",
+      "renderer.js",
+      "build/**/*",
       "package.json",
       ".env.example",
       "node_modules/**/*"
