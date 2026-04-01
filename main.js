@@ -86,6 +86,22 @@ function appendSessionHeader(title) {
   });
 }
 
+function getSetupBlocker(config) {
+  if (!config.watchDir && !config.uploadApiKey) {
+    return "Confirm the replay folder and paste your watcher key before starting.";
+  }
+
+  if (!config.watchDir) {
+    return "Confirm the replay folder before starting.";
+  }
+
+  if (!config.uploadApiKey) {
+    return "Paste your watcher key from aoe2hdbets.com/profile before starting.";
+  }
+
+  return null;
+}
+
 function stopCurrentWatcher({ quiet = false } = {}) {
   if (!quiet) {
     appendLog("Stopping watcher session...");
@@ -116,7 +132,7 @@ function startCurrentWatcher(config) {
   appendSessionHeader(`Watcher session ${watcherSession}`);
   appendLog("Start Watching clicked.");
   appendLog(
-    `Resolved config: watchDir="${config.watchDir || ""}", apiBaseUrl="${config.apiBaseUrl || ""}", fallback="${config.apiFallbackBaseUrl || ""}", uploadApiKey=${
+    `Resolved config: watchDir="${config.watchDir || ""}", apiBaseUrl="${config.apiBaseUrl || ""}", fallback="${config.apiFallbackBaseUrl || ""}", watcherKey=${
       config.uploadApiKey ? "present" : "missing"
     }`
   );
@@ -220,17 +236,25 @@ app.whenReady().then(() => {
     sendToRenderer("watcher:config", config);
     appendLog("UI loaded.");
     appendLog(
-      `Initial config loaded: watchDir="${config.watchDir || ""}", apiBaseUrl="${config.apiBaseUrl || ""}", fallback="${config.apiFallbackBaseUrl || ""}", uploadApiKey=${
+      `Initial config loaded: watchDir="${config.watchDir || ""}", apiBaseUrl="${config.apiBaseUrl || ""}", fallback="${config.apiFallbackBaseUrl || ""}", watcherKey=${
         config.uploadApiKey ? "present" : "missing"
       }`
     );
 
-    if (config.autoStartWatching) {
+    const setupBlocker = getSetupBlocker(config);
+
+    if (config.autoStartWatching && !setupBlocker) {
       appendLog("Auto-start is enabled. Attempting watcher start...");
       const started = startCurrentWatcher(config);
       if (!started) {
         appendLog("Watcher did not start. Check replay folder and settings.", "error");
       }
+    } else if (config.autoStartWatching && setupBlocker) {
+      setWatchingState(false);
+      appendLog(
+        `${setupBlocker} Future launches on this Mac can auto-start once both are saved.`,
+        "warn"
+      );
     } else {
       setWatchingState(false);
       appendLog("Watcher is idle. Press Start Watching when ready.");

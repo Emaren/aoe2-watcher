@@ -26,6 +26,10 @@ npm run start
 
 `npm run start` loads `.env` automatically.
 
+The desktop app still expects a watcher key before uploads begin. Mint that once on
+`https://aoe2hdbets.com/profile`, paste it into the app, and future launches on that Mac are
+simple.
+
 ## Optional environment variables
 
 - `AOE2_API_BASE_URL` (default: `https://api-prodn.aoe2hdbets.com`)
@@ -73,8 +77,16 @@ Current watcher logs are intentionally useful while building. Expect to see mess
 
 That noise is acceptable during active development because it makes replay timing issues much easier to understand.
 
-## Build (macOS DMG)
+## Build (macOS release)
 
 ```bash
-npm run build
+npm run dist:release
 ```
+
+`npm run dist:release` builds:
+
+- the signed-state-pending DMG
+- a Direct ZIP that contains the same `AoE2HD Watcher.app` bundle as the DMG
+
+The Direct ZIP is the legitimate fallback while Apple signing and notarization are offline. It is
+not a reduced feature path.

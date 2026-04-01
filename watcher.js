@@ -668,7 +668,7 @@ function startWatching(config = {}, hooks = {}) {
   }
 
   if (!runtimeConfig.uploadApiKey) {
-    log("Upload API key is missing. Set it in Watcher settings before starting.", "error");
+    log("Watcher key is missing. Paste it in Watcher settings before starting.", "error");
     return null;
   }
 
