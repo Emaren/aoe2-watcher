@@ -11,6 +11,7 @@ This is the client-side edge of the AoE2HDBets replay loop. It is intentionally 
 - live watcher uploads now mark non-final replay iterations so `/live-games` and lobby-adjacent surfaces can light up before the match ends
 - uses `x-user-uid` header for identity
 - optional `x-api-key` support via `AOE2_UPLOAD_API_KEY`
+- supports one-click profile pairing through `aoe2hd-watcher://pair?apiKey=...`
 - supports `.aoe2record`, `.aoe2mpgame`, `.mgz`, `.mgx`, and `.mgl`
 - retries transient parse/upload failures automatically
 - skips duplicate re-uploads for the same finished replay
@@ -26,16 +27,23 @@ npm run start
 
 `npm run start` loads `.env` automatically.
 
-The desktop app still expects a watcher key before uploads begin. Mint that once on
-`https://aoe2hdbets.com/profile`, paste it into the app, and future launches on that Mac are
-simple.
+The desktop app still expects a watcher key before uploads begin. The default path is one-click
+pairing:
+
+1. launch the app
+2. click **Open Profile Pairing**
+3. approve the `aoe2hd-watcher://` handoff in your browser
+
+That mints a fresh watcher key on `https://aoe2hdbets.com/profile?watcher_pair=1`, saves it to the
+local app config, and auto-starts when the replay folder is already known. If macOS blocks the
+custom URL, use **Mint Key Only** on `/profile` and paste the fallback key into the app once.
 
 ## Optional environment variables
 
 - `AOE2_API_BASE_URL` (default: `https://api-prodn.aoe2hdbets.com`)
 - `AOE2_WATCH_DIR` (default: platform-specific AoE2HD SaveGame path)
 - `WATCHER_USER_UID` (default: hostname-derived watcher id)
-- `AOE2_UPLOAD_API_KEY` (set this if backend `INTERNAL_API_KEY` is enabled)
+- `AOE2_UPLOAD_API_KEY` (optional manual fallback; one-click pairing normally fills this in)
 - `AOE2_UPLOAD_RETRY_ATTEMPTS` (default: `4`)
 - `AOE2_UPLOAD_RETRY_BASE_DELAY_MS` (default: `4000`)
 - `AOE2_UPLOAD_STABLE_CHECK_INTERVAL_MS` (default: `3000`)

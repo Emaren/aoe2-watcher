@@ -18,6 +18,14 @@
     "appId": "com.aoe2hd.watcher",
     "productName": "AoE2HD Watcher",
     "artifactName": "${productName}-${version}-${arch}.${ext}",
+    "protocols": [
+      {
+        "name": "AoE2HD Watcher Pairing",
+        "schemes": [
+          "aoe2hd-watcher"
+        ]
+      }
+    ],
     "directories": {
       "buildResources": "build"
     },

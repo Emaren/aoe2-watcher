@@ -6,9 +6,13 @@ const { app, BrowserWindow, ipcMain, shell } = require("electron");
 
 const { getDefaultReplayDir, startWatching, stopWatching } = require("./watcher");
 
+const WATCHER_PAIR_PROTOCOL = "aoe2hd-watcher";
+
 let mainWindow = null;
 let watcherHandle = null;
 let watcherSession = 0;
+let rendererReady = false;
+let pendingPairingUrl = null;
 
 function getConfigPath() {
   return path.join(app.getPath("userData"), "watcher-config.json");
@@ -86,9 +90,72 @@ function appendSessionHeader(title) {
   });
 }
 
+function focusMainWindow() {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    return;
+  }
+
+  if (mainWindow.isMinimized()) {
+    mainWindow.restore();
+  }
+
+  mainWindow.show();
+  mainWindow.focus();
+}
+
+function getPairingUrlFromArgs(argv = []) {
+  return argv.find(
+    (value) =>
+      typeof value === "string" &&
+      value.trim().toLowerCase().startsWith(`${WATCHER_PAIR_PROTOCOL}://`)
+  );
+}
+
+function parsePairingUrl(rawUrl) {
+  try {
+    const parsedUrl = new URL(rawUrl);
+    if (parsedUrl.protocol !== `${WATCHER_PAIR_PROTOCOL}:`) {
+      return null;
+    }
+
+    const uploadApiKey = (
+      parsedUrl.searchParams.get("apiKey") ||
+      parsedUrl.searchParams.get("watcherKey") ||
+      ""
+    ).trim();
+    const watchDir = (parsedUrl.searchParams.get("watchDir") || "").trim();
+
+    if (!uploadApiKey) {
+      return null;
+    }
+
+    return {
+      uploadApiKey,
+      watchDir,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function registerPairingProtocol() {
+  try {
+    if (process.defaultApp) {
+      app.setAsDefaultProtocolClient(WATCHER_PAIR_PROTOCOL, process.execPath, [
+        path.resolve(process.argv[1]),
+      ]);
+      return;
+    }
+
+    app.setAsDefaultProtocolClient(WATCHER_PAIR_PROTOCOL);
+  } catch (error) {
+    console.error("Failed to register Watcher pairing protocol:", error);
+  }
+}
+
 function getSetupBlocker(config) {
   if (!config.watchDir && !config.uploadApiKey) {
-    return "Confirm the replay folder and paste your watcher key before starting.";
+    return "Confirm the replay folder and pair your profile key before starting.";
   }
 
   if (!config.watchDir) {
@@ -96,7 +163,7 @@ function getSetupBlocker(config) {
   }
 
   if (!config.uploadApiKey) {
-    return "Paste your watcher key from aoe2hdbets.com/profile before starting.";
+    return "Pair this Mac from aoe2hdbets.com/profile, or paste your watcher key manually.";
   }
 
   return null;
@@ -124,13 +191,15 @@ function stopCurrentWatcher({ quiet = false } = {}) {
   }
 }
 
-function startCurrentWatcher(config) {
+function startCurrentWatcher(config, { preserveLog = false, startMessage = "Start Watching clicked." } = {}) {
   watcherSession += 1;
 
   stopCurrentWatcher({ quiet: true });
-  clearRendererLog();
+  if (!preserveLog) {
+    clearRendererLog();
+  }
   appendSessionHeader(`Watcher session ${watcherSession}`);
-  appendLog("Start Watching clicked.");
+  appendLog(startMessage);
   appendLog(
     `Resolved config: watchDir="${config.watchDir || ""}", apiBaseUrl="${config.apiBaseUrl || ""}", fallback="${config.apiFallbackBaseUrl || ""}", watcherKey=${
       config.uploadApiKey ? "present" : "missing"
@@ -151,6 +220,66 @@ function startCurrentWatcher(config) {
   }
 
   return isWatching;
+}
+
+function processPendingPairingUrl() {
+  if (!rendererReady || !pendingPairingUrl) {
+    return false;
+  }
+
+  const rawUrl = pendingPairingUrl;
+  pendingPairingUrl = null;
+
+  const pairingConfig = parsePairingUrl(rawUrl);
+  if (!pairingConfig) {
+    appendLog("Ignored an invalid Watcher pairing link.", "error");
+    return false;
+  }
+
+  const currentConfig = loadConfig();
+  const savedConfig = saveConfig({
+    ...currentConfig,
+    uploadApiKey: pairingConfig.uploadApiKey,
+    watchDir:
+      pairingConfig.watchDir ||
+      currentConfig.watchDir ||
+      getDefaultReplayDir() ||
+      "",
+  });
+
+  sendToRenderer("watcher:config", savedConfig);
+  appendLog("Paired this Watcher with your AoE2HDBets profile key.");
+
+  const setupBlocker = getSetupBlocker(savedConfig);
+  if (setupBlocker) {
+    setWatchingState(false);
+    appendLog(
+      `${setupBlocker} The key is saved now, so pairing does not need to be repeated.`,
+      "warn"
+    );
+    focusMainWindow();
+    return true;
+  }
+
+  const started = startCurrentWatcher(savedConfig, {
+    preserveLog: true,
+    startMessage: "Pairing is complete. Auto-starting the watcher now.",
+  });
+  if (!started) {
+    appendLog("Watcher did not start after pairing. Check the replay folder and try again.", "error");
+  }
+
+  focusMainWindow();
+  return true;
+}
+
+function queuePairingUrl(rawUrl) {
+  if (!rawUrl || !rawUrl.trim().toLowerCase().startsWith(`${WATCHER_PAIR_PROTOCOL}://`)) {
+    return false;
+  }
+
+  pendingPairingUrl = rawUrl.trim();
+  return processPendingPairingUrl();
 }
 
 function createWindow() {
@@ -182,7 +311,8 @@ function createWindow() {
   });
 }
 
-app.whenReady().then(() => {
+function bootWatcherApp() {
+  registerPairingProtocol();
   createWindow();
 
   ipcMain.handle("watcher:get-config", async () => {
@@ -233,6 +363,7 @@ app.whenReady().then(() => {
   const config = loadConfig();
 
   mainWindow.webContents.once("did-finish-load", () => {
+    rendererReady = true;
     sendToRenderer("watcher:config", config);
     appendLog("UI loaded.");
     appendLog(
@@ -240,6 +371,11 @@ app.whenReady().then(() => {
         config.uploadApiKey ? "present" : "missing"
       }`
     );
+
+    const pairedFromUrl = processPendingPairingUrl();
+    if (pairedFromUrl) {
+      return;
+    }
 
     const setupBlocker = getSetupBlocker(config);
 
@@ -260,9 +396,38 @@ app.whenReady().then(() => {
       appendLog("Watcher is idle. Press Start Watching when ready.");
     }
   });
-});
+}
 
 app.on("window-all-closed", () => {
+  rendererReady = false;
   stopCurrentWatcher({ quiet: true });
   app.quit();
 });
+
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
+
+if (!gotSingleInstanceLock) {
+  app.quit();
+} else {
+  app.whenReady().then(() => {
+    bootWatcherApp();
+  });
+
+  app.on("second-instance", (_event, argv) => {
+    const pairingUrl = getPairingUrlFromArgs(argv);
+    if (pairingUrl) {
+      queuePairingUrl(pairingUrl);
+    }
+    focusMainWindow();
+  });
+
+  app.on("open-url", (event, rawUrl) => {
+    event.preventDefault();
+    queuePairingUrl(rawUrl);
+  });
+
+  const startupPairingUrl = getPairingUrlFromArgs(process.argv);
+  if (startupPairingUrl) {
+    queuePairingUrl(startupPairingUrl);
+  }
+}

@@ -485,13 +485,13 @@
             <div class="eyebrow">Watcher</div>
             <h1>AoE2HD Watcher</h1>
             <div class="subhead">
-              One-time setup, then this Mac is easy: paste your watcher key, confirm the
-              replay folder, and leave the watcher open while you play. It handles live
-              replay pulses and final proof automatically.
+              One-click pairing, then this Mac stays easy: open Profile Pairing, let your
+              key hand off to the app, confirm the replay folder, and leave the watcher open
+              while you play.
             </div>
 
             <div class="chips">
-              <div class="chip">One-time watcher key</div>
+              <div class="chip">One-click pairing</div>
               <div class="chip">CrossOver ready</div>
               <div class="chip">Live snapshots</div>
               <div class="chip">Final proof</div>
@@ -500,8 +500,8 @@
             </div>
 
             <div id="setupSummaryText" class="hero-summary">
-              One-time setup: mint a watcher key on your profile, confirm the replay folder,
-              then future launches are easy.
+              One-click setup: open Profile Pairing, approve the watcher handoff, confirm the
+              replay folder, and future launches can auto-start.
             </div>
 
             <div class="actions">
@@ -513,11 +513,11 @@
             <div class="helper-links" style="margin-top: 12px">
               <a
                 class="button link"
-                href="https://aoe2hdbets.com/profile"
+                href="https://aoe2hdbets.com/profile?watcher_pair=1"
                 target="_blank"
                 rel="noreferrer"
               >
-                Open Profile For Key
+                Open Profile Pairing
               </a>
               <a
                 class="button link"
@@ -562,7 +562,7 @@
 
             <div class="release-stat">
               <div class="release-stat-label">Watcher key</div>
-              <div id="keyReadyText" class="release-stat-value missing">Paste once</div>
+              <div id="keyReadyText" class="release-stat-value missing">Needs pairing</div>
             </div>
 
             <div class="release-stat">
@@ -587,11 +587,12 @@
               <div class="quick-item">
                 <div class="quick-top">
                   <div class="step">01</div>
-                  <strong>Mint a watcher key once</strong>
+                  <strong>Pair your profile key in one click</strong>
                 </div>
                 <div class="muted">
-                  Open your AoE2HDBets profile, create a watcher key, and paste it into this
-                  app. You only need to do that once per Mac.
+                  Open Profile Pairing, approve the browser-to-app handoff, and this Watcher
+                  saves the key locally. Manual paste is still there if macOS blocks the
+                  deep link.
                 </div>
               </div>
 
@@ -630,7 +631,7 @@
                 <h3>Use the DMG first</h3>
                 <div class="muted">
                   If macOS opens the DMG cleanly, that is the smoothest path. Drag the app in,
-                  launch it, paste the watcher key once, and you&apos;re done.
+                  launch it, open Profile Pairing once, and you&apos;re done.
                 </div>
               </div>
 
@@ -677,10 +678,14 @@ open "/Applications/AoE2HD Watcher.app"</div>
               <div class="field-shell">
                 <div class="field">
                   <label for="uploadApiKeyInput">Watcher key</label>
-                  <input id="uploadApiKeyInput" type="password" placeholder="Paste once and save" />
+                  <input
+                    id="uploadApiKeyInput"
+                    type="password"
+                    placeholder="Paired automatically, or paste manually"
+                  />
                   <div class="field-caption">
-                    Mint this on your AoE2HDBets profile. Once it is saved here, future launches
-                    on this Mac can auto-start cleanly.
+                    Open Profile Pairing to auto-fill this field. If your browser blocks the
+                    deep link, paste the freshly minted key here and save once.
                   </div>
                 </div>
               </div>

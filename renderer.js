@@ -89,28 +89,28 @@ function updateSetupSummary(config = readForm()) {
   const hasKey = Boolean(config.uploadApiKey);
 
   setSetupState(els.folderReadyText, "Ready", "Needs folder", hasFolder);
-  setSetupState(els.keyReadyText, "Saved", "Paste once", hasKey);
+  setSetupState(els.keyReadyText, "Paired", "Needs pairing", hasKey);
 
   if (hasFolder && hasKey) {
     els.setupSummaryText.textContent =
-      "This Mac is ready. Press Start Watching and leave the watcher open while you play.";
+      "This Mac is paired and ready. Press Start Watching once, then leave the watcher open while you play.";
     return;
   }
 
   if (hasFolder) {
     els.setupSummaryText.textContent =
-      "Replay folder looks good. Paste your watcher key once, then this Mac is basically one-click.";
+      "Replay folder looks good. Open Profile Pairing to hand the key to this Mac in one click, or paste it manually.";
     return;
   }
 
   if (hasKey) {
     els.setupSummaryText.textContent =
-      "Watcher key is saved. Confirm the replay folder next, then Start Watching.";
+      "Watcher key is paired. Confirm the replay folder next, then Start Watching.";
     return;
   }
 
   els.setupSummaryText.textContent =
-    "One-time setup: mint a watcher key on your profile, confirm the replay folder, then future launches are easy.";
+    "One-click setup: open Profile Pairing, approve the watcher handoff, confirm the replay folder, and future launches can auto-start.";
 }
 
 function setLoadedStatus(config, { autoDetectedFolder = false } = {}) {
@@ -118,26 +118,26 @@ function setLoadedStatus(config, { autoDetectedFolder = false } = {}) {
   const hasKey = Boolean(config.uploadApiKey);
 
   if (hasFolder && hasKey) {
-    setStatus("Ready. Start the watcher and leave it open while you play.", "success");
+    setStatus("Paired and ready. Start the watcher and leave it open while you play.", "success");
     return;
   }
 
   if (autoDetectedFolder && !hasKey) {
-    setStatus("Replay folder auto-detected. Paste your watcher key once, then press Start Watching.");
+    setStatus("Replay folder auto-detected. Open Profile Pairing to finish the one-click handoff.");
     return;
   }
 
   if (hasFolder && !hasKey) {
-    setStatus("Replay folder loaded. Paste your watcher key once, then press Start Watching.");
+    setStatus("Replay folder loaded. Open Profile Pairing to finish the one-click handoff.");
     return;
   }
 
   if (!hasFolder && hasKey) {
-    setStatus("Watcher key loaded. Confirm the replay folder before starting.");
+    setStatus("Watcher key paired. Confirm the replay folder before starting.");
     return;
   }
 
-  setStatus("Use Auto-Detect Folder, paste your watcher key once, and this Mac is ready.");
+  setStatus("Use Auto-Detect Folder, then Open Profile Pairing for one-click setup.");
 }
 
 async function loadInitialConfig() {
@@ -158,7 +158,7 @@ els.saveSettingsBtn.addEventListener("click", async () => {
     setStatus(
       saved.uploadApiKey
         ? "Settings saved locally on this Mac."
-        : "Settings saved. Paste your watcher key once and you are set.",
+        : "Settings saved. Open Profile Pairing to finish the handoff, or paste the key manually.",
       "success"
     );
   } catch (error) {
@@ -198,7 +198,7 @@ els.startWatchingBtn.addEventListener("click", async () => {
 
     if (!config.uploadApiKey) {
       setStatus(
-        "Watcher key required. Open aoe2hdbets.com/profile, mint one, paste it once, then start watching.",
+        "Watcher key required. Open Profile Pairing from aoe2hdbets.com/profile, or paste a key manually.",
         "error"
       );
       return;
@@ -259,10 +259,14 @@ window.watcherApi.onConfig((config) => {
   currentConfig = config;
   writeForm(config);
   updateSetupSummary(config);
+  setLoadedStatus(config);
 });
 
 window.watcherApi.onState(({ isWatching }) => {
   setWatchingText(isWatching);
+  if (isWatching) {
+    setStatus("Watcher live. Leave this open while you play.", "success");
+  }
 });
 
 window.watcherApi.onLog(({ line, level }) => {
