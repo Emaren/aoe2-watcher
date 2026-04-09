@@ -10,16 +10,21 @@ const watcherDir = path.resolve(scriptDir, "..");
 const distDir = path.join(watcherDir, "dist");
 const packageJsonPath = path.join(watcherDir, "package.json");
 const packageJson = JSON.parse(await fs.readFile(packageJsonPath, "utf8"));
+const productName = packageJson.productName || "AoE2HDBets Watcher";
+const productSlug = productName
+  .toLowerCase()
+  .replace(/[^a-z0-9]+/g, "-")
+  .replace(/^-|-$/g, "");
 
-const appBundleName = "AoE2HD Watcher.app";
+const appBundleName = `${productName}.app`;
 const appBundlePath = path.join(distDir, "mac-arm64", appBundleName);
-const payloadDir = path.join(distDir, "AoE2HD Watcher Direct");
-const outputZipPath = path.join(distDir, "aoe2-watcher-manual.zip");
+const payloadDir = path.join(distDir, `${productName} Direct`);
+const outputZipPath = path.join(distDir, `${productSlug}-direct.zip`);
 const readmePath = path.join(payloadDir, "README.txt");
 
-const readmeBody = `AoE2HD Watcher ${packageJson.version} direct ZIP
+const readmeBody = `${productName} ${packageJson.version} direct ZIP
 
-This ZIP contains the same AoE2HD Watcher app bundle as the DMG.
+This ZIP contains the same ${productName} app bundle as the DMG.
 Same watcher. Same uploads. Same replay flow.
 
 Recommended:

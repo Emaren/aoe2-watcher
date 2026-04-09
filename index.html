@@ -2,28 +2,51 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <title>AoE2HD Watcher</title>
+    <title>AoE2HDBets Watcher</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <style>
       :root {
         color-scheme: dark;
+        --bg-top: #09131d;
+        --bg-bottom: #04080f;
+        --card: rgba(11, 20, 32, 0.86);
+        --card-strong: rgba(7, 14, 24, 0.94);
+        --card-soft: rgba(255, 255, 255, 0.045);
+        --line: rgba(148, 163, 184, 0.16);
+        --line-strong: rgba(251, 191, 36, 0.22);
+        --text: #f7fbff;
+        --muted: #9fb0c3;
+        --gold: #f7c948;
+        --gold-soft: rgba(247, 201, 72, 0.14);
+        --blue: #7dd3fc;
+        --green: #4ade80;
+        --red: #fb7185;
+        --shadow: 0 28px 90px rgba(0, 0, 0, 0.4);
       }
 
       * {
         box-sizing: border-box;
       }
 
+      html,
       body {
         margin: 0;
-        min-height: 100vh;
+        min-height: 100%;
+      }
+
+      body {
         font-family:
-          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
-          "Segoe UI", sans-serif;
+          "Aptos",
+          "Segoe UI Variable",
+          "Segoe UI",
+          "Trebuchet MS",
+          sans-serif;
         background:
-          radial-gradient(circle at 18% 10%, rgba(251, 191, 36, 0.11), transparent 22%),
-          radial-gradient(circle at 82% 12%, rgba(96, 165, 250, 0.12), transparent 24%),
-          linear-gradient(180deg, rgba(14, 29, 56, 0.96), rgba(10, 17, 31, 0.98));
-        color: #f8fafc;
+          radial-gradient(circle at 12% 12%, rgba(247, 201, 72, 0.18), transparent 22%),
+          radial-gradient(circle at 88% 16%, rgba(125, 211, 252, 0.14), transparent 20%),
+          radial-gradient(circle at 50% 0%, rgba(59, 130, 246, 0.08), transparent 28%),
+          linear-gradient(180deg, var(--bg-top), var(--bg-bottom));
+        color: var(--text);
       }
 
       a {
@@ -36,316 +59,325 @@
         font: inherit;
       }
 
-      .app {
-        padding: 24px;
+      .app-shell {
+        position: relative;
+        overflow: hidden;
+      }
+
+      .app-shell::before,
+      .app-shell::after {
+        content: "";
+        position: absolute;
+        border-radius: 999px;
+        filter: blur(90px);
+        opacity: 0.48;
+        pointer-events: none;
+      }
+
+      .app-shell::before {
+        width: 340px;
+        height: 340px;
+        left: -100px;
+        top: 120px;
+        background: rgba(247, 201, 72, 0.12);
+      }
+
+      .app-shell::after {
+        width: 420px;
+        height: 420px;
+        right: -140px;
+        top: 60px;
+        background: rgba(14, 165, 233, 0.12);
       }
 
       .shell {
-        max-width: 1120px;
+        width: min(1400px, calc(100% - 40px));
         margin: 0 auto;
+        padding: 28px 0 36px;
         display: grid;
-        gap: 20px;
+        gap: 22px;
       }
 
-      .hero,
-      .panel {
-        border: 1px solid rgba(186, 230, 253, 0.14);
-        background: linear-gradient(180deg, rgba(18, 28, 48, 0.92), rgba(10, 16, 31, 0.88));
-        box-shadow: 0 24px 70px rgba(5, 11, 24, 0.45);
+      .card {
+        position: relative;
         border-radius: 30px;
+        border: 1px solid var(--line);
+        background:
+          linear-gradient(180deg, rgba(18, 28, 42, 0.96), rgba(7, 13, 23, 0.94));
+        box-shadow: var(--shadow);
+        overflow: hidden;
+      }
+
+      .card::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background:
+          linear-gradient(135deg, rgba(255, 255, 255, 0.035), transparent 26%),
+          linear-gradient(180deg, transparent, rgba(0, 0, 0, 0.08));
+        pointer-events: none;
       }
 
       .hero {
-        padding: 28px;
         display: grid;
-        grid-template-columns: minmax(0, 1.12fr) 320px;
+        grid-template-columns: minmax(0, 1.25fr) minmax(320px, 0.75fr);
         gap: 24px;
+        padding: 30px;
       }
 
-      .eyebrow,
-      .panel-title,
-      .release-stat-label {
+      .eyebrow {
         font-size: 11px;
-        letter-spacing: 0.34em;
         text-transform: uppercase;
+        letter-spacing: 0.34em;
+        color: rgba(229, 238, 249, 0.62);
       }
 
-      .eyebrow,
-      .panel-title {
-        color: rgba(224, 242, 254, 0.6);
+      h1,
+      h2,
+      h3,
+      p {
+        margin: 0;
       }
 
       h1 {
-        margin: 12px 0 0;
-        font-size: 44px;
-        line-height: 1.02;
+        margin-top: 14px;
+        max-width: 800px;
+        font-size: clamp(2.4rem, 5vw, 4.4rem);
+        line-height: 0.97;
+        letter-spacing: -0.04em;
       }
 
       .subhead {
-        margin: 18px 0 0;
-        max-width: 720px;
+        margin-top: 20px;
+        max-width: 780px;
         font-size: 15px;
         line-height: 1.8;
-        color: #cbd5e1;
+        color: #d5dfeb;
       }
 
-      .chips {
-        margin-top: 18px;
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-      }
-
-      .chip {
-        border: 1px solid rgba(186, 230, 253, 0.12);
-        background: rgba(255, 255, 255, 0.05);
-        border-radius: 999px;
-        padding: 7px 12px;
-        font-size: 11px;
-        color: #f8fafc;
-      }
-
-      .chip.warn {
-        border-color: rgba(251, 191, 36, 0.22);
-        background: rgba(251, 191, 36, 0.1);
-        color: #fde68a;
-      }
-
-      .hero-summary {
-        margin-top: 18px;
-        border: 1px solid rgba(148, 163, 184, 0.16);
-        background: rgba(8, 15, 29, 0.55);
-        border-radius: 20px;
-        padding: 14px 16px;
-        color: #dbe6f4;
-        font-size: 13px;
-        line-height: 1.7;
-      }
-
-      .actions,
-      .settings-actions,
-      .helper-links {
+      .chip-row,
+      .hero-actions,
+      .helper-links,
+      .field-actions,
+      .panel-actions {
         display: flex;
         flex-wrap: wrap;
         gap: 12px;
       }
 
-      .actions {
+      .chip-row {
+        margin-top: 18px;
+      }
+
+      .chip {
+        border-radius: 999px;
+        border: 1px solid rgba(148, 163, 184, 0.2);
+        background: rgba(255, 255, 255, 0.045);
+        padding: 8px 12px;
+        font-size: 12px;
+        color: #e8eff7;
+      }
+
+      .chip.accent {
+        border-color: rgba(247, 201, 72, 0.2);
+        background: rgba(247, 201, 72, 0.09);
+        color: #fbe29b;
+      }
+
+      .setup-summary {
+        margin-top: 20px;
+        border-radius: 20px;
+        border: 1px solid rgba(125, 211, 252, 0.16);
+        background: rgba(8, 15, 27, 0.62);
+        padding: 16px 18px;
+        font-size: 14px;
+        line-height: 1.72;
+        color: #dfe9f5;
+      }
+
+      .hero-actions {
         margin-top: 22px;
+      }
+
+      .helper-links {
+        margin-top: 14px;
       }
 
       .button {
         border: 0;
         border-radius: 999px;
         padding: 12px 18px;
-        cursor: pointer;
         font-weight: 700;
-        transition: 160ms ease;
+        cursor: pointer;
+        transition: transform 140ms ease, background 140ms ease, border-color 140ms ease,
+          opacity 140ms ease;
         display: inline-flex;
         align-items: center;
         justify-content: center;
+        gap: 8px;
+      }
+
+      .button:hover {
+        transform: translateY(-1px);
+      }
+
+      .button:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+        transform: none;
       }
 
       .button.primary {
-        background: #fcd34d;
-        color: #0f172a;
+        background: linear-gradient(135deg, #f7c948, #f3ad32);
+        color: #111827;
       }
 
       .button.primary:hover {
-        background: #fde68a;
+        background: linear-gradient(135deg, #fbe29b, #f7c948);
       }
 
       .button.secondary {
-        background: transparent;
-        border: 1px solid rgba(255, 255, 255, 0.14);
-        color: #f8fafc;
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(148, 163, 184, 0.18);
+        color: var(--text);
       }
 
       .button.secondary:hover {
-        background: rgba(255, 255, 255, 0.07);
+        background: rgba(255, 255, 255, 0.08);
       }
 
       .button.danger {
-        background: rgba(239, 68, 68, 0.12);
-        border: 1px solid rgba(239, 68, 68, 0.24);
-        color: #fecaca;
+        background: rgba(251, 113, 133, 0.12);
+        border: 1px solid rgba(251, 113, 133, 0.22);
+        color: #fecdd3;
       }
 
-      .button.link {
-        background: rgba(255, 255, 255, 0.045);
-        border: 1px solid rgba(186, 230, 253, 0.12);
-        color: #e2e8f0;
+      .button.ghost {
+        background: transparent;
+        border: 1px solid rgba(125, 211, 252, 0.16);
+        color: #e7f6ff;
       }
 
-      .button.link:hover {
-        background: rgba(255, 255, 255, 0.08);
+      .button.slim {
+        padding: 10px 14px;
+        font-size: 13px;
       }
 
       .notice {
         margin-top: 16px;
-        border: 1px solid rgba(251, 191, 36, 0.18);
-        background: rgba(251, 191, 36, 0.08);
-        color: rgba(255, 248, 220, 0.92);
-        border-radius: 18px;
-        padding: 12px 14px;
-        font-size: 12px;
-        line-height: 1.7;
+        border-radius: 20px;
+        border: 1px solid rgba(247, 201, 72, 0.18);
+        background: rgba(247, 201, 72, 0.08);
+        padding: 13px 15px;
+        font-size: 13px;
+        line-height: 1.68;
+        color: #f9e5b0;
       }
 
-      .release-card {
-        border-radius: 24px;
-        border: 1px solid rgba(186, 230, 253, 0.12);
-        background: rgba(2, 6, 23, 0.45);
-        padding: 18px;
-        display: flex;
-        flex-direction: column;
-        gap: 14px;
-      }
-
-      .release-top {
-        display: flex;
-        gap: 14px;
-        align-items: flex-start;
-        justify-content: space-between;
-      }
-
-      .release-logo {
-        width: 88px;
-        height: 88px;
-        border-radius: 22px;
-        border: 1px solid rgba(255, 255, 255, 0.12);
-        background: rgba(255, 255, 255, 0.04);
-        object-fit: contain;
-        padding: 10px;
-      }
-
-      .release-title {
-        font-size: 18px;
-        font-weight: 700;
-      }
-
-      .release-subtitle {
-        margin-top: 4px;
-        font-size: 14px;
-        color: #94a3b8;
-      }
-
-      .release-stat {
-        border: 1px solid rgba(186, 230, 253, 0.12);
-        background: rgba(255, 255, 255, 0.045);
-        border-radius: 18px;
-        padding: 14px;
-      }
-
-      .release-stat-label {
-        color: #94a3b8;
-      }
-
-      .release-stat-value {
-        margin-top: 8px;
-        font-size: 14px;
-        font-weight: 700;
-      }
-
-      .release-stat-value.ready {
-        color: #dcfce7;
-      }
-
-      .release-stat-value.missing {
-        color: #fde68a;
-      }
-
-      .release-stat.warn {
-        border-color: rgba(251, 191, 36, 0.18);
-        background: rgba(251, 191, 36, 0.08);
-      }
-
-      .grid-two {
-        display: grid;
-        grid-template-columns: minmax(0, 1.04fr) minmax(0, 0.96fr);
-        gap: 20px;
-      }
-
-      .panel {
-        padding: 22px;
-      }
-
-      .quick-list,
-      .helper-stack,
-      .settings-grid {
-        margin-top: 18px;
+      .status-rail {
         display: grid;
         gap: 12px;
       }
 
-      .quick-item,
-      .helper-card,
-      .field-shell,
-      .advanced-panel {
-        border-radius: 18px;
-        border: 1px solid rgba(186, 230, 253, 0.12);
-        background: rgba(2, 6, 23, 0.45);
+      .metric-card {
+        position: relative;
+        border-radius: 22px;
+        border: 1px solid rgba(148, 163, 184, 0.16);
+        background: rgba(6, 12, 22, 0.58);
+        padding: 18px;
       }
 
-      .quick-item,
-      .helper-card,
-      .field-shell {
-        padding: 16px;
+      .metric-card.highlight {
+        border-color: rgba(125, 211, 252, 0.18);
+        background:
+          linear-gradient(180deg, rgba(11, 22, 36, 0.92), rgba(7, 15, 26, 0.84));
       }
 
-      .quick-top {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-      }
-
-      .step {
-        border-radius: 999px;
-        border: 1px solid rgba(251, 191, 36, 0.2);
-        background: rgba(251, 191, 36, 0.1);
-        color: #fde68a;
-        padding: 5px 9px;
+      .metric-label {
         font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.28em;
+        color: #8ea0b5;
+      }
+
+      .metric-value {
+        margin-top: 10px;
+        font-size: 18px;
         font-weight: 700;
       }
 
-      .helper-card h3,
-      .quick-item strong {
-        font-size: 16px;
+      .metric-value.ready {
+        color: #d7f7de;
       }
 
-      .muted {
+      .metric-value.missing {
+        color: #f7dda0;
+      }
+
+      .metric-copy {
         margin-top: 8px;
-        color: #cbd5e1;
+        font-size: 13px;
+        line-height: 1.62;
+        color: #bfd0e2;
+      }
+
+      .status-detail {
+        margin-top: 10px;
         font-size: 14px;
-        line-height: 1.75;
+        line-height: 1.7;
+        color: #dce8f5;
       }
 
-      .helper-kicker {
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        border-radius: 999px;
-        border: 1px solid rgba(186, 230, 253, 0.12);
-        background: rgba(255, 255, 255, 0.045);
-        padding: 6px 10px;
-        font-size: 11px;
-        color: #e2e8f0;
+      .content-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1.08fr) minmax(360px, 0.72fr);
+        gap: 22px;
       }
 
-      .code-block {
-        margin-top: 14px;
-        border-radius: 16px;
-        border: 1px solid rgba(186, 230, 253, 0.12);
-        background: rgba(2, 6, 23, 0.72);
-        padding: 14px;
-        font-family:
-          ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
-        font-size: 12px;
+      .stack {
+        display: grid;
+        gap: 22px;
+      }
+
+      .panel {
+        padding: 24px;
+      }
+
+      .panel-top {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 16px;
+      }
+
+      .panel-copy {
+        margin-top: 10px;
+        max-width: 760px;
+        font-size: 14px;
         line-height: 1.8;
-        color: #e2e8f0;
-        white-space: pre-wrap;
-        word-break: break-word;
+        color: var(--muted);
+      }
+
+      .field-grid,
+      .diagnostic-grid,
+      .helper-grid,
+      .list-grid {
+        margin-top: 18px;
+        display: grid;
+        gap: 14px;
+      }
+
+      .field-shell,
+      .helper-card,
+      .diagnostic-row {
+        border-radius: 20px;
+        border: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.04);
+      }
+
+      .field-shell,
+      .helper-card {
+        padding: 16px;
       }
 
       .field {
@@ -355,29 +387,54 @@
 
       .field label {
         font-size: 12px;
-        color: #cbd5e1;
+        color: #d0dbea;
       }
 
-      .field input {
+      .field input[type="text"],
+      .field input[type="password"] {
         width: 100%;
         border-radius: 16px;
-        border: 1px solid rgba(186, 230, 253, 0.14);
-        background: rgba(2, 6, 23, 0.52);
-        color: #f8fafc;
-        padding: 12px 14px;
-      }
-
-      .field input::placeholder {
-        color: #64748b;
+        border: 1px solid rgba(148, 163, 184, 0.18);
+        background: rgba(5, 10, 19, 0.7);
+        color: var(--text);
+        padding: 13px 14px;
       }
 
       .field-caption {
         font-size: 12px;
-        color: #94a3b8;
-        line-height: 1.7;
+        line-height: 1.72;
+        color: #96a8bb;
+      }
+
+      .field-shell.row {
+        display: grid;
+        gap: 14px;
+      }
+
+      .field-inline {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 10px;
+      }
+
+      .checkbox-shell {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-top: 8px;
+        color: #d3dceb;
+      }
+
+      .checkbox-shell input {
+        width: 18px;
+        height: 18px;
       }
 
       .advanced-panel {
+        margin-top: 14px;
+        border-radius: 20px;
+        border: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.03);
         overflow: hidden;
       }
 
@@ -386,9 +443,9 @@
         cursor: pointer;
         padding: 14px 16px;
         font-size: 12px;
-        letter-spacing: 0.24em;
         text-transform: uppercase;
-        color: #cbd5e1;
+        letter-spacing: 0.24em;
+        color: #c9d7e6;
       }
 
       .advanced-panel summary::-webkit-details-marker {
@@ -396,7 +453,7 @@
       }
 
       .advanced-panel[open] summary {
-        border-bottom: 1px solid rgba(186, 230, 253, 0.12);
+        border-bottom: 1px solid var(--line);
       }
 
       .advanced-body {
@@ -406,113 +463,373 @@
       }
 
       .status-bar {
-        margin-top: 14px;
-        border-radius: 16px;
-        padding: 12px 14px;
-        font-size: 13px;
-        line-height: 1.6;
-        border: 1px solid rgba(186, 230, 253, 0.12);
+        margin-top: 16px;
+        border-radius: 18px;
+        border: 1px solid rgba(148, 163, 184, 0.18);
         background: rgba(255, 255, 255, 0.045);
+        padding: 13px 15px;
+        font-size: 13px;
+        line-height: 1.7;
+        color: #e4edf7;
+      }
+
+      .status-bar.warn {
+        border-color: rgba(247, 201, 72, 0.22);
+        background: rgba(247, 201, 72, 0.08);
+        color: #f8df9b;
       }
 
       .status-bar.error {
-        border-color: rgba(239, 68, 68, 0.25);
-        background: rgba(239, 68, 68, 0.1);
-        color: #fecaca;
+        border-color: rgba(251, 113, 133, 0.26);
+        background: rgba(251, 113, 133, 0.08);
+        color: #fecdd3;
       }
 
       .status-bar.success {
-        border-color: rgba(74, 222, 128, 0.25);
+        border-color: rgba(74, 222, 128, 0.24);
+        background: rgba(74, 222, 128, 0.08);
+        color: #d7f7de;
+      }
+
+      .progress-wrap {
+        margin-top: 18px;
+        display: grid;
+        gap: 10px;
+      }
+
+      .progress-top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      .progress-title {
+        font-size: 16px;
+        font-weight: 700;
+      }
+
+      .progress-copy {
+        margin-top: 6px;
+        font-size: 13px;
+        line-height: 1.7;
+        color: #b4c5d6;
+      }
+
+      .progress-bar {
+        height: 14px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.06);
+        overflow: hidden;
+        border: 1px solid rgba(148, 163, 184, 0.16);
+      }
+
+      .progress-fill {
+        width: 0;
+        height: 100%;
+        border-radius: 999px;
+        background: linear-gradient(90deg, #f7c948, #7dd3fc);
+        transition: width 160ms ease;
+      }
+
+      .stat-grid {
+        margin-top: 16px;
+        display: grid;
+        grid-template-columns: repeat(6, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .stat-card {
+        border-radius: 18px;
+        border: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.035);
+        padding: 14px;
+      }
+
+      .stat-label {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.22em;
+        color: #8ea0b5;
+      }
+
+      .stat-value {
+        margin-top: 8px;
+        font-size: 24px;
+        font-weight: 700;
+      }
+
+      .summary-row {
+        margin-top: 14px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 14px;
+        color: #9fb0c3;
+        font-size: 13px;
+      }
+
+      .list-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .list-card {
+        border-radius: 22px;
+        border: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.035);
+        padding: 16px;
+      }
+
+      .list-heading {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 12px;
+      }
+
+      .list-title {
+        font-size: 15px;
+        font-weight: 700;
+      }
+
+      .list-body {
+        display: grid;
+        gap: 10px;
+      }
+
+      .list-row {
+        border-radius: 16px;
+        border: 1px solid rgba(148, 163, 184, 0.12);
+        background: rgba(5, 10, 19, 0.54);
+        padding: 12px;
+      }
+
+      .list-row.uploaded {
+        border-color: rgba(74, 222, 128, 0.18);
+      }
+
+      .list-row.failed {
+        border-color: rgba(251, 113, 133, 0.18);
+      }
+
+      .list-row.skipped {
+        border-color: rgba(247, 201, 72, 0.18);
+      }
+
+      .list-row-top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      .list-row-name {
+        font-size: 13px;
+        font-weight: 700;
+        color: #edf4fb;
+        word-break: break-word;
+      }
+
+      .list-row-detail,
+      .list-empty {
+        margin-top: 8px;
+        font-size: 12px;
+        line-height: 1.68;
+        color: #9fb0c3;
+      }
+
+      .badge {
+        border-radius: 999px;
+        padding: 4px 9px;
+        font-size: 11px;
+        font-weight: 700;
+        white-space: nowrap;
+      }
+
+      .badge.uploaded {
         background: rgba(74, 222, 128, 0.1);
-        color: #dcfce7;
+        color: #d7f7de;
+      }
+
+      .badge.failed {
+        background: rgba(251, 113, 133, 0.1);
+        color: #fecdd3;
+      }
+
+      .badge.skipped,
+      .badge.neutral {
+        background: rgba(247, 201, 72, 0.1);
+        color: #f8df9b;
+      }
+
+      .diagnostic-row {
+        padding: 14px 16px;
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+      }
+
+      .diagnostic-row strong {
+        font-size: 13px;
+        color: #d7e2ee;
+      }
+
+      .diagnostic-row span,
+      .diagnostic-row div {
+        font-size: 13px;
+        line-height: 1.65;
+        color: #a9bbce;
+        text-align: right;
+        word-break: break-word;
+      }
+
+      .helper-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .helper-card h3 {
+        font-size: 16px;
+      }
+
+      .helper-card p {
+        margin-top: 10px;
+        font-size: 13px;
+        line-height: 1.76;
+        color: #aebfd1;
+      }
+
+      .helper-pill {
+        display: inline-flex;
+        align-items: center;
+        padding: 6px 10px;
+        border-radius: 999px;
+        border: 1px solid rgba(125, 211, 252, 0.16);
+        background: rgba(125, 211, 252, 0.08);
+        font-size: 11px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: #ccefff;
       }
 
       .log {
-        margin-top: 18px;
-        height: 320px;
+        margin-top: 16px;
+        height: 360px;
         overflow: auto;
-        border-radius: 18px;
-        border: 1px solid rgba(186, 230, 253, 0.12);
-        background: rgba(2, 6, 23, 0.62);
-        padding: 14px;
+        border-radius: 22px;
+        border: 1px solid var(--line);
+        background: rgba(3, 7, 13, 0.78);
+        padding: 16px;
         font-family:
-          ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+          ui-monospace,
+          SFMono-Regular,
+          Menlo,
+          Consolas,
+          "Liberation Mono",
+          monospace;
         font-size: 12px;
         line-height: 1.7;
         white-space: pre-wrap;
       }
 
       .log-line {
-        color: #e2e8f0;
+        color: #dfe9f5;
       }
 
       .log-line.warn {
-        color: #fde68a;
+        color: #f8df9b;
       }
 
       .log-line.error {
-        color: #fecaca;
+        color: #fecdd3;
       }
 
       .log-line.session {
-        color: #7dd3fc;
+        color: #b6ecff;
       }
 
       .footer-note {
-        margin-top: 14px;
+        margin-top: 12px;
         font-size: 12px;
-        color: #94a3b8;
         line-height: 1.7;
+        color: #95a8bc;
       }
 
-      @media (max-width: 980px) {
+      @media (max-width: 1180px) {
         .hero,
-        .grid-two {
+        .content-grid,
+        .helper-grid,
+        .list-grid {
           grid-template-columns: 1fr;
         }
 
-        h1 {
-          font-size: 36px;
+        .stat-grid {
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+      }
+
+      @media (max-width: 740px) {
+        .shell {
+          width: min(100% - 24px, 100%);
+          padding: 18px 0 24px;
+        }
+
+        .hero,
+        .panel {
+          padding: 20px;
+        }
+
+        .stat-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .diagnostic-row {
+          flex-direction: column;
+        }
+
+        .diagnostic-row span,
+        .diagnostic-row div {
+          text-align: left;
         }
       }
     </style>
   </head>
   <body>
-    <div class="app">
-      <div class="shell">
-        <section class="hero">
+    <div class="app-shell">
+      <main class="shell">
+        <section class="card hero">
           <div>
-            <div class="eyebrow">Watcher</div>
-            <h1>AoE2HD Watcher</h1>
-            <div class="subhead">
-              One-click pairing, then this Mac stays easy: open Profile Pairing, let your
-              key hand off to the app, confirm the replay folder, and leave the watcher open
-              while you play.
+            <div class="eyebrow">AoE2HDBets / Watcher</div>
+            <h1>Clean live watching. Easy replay history imports.</h1>
+            <p class="subhead">
+              Built to feel like real AoE2HDBets software, not a dev utility. Pair once, point
+              it at your SaveGame folder, and either watch new replays live or scan the whole
+              folder to bring older matches online.
+            </p>
+
+            <div class="chip-row">
+              <div class="chip accent">Windows x64 release</div>
+              <div class="chip">NSIS installer</div>
+              <div class="chip">Portable fallback</div>
+              <div class="chip">Historical imports</div>
+              <div class="chip">Live replay watching</div>
+              <div class="chip">Manual key fallback</div>
             </div>
 
-            <div class="chips">
-              <div class="chip">One-click pairing</div>
-              <div class="chip">CrossOver ready</div>
-              <div class="chip">Live snapshots</div>
-              <div class="chip">Final proof</div>
-              <div class="chip">Direct ZIP works too</div>
-              <div class="chip warn">Unsigned Mac for now</div>
+            <div id="setupSummaryText" class="setup-summary">
+              Choose the replay folder, pair your watcher key, then either start live watching
+              or import your saved replays.
             </div>
 
-            <div id="setupSummaryText" class="hero-summary">
-              One-click setup: open Profile Pairing, approve the watcher handoff, confirm the
-              replay folder, and future launches can auto-start.
-            </div>
-
-            <div class="actions">
+            <div class="hero-actions">
               <button id="startWatchingBtn" class="button primary">Start Watching</button>
+              <button id="scanImportBtn" class="button secondary">Scan &amp; Import Replays</button>
               <button id="stopWatchingBtn" class="button danger">Stop Watching</button>
-              <button id="openFolderBtn" class="button secondary">Open Replay Folder</button>
             </div>
 
-            <div class="helper-links" style="margin-top: 12px">
+            <div class="helper-links">
               <a
-                class="button link"
+                class="button ghost slim"
                 href="https://aoe2hdbets.com/profile?watcher_pair=1"
                 target="_blank"
                 rel="noreferrer"
@@ -520,222 +837,341 @@
                 Open Profile Pairing
               </a>
               <a
-                class="button link"
+                class="button ghost slim"
+                href="https://aoe2hdbets.com/profile"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Mint / View Watcher Keys
+              </a>
+              <a
+                class="button ghost slim"
                 href="https://aoe2hdbets.com/download"
                 target="_blank"
                 rel="noreferrer"
               >
-                Open Download Guide
+                Download Guide
               </a>
             </div>
 
             <div class="notice">
-              DMG is the easiest install. The Direct ZIP runs the same watcher app and the
-              same upload flow. Terminal is only needed if macOS blocks the unsigned app.
+              Unsigned builds are expected right now. If Windows SmartScreen gets in the way,
+              the portable fallback is still a first-class path, and manual watcher-key entry
+              keeps pairing from depending on the browser handoff.
             </div>
           </div>
 
-          <div class="release-card">
-            <div class="release-top">
-              <div>
-                <div class="eyebrow" style="color: rgba(251, 191, 36, 0.75)">Release</div>
-                <div class="release-title">AoE2HD Watcher 1.0.0</div>
-                <div class="release-subtitle">Premium replay companion</div>
+          <div class="status-rail">
+            <article class="metric-card">
+              <div class="metric-label">Replay Folder</div>
+              <div id="folderReadyText" class="metric-value missing">Folder missing</div>
+              <div id="folderPathText" class="metric-copy">
+                Choose or auto-detect the SaveGame folder.
               </div>
+            </article>
 
-              <img
-                src="./build/aoe2hd-watcher-logo.png"
-                alt="AoE2HD Watcher logo"
-                class="release-logo"
-              />
-            </div>
+            <article class="metric-card">
+              <div class="metric-label">Watcher Key</div>
+              <div id="keyReadyText" class="metric-value missing">Watcher key missing</div>
+              <div id="keyHintText" class="metric-copy">
+                Open Profile Pairing or paste the watcher key yourself.
+              </div>
+            </article>
 
-            <div class="release-stat">
-              <div class="release-stat-label">Install</div>
-              <div class="release-stat-value">DMG preferred · Direct ZIP same app</div>
-            </div>
+            <article class="metric-card highlight">
+              <div class="metric-label">Status</div>
+              <div id="watcherStateText" class="metric-value">Loading watcher…</div>
+              <div id="watcherStateDetailText" class="status-detail">
+                Reading your local watcher setup now.
+              </div>
+            </article>
 
-            <div class="release-stat">
-              <div class="release-stat-label">Replay folder</div>
-              <div id="folderReadyText" class="release-stat-value missing">Needs folder</div>
-            </div>
-
-            <div class="release-stat">
-              <div class="release-stat-label">Watcher key</div>
-              <div id="keyReadyText" class="release-stat-value missing">Needs pairing</div>
-            </div>
-
-            <div class="release-stat">
-              <div class="release-stat-label">Mode</div>
-              <div class="release-stat-value" id="watcherStateText">Idle</div>
-            </div>
-
-            <div class="release-stat warn">
-              <div class="release-stat-label">Signing</div>
-              <div class="release-stat-value">Unsigned for now</div>
-            </div>
+            <article class="metric-card">
+              <div class="metric-label">Build</div>
+              <div id="heroAppVersionText" class="metric-value">Unknown</div>
+              <div id="heroPlatformText" class="metric-copy">Unknown platform</div>
+            </article>
           </div>
         </section>
 
-        <section class="grid-two">
-          <section class="panel">
-            <div class="panel-title">
-              <span>One-Time Setup</span>
-            </div>
-
-            <div class="quick-list">
-              <div class="quick-item">
-                <div class="quick-top">
-                  <div class="step">01</div>
-                  <strong>Pair your profile key in one click</strong>
-                </div>
-                <div class="muted">
-                  Open Profile Pairing, approve the browser-to-app handoff, and this Watcher
-                  saves the key locally. Manual paste is still there if macOS blocks the
-                  deep link.
+        <section class="content-grid">
+          <div class="stack">
+            <section class="card panel">
+              <div class="panel-top">
+                <div>
+                  <div class="eyebrow">Setup</div>
+                  <h2>Make first run obvious</h2>
+                  <p class="panel-copy">
+                    The three important things live here: replay folder, watcher key, and whether
+                    this app is actually ready to work. Browser pairing is preferred, but manual
+                    key paste stays available at all times.
+                  </p>
                 </div>
               </div>
 
-              <div class="quick-item">
-                <div class="quick-top">
-                  <div class="step">02</div>
-                  <strong>Confirm the replay folder</strong>
-                </div>
-                <div class="muted">
-                  Auto-Detect usually finds the CrossOver or AoE2HD SaveGame folder. If it
-                  doesn&apos;t, paste the folder path manually.
-                </div>
-              </div>
-
-              <div class="quick-item">
-                <div class="quick-top">
-                  <div class="step">03</div>
-                  <strong>Leave the watcher open while you play</strong>
-                </div>
-                <div class="muted">
-                  The watcher catches live replay growth, posts live pulses during the match,
-                  and lands the final replay when the file settles.
-                </div>
-              </div>
-            </div>
-          </section>
-
-          <section class="panel">
-            <div class="panel-title">
-              <span>Unsigned Mac Path</span>
-            </div>
-
-            <div class="helper-stack">
-              <div class="helper-card">
-                <div class="helper-kicker">DMG preferred</div>
-                <h3>Use the DMG first</h3>
-                <div class="muted">
-                  If macOS opens the DMG cleanly, that is the smoothest path. Drag the app in,
-                  launch it, open Profile Pairing once, and you&apos;re done.
-                </div>
-              </div>
-
-              <div class="helper-card">
-                <div class="helper-kicker">Direct ZIP is legitimate</div>
-                <h3>Same watcher, same uploads</h3>
-                <div class="muted">
-                  The Direct ZIP contains the same AoE2HD Watcher app bundle as the DMG. No
-                  reduced parser, no reduced proof, no weaker live feed.
-                </div>
-              </div>
-
-              <div class="helper-card">
-                <div class="helper-kicker">Terminal only if blocked</div>
-                <h3>Clear quarantine if Gatekeeper gets stubborn</h3>
-                <div class="code-block">xattr -dr com.apple.quarantine "/Applications/AoE2HD Watcher.app"
-open "/Applications/AoE2HD Watcher.app"</div>
-                <div class="footer-note">
-                  If you keep the app somewhere other than <code>/Applications</code>, swap in
-                  the real path on your Mac.
-                </div>
-              </div>
-            </div>
-          </section>
-        </section>
-
-        <section class="grid-two">
-          <section class="panel">
-            <div class="panel-title">
-              <span>Settings</span>
-            </div>
-
-            <div class="settings-grid">
-              <div class="field-shell">
-                <div class="field">
-                  <label for="watchDirInput">Replay folder</label>
-                  <input id="watchDirInput" type="text" placeholder="Replay folder path" />
-                  <div class="field-caption">
-                    Auto-Detect should find the normal AoE2HD or CrossOver SaveGame path.
-                  </div>
-                </div>
-              </div>
-
-              <div class="field-shell">
-                <div class="field">
-                  <label for="uploadApiKeyInput">Watcher key</label>
-                  <input
-                    id="uploadApiKeyInput"
-                    type="password"
-                    placeholder="Paired automatically, or paste manually"
-                  />
-                  <div class="field-caption">
-                    Open Profile Pairing to auto-fill this field. If your browser blocks the
-                    deep link, paste the freshly minted key here and save once.
-                  </div>
-                </div>
-              </div>
-
-              <details class="advanced-panel">
-                <summary>Advanced hosts</summary>
-                <div class="advanced-body">
+              <div class="field-grid">
+                <div class="field-shell">
                   <div class="field">
-                    <label for="apiBaseUrlInput">Primary API base URL</label>
-                    <input
-                      id="apiBaseUrlInput"
-                      type="text"
-                      placeholder="https://api-prodn.aoe2hdbets.com"
-                    />
+                    <label for="watchDirInput">Replay folder</label>
+                    <input id="watchDirInput" type="text" placeholder="Choose your AoE2 SaveGame folder" />
+                    <div class="field-caption">
+                      Point this at the AoE2 SaveGame directory. Historical import uses the same
+                      replay rules as live watching.
+                    </div>
                   </div>
 
-                  <div class="field">
-                    <label for="apiFallbackBaseUrlInput">Fallback API URL</label>
-                    <input
-                      id="apiFallbackBaseUrlInput"
-                      type="text"
-                      placeholder="https://aoe2hdbets.com"
-                    />
+                  <div class="field-actions" style="margin-top: 14px">
+                    <button id="chooseFolderBtn" class="button secondary slim">Choose Folder</button>
+                    <button id="detectFolderBtn" class="button secondary slim">Auto-Detect</button>
+                    <button id="openFolderBtn" class="button ghost slim">Open Folder</button>
                   </div>
                 </div>
-              </details>
 
-              <div class="settings-actions">
-                <button id="saveSettingsBtn" class="button primary">Save Settings</button>
-                <button id="detectFolderBtn" class="button secondary">Auto-Detect Folder</button>
+                <div class="field-shell">
+                  <div class="field">
+                    <label for="uploadApiKeyInput">Watcher key</label>
+                    <div class="field-inline">
+                      <input
+                        id="uploadApiKeyInput"
+                        type="password"
+                        placeholder="Paired automatically, or paste the key manually"
+                      />
+                      <button id="toggleKeyVisibilityBtn" class="button secondary slim" type="button">
+                        Show
+                      </button>
+                    </div>
+                    <div class="field-caption">
+                      Open Profile Pairing for the browser-to-app handoff. If that path is blocked,
+                      click Mint Key Only in your profile, paste the key here, and save once.
+                    </div>
+                  </div>
+                </div>
+
+                <details class="advanced-panel">
+                  <summary>Advanced hosts and startup</summary>
+                  <div class="advanced-body">
+                    <div class="field">
+                      <label for="apiBaseUrlInput">Primary API base URL</label>
+                      <input
+                        id="apiBaseUrlInput"
+                        type="text"
+                        placeholder="https://api-prodn.aoe2hdbets.com"
+                      />
+                    </div>
+
+                    <div class="field">
+                      <label for="apiFallbackBaseUrlInput">Fallback API base URL</label>
+                      <input
+                        id="apiFallbackBaseUrlInput"
+                        type="text"
+                        placeholder="https://aoe2hdbets.com"
+                      />
+                    </div>
+
+                    <label class="checkbox-shell" for="autoStartWatchingInput">
+                      <input id="autoStartWatchingInput" type="checkbox" checked />
+                      <span>Auto-start watching on launch when setup is complete.</span>
+                    </label>
+                  </div>
+                </details>
               </div>
 
-              <div id="statusBar" class="status-bar">Waiting for settings…</div>
-            </div>
-          </section>
+              <div class="panel-actions" style="margin-top: 16px">
+                <button id="saveSettingsBtn" class="button primary">Save Setup</button>
+              </div>
 
-          <section class="panel">
-            <div class="panel-title">
-              <span>Watcher Log</span>
-            </div>
+              <div id="statusBar" class="status-bar">Loading watcher status…</div>
+            </section>
 
-            <div id="log" class="log"></div>
+            <section class="card panel">
+              <div class="panel-top">
+                <div>
+                  <div class="eyebrow">Historical Import</div>
+                  <h2>Scan &amp; Import Replays</h2>
+                  <p class="panel-copy">
+                    This scans the configured SaveGame folder, queues supported replay files
+                    oldest-to-newest, leans on the backend’s replay-hash dedupe, and keeps the UI
+                    responsive while it runs.
+                  </p>
+                </div>
+              </div>
 
-            <div class="footer-note">
-              This is the live watcher output. If uploads fail, the reason should appear here
-              instead of forcing you into Terminal.
-            </div>
-          </section>
+              <div class="progress-wrap">
+                <div class="progress-top">
+                  <div>
+                    <div id="importPhaseText" class="progress-title">Historical import</div>
+                    <div id="importDetailText" class="progress-copy">
+                      Scan the SaveGame folder to import older replays while live watching stays available.
+                    </div>
+                  </div>
+
+                  <div id="importProgressPercent" class="metric-value" style="margin: 0">0%</div>
+                </div>
+
+                <div class="progress-bar">
+                  <div id="importProgressFill" class="progress-fill"></div>
+                </div>
+              </div>
+
+              <div class="stat-grid">
+                <div class="stat-card">
+                  <div class="stat-label">Found</div>
+                  <div id="importFoundCount" class="stat-value">0</div>
+                </div>
+                <div class="stat-card">
+                  <div class="stat-label">Queued</div>
+                  <div id="importQueuedCount" class="stat-value">0</div>
+                </div>
+                <div class="stat-card">
+                  <div class="stat-label">Skipped</div>
+                  <div id="importSkippedCount" class="stat-value">0</div>
+                </div>
+                <div class="stat-card">
+                  <div class="stat-label">Uploaded</div>
+                  <div id="importUploadedCount" class="stat-value">0</div>
+                </div>
+                <div class="stat-card">
+                  <div class="stat-label">Failed</div>
+                  <div id="importFailedCount" class="stat-value">0</div>
+                </div>
+                <div class="stat-card">
+                  <div class="stat-label">Unsupported</div>
+                  <div id="importUnsupportedCount" class="stat-value">0</div>
+                </div>
+              </div>
+
+              <div class="summary-row">
+                <div id="importSummaryText">No import run yet.</div>
+                <button id="retryFailedBtn" class="button secondary slim">Retry Failed Uploads</button>
+              </div>
+
+              <div class="list-grid">
+                <div class="list-card">
+                  <div class="list-heading">
+                    <div class="list-title">Recent Results</div>
+                    <div class="badge neutral">Newest first</div>
+                  </div>
+                  <div id="importRecentList" class="list-body"></div>
+                </div>
+
+                <div class="list-card">
+                  <div class="list-heading">
+                    <div class="list-title">Failed Uploads</div>
+                    <div class="badge failed">Retryable</div>
+                  </div>
+                  <div id="importFailedList" class="list-body"></div>
+                </div>
+              </div>
+            </section>
+          </div>
+
+          <div class="stack">
+            <section class="card panel">
+              <div class="panel-top">
+                <div>
+                  <div class="eyebrow">Diagnostics</div>
+                  <h2>Support without ugly debug clutter</h2>
+                  <p class="panel-copy">
+                    Enough visibility to help support a real user quickly, without turning the app
+                    into a dev console.
+                  </p>
+                </div>
+              </div>
+
+              <div class="diagnostic-grid">
+                <div class="diagnostic-row">
+                  <strong>Version</strong>
+                  <span id="appVersionText">Unknown</span>
+                </div>
+                <div class="diagnostic-row">
+                  <strong>Platform</strong>
+                  <span id="platformText">Unknown</span>
+                </div>
+                <div class="diagnostic-row">
+                  <strong>Pairing handoff</strong>
+                  <div>
+                    <div id="protocolStatusText">Checking…</div>
+                    <div id="protocolDetailText" style="margin-top: 4px">Manual fallback stays available.</div>
+                  </div>
+                </div>
+                <div class="diagnostic-row">
+                  <strong>Primary API</strong>
+                  <span id="apiHostText">https://api-prodn.aoe2hdbets.com</span>
+                </div>
+                <div class="diagnostic-row">
+                  <strong>Configured replay folder</strong>
+                  <span id="replayPathDiagText">Not chosen yet</span>
+                </div>
+                <div class="diagnostic-row">
+                  <strong>Supported replay extensions</strong>
+                  <span id="supportedExtensionsText">.aoe2record, .aoe2mpgame, .mgz, .mgx, .mgl</span>
+                </div>
+              </div>
+
+              <div class="panel-actions" style="margin-top: 16px">
+                <button id="copySupportBtn" class="button secondary">Copy Support Snapshot</button>
+              </div>
+            </section>
+
+            <section class="card panel">
+              <div class="panel-top">
+                <div>
+                  <div class="eyebrow">Fallbacks</div>
+                  <h2>Nothing depends on a single brittle path</h2>
+                </div>
+              </div>
+
+              <div class="helper-grid">
+                <div class="helper-card">
+                  <div class="helper-pill">Preferred</div>
+                  <h3 style="margin-top: 12px">Profile Pairing</h3>
+                  <p>
+                    Open Profile Pairing from AoE2HDBets and let the browser hand the watcher key
+                    straight to the app.
+                  </p>
+                </div>
+
+                <div class="helper-card">
+                  <div class="helper-pill">Always available</div>
+                  <h3 style="margin-top: 12px">Manual key paste</h3>
+                  <p>
+                    If the custom protocol does not fire, mint a watcher key in your profile, paste
+                    it here, save once, and keep going.
+                  </p>
+                </div>
+
+                <div class="helper-card">
+                  <div class="helper-pill">Installer backup</div>
+                  <h3 style="margin-top: 12px">Portable fallback</h3>
+                  <p>
+                    If the installer hits SmartScreen friction, the portable build still runs the same
+                    watcher with the same upload flow.
+                  </p>
+                </div>
+              </div>
+            </section>
+
+            <section class="card panel">
+              <div class="panel-top">
+                <div>
+                  <div class="eyebrow">Activity Log</div>
+                  <h2>Live watcher output</h2>
+                  <p class="panel-copy">
+                    Useful when something goes wrong, but not the main user experience.
+                  </p>
+                </div>
+              </div>
+
+              <div id="log" class="log"></div>
+
+              <div class="footer-note">
+                Upload attempts, retries, and replay timing details land here so support does not
+                have to guess.
+              </div>
+            </section>
+          </div>
         </section>
-      </div>
+      </main>
     </div>
 
     <script src="./renderer.js"></script>

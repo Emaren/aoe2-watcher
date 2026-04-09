@@ -6,16 +6,45 @@ const crypto = require("crypto");
 const axios = require("axios");
 const FormData = require("form-data");
 
+const SUPPORTED_REPLAY_EXTENSIONS = [".aoe2record", ".aoe2mpgame", ".mgz", ".mgx", ".mgl"];
+const IMPORT_STABILITY_CHECK_MS = 1200;
+const IMPORT_ITEM_LIMIT = 75;
+
 let activeWatcher = null;
 let activeUploadState = new Map();
 let activePreferredUploadTargetBaseUrl = null;
-let activeLogger = (message, level = "info") => {
+let activeLogger = defaultLogger;
+let activeEventHook = () => {};
+
+function defaultLogger(message, level = "info") {
   const method = level === "error" ? "error" : level === "warn" ? "warn" : "log";
   console[method](message);
-};
+}
+
+function setRuntimeHooks(hooks = {}) {
+  if (typeof hooks.onLog === "function") {
+    activeLogger = hooks.onLog;
+  }
+
+  if (typeof hooks.onEvent === "function") {
+    activeEventHook = hooks.onEvent;
+  }
+}
 
 function log(message, level = "info") {
   activeLogger(message, level);
+}
+
+function emitRuntimeEvent(type, payload = {}) {
+  try {
+    activeEventHook({
+      type,
+      occurredAt: new Date().toISOString(),
+      ...payload,
+    });
+  } catch (error) {
+    defaultLogger(`Failed to emit watcher runtime event "${type}": ${error.message}`, "warn");
+  }
 }
 
 function firstExistingPath(paths) {
@@ -106,7 +135,7 @@ function buildRuntimeConfig(config = {}) {
     watchDir: config.watchDir || process.env.AOE2_WATCH_DIR || getDefaultReplayDir(),
     uploadApiKey: (config.uploadApiKey || process.env.AOE2_UPLOAD_API_KEY || "").trim(),
     uploadTargets,
-    watchExtensions: new Set([".aoe2record", ".aoe2mpgame", ".mgz", ".mgx", ".mgl"]),
+    watchExtensions: new Set(SUPPORTED_REPLAY_EXTENSIONS),
     maxUploadRetries: Number(process.env.AOE2_UPLOAD_RETRY_ATTEMPTS || 4),
     retryBaseDelayMs: Number(process.env.AOE2_UPLOAD_RETRY_BASE_DELAY_MS || 4000),
     retryPollMs: Number(process.env.AOE2_UPLOAD_RETRY_POLL_MS || 1000),
@@ -132,6 +161,18 @@ function buildRuntimeConfig(config = {}) {
         .digest("hex")
         .slice(0, 12)}`,
   };
+}
+
+function getRuntimeValidationError(runtimeConfig) {
+  if (!runtimeConfig.watchDir || !fs.existsSync(runtimeConfig.watchDir)) {
+    return `Replay directory does not exist: ${runtimeConfig.watchDir || "(empty)"}`;
+  }
+
+  if (!runtimeConfig.uploadApiKey) {
+    return "Watcher key is missing. Paste it in Watcher settings before starting.";
+  }
+
+  return null;
 }
 
 function getUploadTargetsForAttempt(runtimeConfig) {
@@ -168,6 +209,7 @@ function getStateEntry(filePath) {
   if (!entry) {
     entry = {
       monitoring: false,
+      importing: false,
       lastObservedFingerprint: null,
       lastChangeAt: 0,
       lastLiveAttemptAt: 0,
@@ -217,6 +259,28 @@ function shouldHandle(filePath, runtimeConfig) {
   if (!runtimeConfig.watchExtensions.has(ext)) return false;
   if (filePath.includes("Out of Sync")) return false;
   return true;
+}
+
+function getSupportedReplayExtensions() {
+  return [...SUPPORTED_REPLAY_EXTENSIONS];
+}
+
+function classifyUploadResult(detail = "") {
+  const normalized = detail.toLowerCase();
+
+  if (normalized.includes("already parsed as final") || normalized.includes("already stored")) {
+    return "duplicate";
+  }
+
+  if (normalized.includes("refreshed")) {
+    return "refreshed";
+  }
+
+  if (normalized.includes("placeholder")) {
+    return "placeholder";
+  }
+
+  return "uploaded";
 }
 
 function sleep(ms) {
@@ -288,6 +352,37 @@ async function waitForReplayProgress(filePath, fingerprint, delayMs) {
   }
 }
 
+async function getStableImportFingerprint(filePath) {
+  if (!fs.existsSync(filePath)) {
+    return { stable: false, reason: "missing" };
+  }
+
+  try {
+    const firstFingerprint = await getFileFingerprint(filePath);
+    await sleep(IMPORT_STABILITY_CHECK_MS);
+
+    if (!fs.existsSync(filePath)) {
+      return { stable: false, reason: "missing" };
+    }
+
+    const secondFingerprint = await getFileFingerprint(filePath);
+    if (firstFingerprint !== secondFingerprint) {
+      return { stable: false, reason: "changing" };
+    }
+
+    return {
+      stable: true,
+      fingerprint: secondFingerprint,
+    };
+  } catch (error) {
+    return {
+      stable: false,
+      reason: "inspect_failed",
+      detail: error.message || "Unable to inspect file.",
+    };
+  }
+}
+
 function getFormLength(form) {
   return new Promise((resolve, reject) => {
     form.getLength((err, length) => {
@@ -333,7 +428,11 @@ function shouldLogReplayGrowthNotice(entry, runtimeConfig, isFinal) {
   return false;
 }
 
-async function uploadReplay(filePath, runtimeConfig, { parseIteration = 1, isFinal = true, uploadUrl } = {}) {
+async function uploadReplay(
+  filePath,
+  runtimeConfig,
+  { parseIteration = 1, isFinal = true, uploadUrl } = {}
+) {
   const replayBuffer = await fs.promises.readFile(filePath);
 
   const form = new FormData();
@@ -411,6 +510,16 @@ async function uploadReplayWithRetry(
       const target = targetSequence[targetIndex];
       const targetHost = new URL(target.uploadUrl).host;
 
+      emitRuntimeEvent("upload-start", {
+        filePath,
+        fileName: path.basename(filePath),
+        isFinal,
+        parseIteration,
+        attempt,
+        maxRetryCount: runtimeConfig.maxUploadRetries,
+        uploadHost: targetHost,
+      });
+
       log(
         `${isFinal ? "Uploading final replay" : "Uploading live replay"}: ${filePath} ` +
           `[iteration ${parseIteration}]${retryLabel}${
@@ -426,6 +535,7 @@ async function uploadReplayWithRetry(
           uploadUrl: target.uploadUrl,
         });
         const detail = formatResponseBody(res.data);
+        const resultType = classifyUploadResult(detail);
 
         rememberWorkingUploadTarget(target);
 
@@ -446,6 +556,16 @@ async function uploadReplayWithRetry(
 
         log(`Uploaded (${res.status}): ${path.basename(filePath)}${detail ? ` - ${detail}` : ""}`);
 
+        emitRuntimeEvent("upload-success", {
+          filePath,
+          fileName: path.basename(filePath),
+          isFinal,
+          parseIteration,
+          resultType,
+          responseStatus: res.status,
+          detail,
+        });
+
         if (changedDuringUpload && shouldLogReplayGrowthNotice(entry, runtimeConfig, isFinal)) {
           log(
             `Replay is still growing during ${
@@ -454,10 +574,18 @@ async function uploadReplayWithRetry(
           );
         }
 
-        return true;
+        return {
+          ok: true,
+          changedDuringUpload,
+          detail,
+          resultType,
+          responseData: res.data,
+          responseStatus: res.status,
+        };
       } catch (err) {
         const responseDetail = formatResponseBody(err?.response?.data);
         const prefix = isFinal ? "Final upload failed" : "Live upload failed";
+        const errorMessage = responseDetail || err.message;
 
         log(`${prefix} for ${path.basename(filePath)}: ${err.message}`, "error");
 
@@ -478,17 +606,41 @@ async function uploadReplayWithRetry(
         }
 
         if (!isRetryableUploadError(err) || attempt >= maxAttempts - 1) {
-          return false;
+          emitRuntimeEvent("upload-failure", {
+            filePath,
+            fileName: path.basename(filePath),
+            isFinal,
+            parseIteration,
+            errorMessage,
+            responseStatus: err?.response?.status || null,
+          });
+          return {
+            ok: false,
+            errorMessage,
+            responseStatus: err?.response?.status || null,
+          };
         }
 
         const delayMs = getRetryDelayMsFactory(runtimeConfig, attempt + 1);
         log(
           `Retrying ${path.basename(filePath)} in ${Math.round(delayMs / 1000)}s ` +
             `(attempt ${attempt + 1}/${runtimeConfig.maxUploadRetries}) because ${
-              responseDetail || err.message
+              errorMessage || err.message
             }`,
           "warn"
         );
+
+        emitRuntimeEvent("upload-retry", {
+          filePath,
+          fileName: path.basename(filePath),
+          isFinal,
+          parseIteration,
+          errorMessage,
+          retryInMs: delayMs,
+          nextRetryAttempt: attempt + 1,
+          maxRetryCount: runtimeConfig.maxUploadRetries,
+          responseStatus: err?.response?.status || null,
+        });
 
         if (isReplayFinalizingError(err)) {
           await waitForReplayProgress(filePath, attemptFingerprint, delayMs);
@@ -501,7 +653,10 @@ async function uploadReplayWithRetry(
     }
   }
 
-  return false;
+  return {
+    ok: false,
+    errorMessage: "Upload failed after all retries.",
+  };
 }
 
 async function monitorReplayFile(filePath, runtimeConfig) {
@@ -516,12 +671,24 @@ async function monitorReplayFile(filePath, runtimeConfig) {
     return;
   }
 
+  if (entry.importing) {
+    log(`Skipping live monitor for ${path.basename(filePath)} because it is importing already.`, "warn");
+    return;
+  }
+
   entry.monitoring = true;
+  emitRuntimeEvent("monitor-start", {
+    filePath,
+    fileName: path.basename(filePath),
+  });
   log(`Starting monitor loop for ${path.basename(filePath)}.`);
 
   try {
     if (!(await waitForFirstBytes(filePath, runtimeConfig))) {
-      log(`Stopping monitor for ${path.basename(filePath)} before upload because byte floor was not reached.`, "warn");
+      log(
+        `Stopping monitor for ${path.basename(filePath)} before upload because byte floor was not reached.`,
+        "warn"
+      );
       return;
     }
 
@@ -547,6 +714,11 @@ async function monitorReplayFile(filePath, runtimeConfig) {
         fingerprint = await getFileFingerprint(filePath);
       } catch (err) {
         log(`Unable to inspect ${path.basename(filePath)}: ${err.message}`, "error");
+        emitRuntimeEvent("watcher-error", {
+          filePath,
+          fileName: path.basename(filePath),
+          detail: err.message,
+        });
         return;
       }
 
@@ -611,7 +783,7 @@ async function monitorReplayFile(filePath, runtimeConfig) {
           isFinal: true,
         });
 
-        if (stored) {
+        if (stored.ok) {
           continue;
         }
       }
@@ -620,15 +792,323 @@ async function monitorReplayFile(filePath, runtimeConfig) {
     }
   } finally {
     entry.monitoring = false;
+    emitRuntimeEvent("monitor-stop", {
+      filePath,
+      fileName: path.basename(filePath),
+    });
     log(`Stopped monitor loop for ${path.basename(filePath)}.`);
   }
 }
 
 async function onFileDetected(eventType, filePath, runtimeConfig) {
-  log(`Detected ${eventType} event: ${path.basename(filePath)}`);
-  void monitorReplayFile(filePath, runtimeConfig).catch((err) => {
-    log(`Replay monitor crashed for ${path.basename(filePath)}: ${err.message || err}`, "error");
+  const fileName = path.basename(filePath);
+  log(`Detected ${eventType} event: ${fileName}`);
+  emitRuntimeEvent("replay-detected", {
+    filePath,
+    fileName,
+    eventType,
   });
+  void monitorReplayFile(filePath, runtimeConfig).catch((err) => {
+    log(`Replay monitor crashed for ${fileName}: ${err.message || err}`, "error");
+    emitRuntimeEvent("watcher-error", {
+      filePath,
+      fileName,
+      detail: err.message || String(err),
+    });
+  });
+}
+
+function createImportItem(filePath, status, detail) {
+  return {
+    filePath,
+    fileName: path.basename(filePath),
+    status,
+    detail,
+  };
+}
+
+function pushImportItem(list, item) {
+  list.unshift(item);
+  if (list.length > IMPORT_ITEM_LIMIT) {
+    list.length = IMPORT_ITEM_LIMIT;
+  }
+}
+
+function cloneImportState(state) {
+  return JSON.parse(JSON.stringify(state));
+}
+
+function emitImportProgress(state, hooks) {
+  if (typeof hooks.onProgress === "function") {
+    hooks.onProgress(cloneImportState(state));
+  }
+}
+
+function updateImportPercent(state) {
+  if (state.queued <= 0) {
+    state.percent = state.phase.startsWith("complete") ? 100 : 0;
+    return;
+  }
+
+  const finished = state.uploaded + state.failed + state.skipped;
+  state.percent = Math.max(0, Math.min(100, Math.round((finished / state.queued) * 100)));
+}
+
+function buildImportSummaryText(state) {
+  return `Imported ${state.uploaded}, skipped ${state.skipped}, failed ${state.failed}.`;
+}
+
+async function listImportCandidates(runtimeConfig, filePaths = null) {
+  const supportedFiles = [];
+  const skippedAtScan = [];
+  let unsupported = 0;
+
+  if (Array.isArray(filePaths)) {
+    const seen = new Set();
+
+    for (const rawPath of filePaths) {
+      const filePath = String(rawPath || "").trim();
+      if (!filePath || seen.has(filePath)) {
+        continue;
+      }
+      seen.add(filePath);
+
+      if (!fs.existsSync(filePath)) {
+        skippedAtScan.push(createImportItem(filePath, "skipped", "File is no longer on disk."));
+        continue;
+      }
+
+      const stats = await fs.promises.stat(filePath);
+      if (!stats.isFile()) {
+        skippedAtScan.push(createImportItem(filePath, "skipped", "Not a replay file."));
+        continue;
+      }
+
+      if (!shouldHandle(filePath, runtimeConfig)) {
+        skippedAtScan.push(
+          createImportItem(filePath, "skipped", "Not a supported replay extension for this watcher.")
+        );
+        continue;
+      }
+
+      supportedFiles.push({
+        filePath,
+        fileName: path.basename(filePath),
+        mtimeMs: stats.mtimeMs,
+      });
+    }
+
+    return {
+      supportedFiles,
+      unsupported,
+      skippedAtScan,
+    };
+  }
+
+  const entries = await fs.promises.readdir(runtimeConfig.watchDir, {
+    withFileTypes: true,
+  });
+
+  for (const entry of entries) {
+    if (!entry.isFile()) {
+      continue;
+    }
+
+    const filePath = path.join(runtimeConfig.watchDir, entry.name);
+    if (!shouldHandle(filePath, runtimeConfig)) {
+      unsupported += 1;
+      continue;
+    }
+
+    const stats = await fs.promises.stat(filePath);
+    supportedFiles.push({
+      filePath,
+      fileName: entry.name,
+      mtimeMs: stats.mtimeMs,
+    });
+  }
+
+  supportedFiles.sort((left, right) => {
+    if (left.mtimeMs !== right.mtimeMs) {
+      return left.mtimeMs - right.mtimeMs;
+    }
+    return left.fileName.localeCompare(right.fileName);
+  });
+
+  return {
+    supportedFiles,
+    unsupported,
+    skippedAtScan,
+  };
+}
+
+async function importHistoricalReplays(config = {}, options = {}, hooks = {}) {
+  setRuntimeHooks(hooks);
+
+  const runtimeConfig = buildRuntimeConfig(config);
+  const validationError = getRuntimeValidationError(runtimeConfig);
+  if (validationError) {
+    throw new Error(validationError);
+  }
+
+  const state = {
+    isRunning: true,
+    source: options.source || (Array.isArray(options.filePaths) ? "retry" : "scan"),
+    phase: "scanning",
+    startedAt: new Date().toISOString(),
+    completedAt: null,
+    percent: 0,
+    found: 0,
+    queued: 0,
+    skipped: 0,
+    uploaded: 0,
+    failed: 0,
+    unsupported: 0,
+    currentFile: "",
+    currentIndex: 0,
+    failedItems: [],
+    skippedItems: [],
+    recentItems: [],
+    summaryText: "",
+  };
+
+  emitImportProgress(state, hooks);
+
+  const { supportedFiles, unsupported, skippedAtScan } = await listImportCandidates(
+    runtimeConfig,
+    options.filePaths || null
+  );
+
+  state.found = supportedFiles.length;
+  state.unsupported = unsupported;
+
+  const queue = [];
+  for (const candidate of supportedFiles) {
+    const entry = getStateEntry(candidate.filePath);
+    if (entry.monitoring) {
+      state.skipped += 1;
+      pushImportItem(
+        state.skippedItems,
+        createImportItem(
+          candidate.filePath,
+          "skipped",
+          "Already being watched live. Let the watcher finish the current replay."
+        )
+      );
+      continue;
+    }
+
+    if (entry.importing) {
+      state.skipped += 1;
+      pushImportItem(
+        state.skippedItems,
+        createImportItem(candidate.filePath, "skipped", "Already queued for import in this session.")
+      );
+      continue;
+    }
+
+    queue.push(candidate);
+  }
+
+  for (const skippedItem of skippedAtScan) {
+    state.skipped += 1;
+    pushImportItem(state.skippedItems, skippedItem);
+  }
+
+  state.queued = queue.length;
+  state.phase = queue.length > 0 ? "uploading" : "complete";
+  updateImportPercent(state);
+  emitImportProgress(state, hooks);
+
+  if (queue.length === 0) {
+    state.isRunning = false;
+    state.completedAt = new Date().toISOString();
+    state.summaryText =
+      state.found === 0
+        ? "No supported replay files were found in this folder."
+        : buildImportSummaryText(state);
+    emitImportProgress(state, hooks);
+    return cloneImportState(state);
+  }
+
+  for (let index = 0; index < queue.length; index += 1) {
+    const candidate = queue[index];
+    const entry = getStateEntry(candidate.filePath);
+
+    state.currentIndex = index + 1;
+    state.currentFile = candidate.fileName;
+    state.phase = "uploading";
+    emitImportProgress(state, hooks);
+
+    const stability = await getStableImportFingerprint(candidate.filePath);
+
+    if (!stability.stable) {
+      state.skipped += 1;
+      const reason =
+        stability.reason === "changing"
+          ? "Replay is still changing on disk. Live watching will finish it."
+          : stability.reason === "missing"
+            ? "Replay disappeared before import started."
+            : stability.detail || "Unable to inspect replay file.";
+      pushImportItem(state.skippedItems, createImportItem(candidate.filePath, "skipped", reason));
+      pushImportItem(state.recentItems, createImportItem(candidate.filePath, "skipped", reason));
+      updateImportPercent(state);
+      emitImportProgress(state, hooks);
+      continue;
+    }
+
+    if (entry.lastFinalUploadedFingerprint === stability.fingerprint) {
+      state.skipped += 1;
+      const detail = "Already imported in this app session.";
+      pushImportItem(state.skippedItems, createImportItem(candidate.filePath, "skipped", detail));
+      pushImportItem(state.recentItems, createImportItem(candidate.filePath, "skipped", detail));
+      updateImportPercent(state);
+      emitImportProgress(state, hooks);
+      continue;
+    }
+
+    entry.importing = true;
+    try {
+      const result = await uploadReplayWithRetry(candidate.filePath, runtimeConfig, entry, {
+        fingerprint: stability.fingerprint,
+        parseIteration: 1,
+        isFinal: true,
+      });
+
+      if (!result.ok) {
+        state.failed += 1;
+        const detail = result.errorMessage || "Upload failed.";
+        pushImportItem(state.failedItems, createImportItem(candidate.filePath, "failed", detail));
+        pushImportItem(state.recentItems, createImportItem(candidate.filePath, "failed", detail));
+      } else if (result.resultType === "duplicate") {
+        state.skipped += 1;
+        const detail = result.detail || "Replay already exists on AoE2HDBets.";
+        pushImportItem(state.skippedItems, createImportItem(candidate.filePath, "skipped", detail));
+        pushImportItem(state.recentItems, createImportItem(candidate.filePath, "skipped", detail));
+      } else {
+        state.uploaded += 1;
+        const detail =
+          result.resultType === "refreshed"
+            ? result.detail || "Replay refreshed with better final data."
+            : result.detail || "Replay imported successfully.";
+        pushImportItem(state.recentItems, createImportItem(candidate.filePath, "uploaded", detail));
+      }
+    } finally {
+      entry.importing = false;
+      state.currentFile = "";
+      updateImportPercent(state);
+      emitImportProgress(state, hooks);
+    }
+  }
+
+  state.isRunning = false;
+  state.phase = state.failed > 0 ? "complete_with_failures" : "complete";
+  state.completedAt = new Date().toISOString();
+  state.summaryText = buildImportSummaryText(state);
+  updateImportPercent(state);
+  emitImportProgress(state, hooks);
+
+  return cloneImportState(state);
 }
 
 function stopWatching() {
@@ -644,31 +1124,25 @@ function stopWatching() {
   activeWatcher = null;
   activeUploadState = new Map();
   activePreferredUploadTargetBaseUrl = null;
+  emitRuntimeEvent("watching-stopped", {});
 }
 
 function startWatching(config = {}, hooks = {}) {
   stopWatching();
-
-  if (typeof hooks.onLog === "function") {
-    activeLogger = hooks.onLog;
-  } else {
-    activeLogger = (message, level = "info") => {
-      const method = level === "error" ? "error" : level === "warn" ? "warn" : "log";
-      console[method](message);
-    };
-  }
+  setRuntimeHooks(hooks);
 
   const runtimeConfig = buildRuntimeConfig(config);
+  const validationError = getRuntimeValidationError(runtimeConfig);
   activePreferredUploadTargetBaseUrl = runtimeConfig.uploadTargets[0]?.baseUrl || null;
 
-  if (!runtimeConfig.watchDir || !fs.existsSync(runtimeConfig.watchDir)) {
-    log(`Replay directory does not exist: ${runtimeConfig.watchDir || "(empty)"}`, "error");
-    log("Choose a valid SaveGame folder and restart watching.", "error");
-    return null;
-  }
-
-  if (!runtimeConfig.uploadApiKey) {
-    log("Watcher key is missing. Paste it in Watcher settings before starting.", "error");
+  if (validationError) {
+    log(validationError, "error");
+    if (validationError.toLowerCase().includes("replay directory")) {
+      log("Choose a valid SaveGame folder and restart watching.", "error");
+    }
+    emitRuntimeEvent("watcher-error", {
+      detail: validationError,
+    });
     return null;
   }
 
@@ -681,6 +1155,11 @@ function startWatching(config = {}, hooks = {}) {
   log(`Watcher UID: ${runtimeConfig.watcherUid}`);
   log(`Chokidar extensions: ${Array.from(runtimeConfig.watchExtensions).join(", ")}`);
 
+  emitRuntimeEvent("watching-started", {
+    watchDir: runtimeConfig.watchDir,
+    uploadTargets: runtimeConfig.uploadTargets.map((target) => target.uploadUrl),
+  });
+
   activeWatcher = chokidar.watch(runtimeConfig.watchDir, {
     persistent: true,
     ignoreInitial: true,
@@ -689,21 +1168,34 @@ function startWatching(config = {}, hooks = {}) {
 
   activeWatcher.on("ready", () => {
     log("Chokidar watcher is ready and listening for replay events.");
+    emitRuntimeEvent("watcher-ready", {
+      watchDir: runtimeConfig.watchDir,
+    });
   });
 
   activeWatcher.on("add", (filePath) => onFileDetected("add", filePath, runtimeConfig));
   activeWatcher.on("change", (filePath) => onFileDetected("change", filePath, runtimeConfig));
-  activeWatcher.on("error", (err) => log(`Watcher error: ${err.message}`, "error"));
+  activeWatcher.on("error", (err) => {
+    log(`Watcher error: ${err.message}`, "error");
+    emitRuntimeEvent("watcher-error", {
+      detail: err.message,
+    });
+  });
 
   return activeWatcher;
 }
 
 module.exports = {
+  buildRuntimeConfig,
   getDefaultReplayDir,
   getRetryDelayMs: (attempt, config = {}) =>
     getRetryDelayMsFactory(buildRuntimeConfig(config), attempt),
+  getRuntimeValidationError,
+  getSupportedReplayExtensions,
+  importHistoricalReplays,
   isRetryableUploadError,
   monitorReplayFile,
+  shouldHandle,
   startWatching,
   stopWatching,
 };

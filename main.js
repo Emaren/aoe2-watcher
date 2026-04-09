@@ -2,17 +2,33 @@ require("dotenv").config();
 
 const fs = require("fs");
 const path = require("path");
-const { app, BrowserWindow, ipcMain, shell } = require("electron");
+const {
+  app,
+  BrowserWindow,
+  clipboard,
+  dialog,
+  ipcMain,
+  shell,
+} = require("electron");
 
-const { getDefaultReplayDir, startWatching, stopWatching } = require("./watcher");
+const {
+  getDefaultReplayDir,
+  getSupportedReplayExtensions,
+  importHistoricalReplays,
+  startWatching,
+  stopWatching,
+} = require("./watcher");
 
 const WATCHER_PAIR_PROTOCOL = "aoe2hd-watcher";
+const APP_NAME = "AoE2HDBets Watcher";
 
 let mainWindow = null;
 let watcherHandle = null;
 let watcherSession = 0;
+let importSession = 0;
 let rendererReady = false;
 let pendingPairingUrl = null;
+let currentImportState = createImportStateFromSummary();
 
 function getConfigPath() {
   return path.join(app.getPath("userData"), "watcher-config.json");
@@ -25,6 +41,7 @@ function getDefaultConfig() {
     apiFallbackBaseUrl: process.env.AOE2_API_FALLBACK_BASE_URL || "https://aoe2hdbets.com",
     uploadApiKey: process.env.AOE2_UPLOAD_API_KEY || "",
     autoStartWatching: true,
+    lastImportSummary: null,
   };
 }
 
@@ -54,6 +71,7 @@ function saveConfig(config) {
   const configPath = getConfigPath();
   const merged = {
     ...getDefaultConfig(),
+    ...loadConfig(),
     ...config,
   };
 
@@ -63,10 +81,152 @@ function saveConfig(config) {
   return merged;
 }
 
+function createImportStateFromSummary(summary = null) {
+  const base = {
+    isRunning: false,
+    source: "scan",
+    phase: "idle",
+    startedAt: null,
+    completedAt: null,
+    percent: 0,
+    found: 0,
+    queued: 0,
+    skipped: 0,
+    uploaded: 0,
+    failed: 0,
+    unsupported: 0,
+    currentFile: "",
+    currentIndex: 0,
+    failedItems: [],
+    skippedItems: [],
+    recentItems: [],
+    summaryText: "",
+  };
+
+  if (!summary) {
+    return base;
+  }
+
+  return {
+    ...base,
+    ...summary,
+    isRunning: false,
+    currentFile: "",
+    phase:
+      summary.phase ||
+      (summary.failed > 0 ? "complete_with_failures" : summary.completedAt ? "complete" : "idle"),
+  };
+}
+
+function summarizeImportState(state) {
+  if (!state) {
+    return null;
+  }
+
+  return {
+    source: state.source || "scan",
+    phase: state.phase || "idle",
+    startedAt: state.startedAt || null,
+    completedAt: state.completedAt || null,
+    percent: Number.isFinite(state.percent) ? state.percent : 0,
+    found: state.found || 0,
+    queued: state.queued || 0,
+    skipped: state.skipped || 0,
+    uploaded: state.uploaded || 0,
+    failed: state.failed || 0,
+    unsupported: state.unsupported || 0,
+    failedItems: Array.isArray(state.failedItems) ? state.failedItems : [],
+    skippedItems: Array.isArray(state.skippedItems) ? state.skippedItems : [],
+    recentItems: Array.isArray(state.recentItems) ? state.recentItems : [],
+    summaryText: state.summaryText || "",
+  };
+}
+
+function setImportState(nextState, { persist = false } = {}) {
+  currentImportState = createImportStateFromSummary(nextState);
+  currentImportState.isRunning = Boolean(nextState?.isRunning);
+  currentImportState.currentFile = nextState?.currentFile || "";
+  currentImportState.currentIndex = nextState?.currentIndex || 0;
+
+  if (persist) {
+    saveConfig({
+      lastImportSummary: summarizeImportState(currentImportState),
+    });
+  }
+
+  sendToRenderer("watcher:import-state", currentImportState);
+}
+
+function getWatchDirStatus(targetPath) {
+  const normalizedPath = String(targetPath || "").trim();
+
+  if (!normalizedPath) {
+    return {
+      exists: false,
+      isDirectory: false,
+      path: "",
+      error: null,
+    };
+  }
+
+  try {
+    const stats = fs.statSync(normalizedPath);
+    return {
+      exists: stats.isDirectory(),
+      isDirectory: stats.isDirectory(),
+      path: normalizedPath,
+      error: null,
+    };
+  } catch (error) {
+    return {
+      exists: false,
+      isDirectory: false,
+      path: normalizedPath,
+      error: error.message || "Folder not found.",
+    };
+  }
+}
+
+function getAppInfo(config = loadConfig()) {
+  return {
+    version: app.getVersion(),
+    productName: APP_NAME,
+    platform: process.platform,
+    isPackaged: app.isPackaged,
+    configPath: getConfigPath(),
+    protocolScheme: WATCHER_PAIR_PROTOCOL,
+    protocolRegistered: app.isDefaultProtocolClient(WATCHER_PAIR_PROTOCOL),
+    supportedReplayExtensions: getSupportedReplayExtensions(),
+    watchDirStatus: getWatchDirStatus(config.watchDir),
+  };
+}
+
+function getWindowIconPath() {
+  const buildDir = path.join(__dirname, "build");
+  const windowsIconPath = path.join(buildDir, "icon.ico");
+  const pngIconPath = path.join(buildDir, "aoe2hd-watcher-logo.png");
+
+  if (process.platform === "win32" && fs.existsSync(windowsIconPath)) {
+    return windowsIconPath;
+  }
+
+  if (fs.existsSync(pngIconPath)) {
+    return pngIconPath;
+  }
+
+  return undefined;
+}
+
 function sendToRenderer(channel, payload) {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send(channel, payload);
   }
+}
+
+function broadcastConfig(config) {
+  const savedConfig = config || loadConfig();
+  sendToRenderer("watcher:config", savedConfig);
+  sendToRenderer("watcher:app-info", getAppInfo(savedConfig));
 }
 
 function setWatchingState(isWatching) {
@@ -88,6 +248,10 @@ function appendSessionHeader(title) {
     line: `\n──────── ${title} ────────`,
     level: "session",
   });
+}
+
+function handleWatcherRuntimeEvent(event) {
+  sendToRenderer("watcher:runtime-event", event);
 }
 
 function focusMainWindow() {
@@ -155,15 +319,15 @@ function registerPairingProtocol() {
 
 function getSetupBlocker(config) {
   if (!config.watchDir && !config.uploadApiKey) {
-    return "Confirm the replay folder and pair your profile key before starting.";
+    return "Choose the replay folder and save a watcher key before starting.";
   }
 
   if (!config.watchDir) {
-    return "Confirm the replay folder before starting.";
+    return "Choose the replay folder before starting.";
   }
 
   if (!config.uploadApiKey) {
-    return "Pair this Mac from aoe2hdbets.com/profile, or paste your watcher key manually.";
+    return "Open Profile Pairing or paste a watcher key before starting.";
   }
 
   return null;
@@ -191,7 +355,10 @@ function stopCurrentWatcher({ quiet = false } = {}) {
   }
 }
 
-function startCurrentWatcher(config, { preserveLog = false, startMessage = "Start Watching clicked." } = {}) {
+function startCurrentWatcher(
+  config,
+  { preserveLog = false, startMessage = "Start Watching clicked." } = {}
+) {
   watcherSession += 1;
 
   stopCurrentWatcher({ quiet: true });
@@ -208,6 +375,7 @@ function startCurrentWatcher(config, { preserveLog = false, startMessage = "Star
 
   watcherHandle = startWatching(config, {
     onLog: (message, level = "info") => appendLog(message, level),
+    onEvent: handleWatcherRuntimeEvent,
   });
 
   const isWatching = Boolean(watcherHandle);
@@ -220,6 +388,105 @@ function startCurrentWatcher(config, { preserveLog = false, startMessage = "Star
   }
 
   return isWatching;
+}
+
+async function runHistoricalImport({ source, filePaths = [] }) {
+  if (currentImportState.isRunning) {
+    return {
+      ok: false,
+      error: "An import is already running. Let it finish first.",
+      state: currentImportState,
+    };
+  }
+
+  const config = loadConfig();
+  const setupBlocker = getSetupBlocker(config);
+  if (setupBlocker) {
+    return {
+      ok: false,
+      error: setupBlocker,
+    };
+  }
+
+  importSession += 1;
+  const thisRun = importSession;
+
+  appendSessionHeader(source === "retry" ? `Import retry ${thisRun}` : `Historical import ${thisRun}`);
+  appendLog(
+    source === "retry"
+      ? "Retrying the failed replay uploads from the last import summary."
+      : "Scanning the replay folder and importing saved replays oldest to newest."
+  );
+
+  setImportState(
+    {
+      isRunning: true,
+      source,
+      phase: "scanning",
+      startedAt: new Date().toISOString(),
+      completedAt: null,
+      percent: 0,
+      found: 0,
+      queued: 0,
+      skipped: 0,
+      uploaded: 0,
+      failed: 0,
+      unsupported: 0,
+      currentFile: "",
+      currentIndex: 0,
+      failedItems: [],
+      skippedItems: [],
+      recentItems: [],
+      summaryText: "",
+    },
+    { persist: false }
+  );
+
+  try {
+    const finalState = await importHistoricalReplays(
+      config,
+      {
+        source,
+        filePaths,
+      },
+      {
+        onLog: (message, level = "info") => appendLog(message, level),
+        onEvent: handleWatcherRuntimeEvent,
+        onProgress: (state) => {
+          if (thisRun !== importSession) {
+            return;
+          }
+          setImportState(state, { persist: false });
+        },
+      }
+    );
+
+    setImportState(finalState, { persist: true });
+    appendLog(finalState.summaryText || "Historical import complete.");
+
+    return {
+      ok: true,
+      state: finalState,
+    };
+  } catch (error) {
+    const message = error.message || "Historical import failed.";
+    appendLog(`Historical import failed: ${message}`, "error");
+
+    const failedState = {
+      ...currentImportState,
+      isRunning: false,
+      phase: "error",
+      completedAt: new Date().toISOString(),
+      summaryText: message,
+    };
+    setImportState(failedState, { persist: true });
+
+    return {
+      ok: false,
+      error: message,
+      state: failedState,
+    };
+  }
 }
 
 function processPendingPairingUrl() {
@@ -247,14 +514,14 @@ function processPendingPairingUrl() {
       "",
   });
 
-  sendToRenderer("watcher:config", savedConfig);
-  appendLog("Paired this Watcher with your AoE2HDBets profile key.");
+  broadcastConfig(savedConfig);
+  appendLog("Paired this watcher with your AoE2HDBets profile key.");
 
   const setupBlocker = getSetupBlocker(savedConfig);
   if (setupBlocker) {
     setWatchingState(false);
     appendLog(
-      `${setupBlocker} The key is saved now, so pairing does not need to be repeated.`,
+      `${setupBlocker} The key is saved now, so you do not need to pair again.`,
       "warn"
     );
     focusMainWindow();
@@ -284,13 +551,14 @@ function queuePairingUrl(rawUrl) {
 
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 1040,
-    height: 760,
-    minWidth: 920,
-    minHeight: 680,
-    title: "AoE2HD Watcher",
-    backgroundColor: "#08111f",
+    width: 1320,
+    height: 920,
+    minWidth: 1180,
+    minHeight: 760,
+    title: APP_NAME,
+    backgroundColor: "#071119",
     autoHideMenuBar: true,
+    icon: getWindowIconPath(),
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
@@ -312,6 +580,11 @@ function createWindow() {
 }
 
 function bootWatcherApp() {
+  app.setName(APP_NAME);
+  if (process.platform === "win32") {
+    app.setAppUserModelId("com.aoe2hdbets.watcher");
+  }
+
   registerPairingProtocol();
   createWindow();
 
@@ -319,14 +592,20 @@ function bootWatcherApp() {
     return loadConfig();
   });
 
+  ipcMain.handle("watcher:get-app-info", async () => {
+    return getAppInfo(loadConfig());
+  });
+
   ipcMain.handle("watcher:save-config", async (_event, config) => {
     const saved = saveConfig(config);
     appendLog("Settings saved locally.");
+    broadcastConfig(saved);
     return saved;
   });
 
   ipcMain.handle("watcher:start", async (_event, config) => {
     const saved = saveConfig(config);
+    broadcastConfig(saved);
     const started = startCurrentWatcher(saved);
 
     return {
@@ -356,15 +635,72 @@ function bootWatcherApp() {
     }
   });
 
+  ipcMain.handle("watcher:choose-replay-dir", async () => {
+    const config = loadConfig();
+    const defaultPath =
+      config.watchDir || getDefaultReplayDir() || path.join(app.getPath("documents"), "My Games");
+
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: "Choose your AoE2 SaveGame folder",
+      defaultPath,
+      properties: ["openDirectory", "dontAddToRecent"],
+    });
+
+    if (result.canceled || result.filePaths.length === 0) {
+      return { ok: false, canceled: true };
+    }
+
+    return {
+      ok: true,
+      path: result.filePaths[0],
+    };
+  });
+
+  ipcMain.handle("watcher:validate-watch-dir", async (_event, targetPath) => {
+    return getWatchDirStatus(targetPath);
+  });
+
   ipcMain.handle("watcher:get-default-replay-dir", async () => {
     return getDefaultReplayDir() || "";
   });
 
+  ipcMain.handle("watcher:start-import", async () => {
+    return runHistoricalImport({ source: "scan" });
+  });
+
+  ipcMain.handle("watcher:retry-import", async () => {
+    const summary = currentImportState || createImportStateFromSummary(loadConfig().lastImportSummary);
+    const failedItems = Array.isArray(summary.failedItems) ? summary.failedItems : [];
+    const filePaths = failedItems
+      .map((item) => item?.filePath)
+      .filter((value) => typeof value === "string" && value.trim().length > 0);
+
+    if (filePaths.length === 0) {
+      return {
+        ok: false,
+        error: "There are no failed uploads to retry.",
+        state: currentImportState,
+      };
+    }
+
+    return runHistoricalImport({
+      source: "retry",
+      filePaths,
+    });
+  });
+
+  ipcMain.handle("watcher:copy-text", async (_event, value) => {
+    clipboard.writeText(String(value || ""));
+    return { ok: true };
+  });
+
   const config = loadConfig();
+  currentImportState = createImportStateFromSummary(config.lastImportSummary);
 
   mainWindow.webContents.once("did-finish-load", () => {
     rendererReady = true;
-    sendToRenderer("watcher:config", config);
+    broadcastConfig(config);
+    sendToRenderer("watcher:import-state", currentImportState);
     appendLog("UI loaded.");
     appendLog(
       `Initial config loaded: watchDir="${config.watchDir || ""}", apiBaseUrl="${config.apiBaseUrl || ""}", fallback="${config.apiFallbackBaseUrl || ""}", watcherKey=${
@@ -388,7 +724,7 @@ function bootWatcherApp() {
     } else if (config.autoStartWatching && setupBlocker) {
       setWatchingState(false);
       appendLog(
-        `${setupBlocker} Future launches on this Mac can auto-start once both are saved.`,
+        `${setupBlocker} Future launches can auto-start once both are saved.`,
         "warn"
       );
     } else {

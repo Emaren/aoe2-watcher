@@ -1,6 +1,6 @@
 # aoe2-watcher
 
-Electron helper that watches your AoE2 replay folder, emits live replay snapshots while a match is in progress, and uploads the final replay when the file settles.
+Electron helper that watches your AoE2 replay folder, emits live replay snapshots while a match is in progress, uploads the final replay when the file settles, and can scan/import older saved replays on demand.
 
 This is the client-side edge of the AoE2HDBets replay loop. It is intentionally allowed to be a little chatty while the live replay flow is still being refined.
 
@@ -15,6 +15,10 @@ This is the client-side edge of the AoE2HDBets replay loop. It is intentionally 
 - supports `.aoe2record`, `.aoe2mpgame`, `.mgz`, `.mgx`, and `.mgl`
 - retries transient parse/upload failures automatically
 - skips duplicate re-uploads for the same finished replay
+- adds a first-class `Scan & Import Replays` flow for historical saved games
+- persists the last import summary, failed uploads, replay folder, watcher key, and auto-start preference locally
+- packages clean Windows x64 releases with both NSIS installer and portable fallback targets
+- packages a Linux AppImage fallback from the same watcher core
 - current behavior can emit multiple live iterations before a final settled upload, which is expected during active development
 
 ## Quick Start
@@ -37,6 +41,16 @@ pairing:
 That mints a fresh watcher key on `https://aoe2hdbets.com/profile?watcher_pair=1`, saves it to the
 local app config, and auto-starts when the replay folder is already known. If macOS blocks the
 custom URL, use **Mint Key Only** on `/profile` and paste the fallback key into the app once.
+
+## Historical import
+
+The main window now includes **Scan & Import Replays**.
+
+- scans the configured replay folder with the same replay extension rules the watcher trusts
+- processes files oldest-to-newest
+- keeps live watching available
+- shows found / queued / skipped / uploaded / failed counts
+- stores failed uploads so they can be retried from the same UI
 
 ## Optional environment variables
 
@@ -94,7 +108,36 @@ npm run dist:release
 `npm run dist:release` builds:
 
 - the signed-state-pending DMG
-- a Direct ZIP that contains the same `AoE2HD Watcher.app` bundle as the DMG
+- a Direct ZIP that contains the same `AoE2HDBets Watcher.app` bundle as the DMG
 
 The Direct ZIP is the legitimate fallback while Apple signing and notarization are offline. It is
 not a reduced feature path.
+
+## Build (Windows x64 from macOS)
+
+If Wine is not installed locally, use Docker with the Electron Builder Wine image:
+
+```bash
+docker run --rm --platform=linux/amd64 \
+  -e ELECTRON_CACHE=/root/.cache/electron \
+  -e ELECTRON_BUILDER_CACHE=/root/.cache/electron-builder \
+  -v "$PWD":/project \
+  -w /project \
+  electronuserland/builder:wine \
+  /bin/bash -lc 'npm ci && npx electron-builder --win nsis portable --x64'
+```
+
+That produces:
+
+- Windows NSIS installer
+- Windows portable fallback executable
+
+## Build (Linux AppImage)
+
+```bash
+npm run dist:linux
+```
+
+That produces:
+
+- Linux AppImage package

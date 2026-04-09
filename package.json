@@ -1,26 +1,27 @@
 {
   "name": "aoe2-watcher",
-  "version": "1.0.0",
-  "description": "AoE2HD Replay Watcher",
+  "version": "1.1.0",
+  "description": "AoE2HDBets Replay Watcher",
   "author": "AoE2HDBets",
   "license": "ISC",
   "main": "main.js",
-  "productName": "AoE2HD Watcher",
+  "productName": "AoE2HDBets Watcher",
   "scripts": {
     "start": "electron main.js",
     "build": "electron-builder",
     "pack": "electron-builder --dir",
     "dist:mac": "electron-builder --mac dmg",
+    "dist:win": "electron-builder --win nsis portable --x64",
+    "dist:linux": "electron-builder --linux AppImage --x64",
     "dist:manual-zip": "node scripts/build-manual-zip.mjs",
-    "dist:release": "npm run dist:mac && npm run dist:manual-zip"
+    "dist:release": "npm run dist:mac && npm run dist:manual-zip && npm run dist:linux"
   },
   "build": {
-    "appId": "com.aoe2hd.watcher",
-    "productName": "AoE2HD Watcher",
-    "artifactName": "${productName}-${version}-${arch}.${ext}",
+    "appId": "com.aoe2hdbets.watcher",
+    "productName": "AoE2HDBets Watcher",
     "protocols": [
       {
-        "name": "AoE2HD Watcher Pairing",
+        "name": "AoE2HDBets Watcher Pairing",
         "schemes": [
           "aoe2hd-watcher"
         ]
@@ -52,13 +53,47 @@
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.inherit.plist",
       "extendInfo": {
-        "CFBundleDisplayName": "AoE2HD Watcher",
-        "CFBundleName": "AoE2HD Watcher",
+        "CFBundleDisplayName": "AoE2HDBets Watcher",
+        "CFBundleName": "AoE2HDBets Watcher",
         "NSHumanReadableCopyright": "© AoE2HDBets"
       }
     },
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "category": "Utility",
+      "icon": "build/icon.png",
+      "desktop": {
+        "Name": "AoE2HDBets Watcher",
+        "Comment": "AoE2HDBets replay watcher",
+        "StartupWMClass": "AoE2HDBets Watcher"
+      }
+    },
     "dmg": {
-      "title": "AoE2HD Watcher",
+      "title": "AoE2HDBets Watcher",
       "iconSize": 128,
       "window": {
         "width": 540,
@@ -76,6 +111,18 @@
           "type": "link",
           "path": "/Applications"
         }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "AoE2HDBets Watcher",
+      "uninstallDisplayName": "AoE2HDBets Watcher",
+      "installerLanguages": [
+        "en_US"
       ]
     },
     "afterSign": "scripts/notarize.js"
