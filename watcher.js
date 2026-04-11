@@ -204,6 +204,17 @@ async function getFileFingerprint(filePath) {
   return `${stats.size}:${Math.floor(stats.mtimeMs)}`;
 }
 
+async function getReplayContentHash(filePath) {
+  return new Promise((resolve, reject) => {
+    const hash = crypto.createHash("sha256");
+    const stream = fs.createReadStream(filePath);
+
+    stream.on("data", (chunk) => hash.update(chunk));
+    stream.on("error", reject);
+    stream.on("end", () => resolve(hash.digest("hex")));
+  });
+}
+
 function getStateEntry(filePath) {
   let entry = activeUploadState.get(filePath);
   if (!entry) {
@@ -216,6 +227,7 @@ function getStateEntry(filePath) {
       lastLiveUploadAt: 0,
       lastLiveUploadedFingerprint: null,
       lastFinalUploadedFingerprint: null,
+      lastFinalReplayHash: null,
       lastFinalUploadAt: 0,
       lastReplayGrowthNoticeAt: 0,
       liveIteration: 0,
@@ -428,6 +440,72 @@ function shouldLogReplayGrowthNotice(entry, runtimeConfig, isFinal) {
   return false;
 }
 
+function hasSettledReplayFingerprint(entry, fingerprint, runtimeConfig, now = Date.now()) {
+  return Boolean(
+    fingerprint &&
+      fingerprint === entry.lastFinalUploadedFingerprint &&
+      fingerprint === entry.lastObservedFingerprint &&
+      entry.lastFinalUploadAt > 0 &&
+      now - entry.lastFinalUploadAt >= runtimeConfig.finalSettleWindowMs
+  );
+}
+
+async function resolveFinalReplayShortCircuit(
+  filePath,
+  entry,
+  runtimeConfig,
+  { fingerprint = null, now = Date.now() } = {}
+) {
+  if (!entry.lastFinalUploadedFingerprint && !entry.lastFinalReplayHash) {
+    return null;
+  }
+
+  let nextFingerprint = fingerprint;
+  if (!nextFingerprint) {
+    try {
+      nextFingerprint = await getFileFingerprint(filePath);
+    } catch {
+      return null;
+    }
+  }
+
+  if (hasSettledReplayFingerprint(entry, nextFingerprint, runtimeConfig, now)) {
+    return {
+      reason: "settled_fingerprint",
+      fingerprint: nextFingerprint,
+    };
+  }
+
+  if (!entry.lastFinalReplayHash) {
+    return null;
+  }
+
+  let contentHash;
+  try {
+    contentHash = await getReplayContentHash(filePath);
+  } catch (error) {
+    log(
+      `Unable to hash ${path.basename(filePath)} while checking final replay state: ${error.message}`,
+      "warn"
+    );
+    return null;
+  }
+
+  if (contentHash !== entry.lastFinalReplayHash) {
+    return null;
+  }
+
+  entry.lastObservedFingerprint = nextFingerprint;
+  entry.lastFinalUploadedFingerprint = nextFingerprint;
+  entry.lastChangeAt = now;
+
+  return {
+    reason: "settled_replay_hash",
+    fingerprint: nextFingerprint,
+    replayHash: contentHash,
+  };
+}
+
 async function uploadReplay(
   filePath,
   runtimeConfig,
@@ -536,12 +614,19 @@ async function uploadReplayWithRetry(
         });
         const detail = formatResponseBody(res.data);
         const resultType = classifyUploadResult(detail);
+        const replayHash =
+          typeof res?.data?.replay_hash === "string" && res.data.replay_hash.trim()
+            ? res.data.replay_hash.trim()
+            : null;
 
         rememberWorkingUploadTarget(target);
 
         if (isFinal || detail.toLowerCase().includes("already parsed as final")) {
           entry.lastFinalUploadedFingerprint = attemptFingerprint;
           entry.lastFinalUploadAt = Date.now();
+          if (replayHash) {
+            entry.lastFinalReplayHash = replayHash;
+          }
         } else {
           entry.lastLiveUploadedFingerprint = attemptFingerprint;
           entry.liveIteration = parseIteration;
@@ -676,6 +761,24 @@ async function monitorReplayFile(filePath, runtimeConfig) {
     return;
   }
 
+  const finalReplayShortCircuit = await resolveFinalReplayShortCircuit(
+    filePath,
+    entry,
+    runtimeConfig
+  );
+  if (finalReplayShortCircuit) {
+    log(
+      `Skipping monitor for ${path.basename(filePath)} because replay already matches final upload state (${finalReplayShortCircuit.reason}).`
+    );
+    emitRuntimeEvent("monitor-skip-final", {
+      filePath,
+      fileName: path.basename(filePath),
+      reason: finalReplayShortCircuit.reason,
+      replayHash: finalReplayShortCircuit.replayHash || entry.lastFinalReplayHash || null,
+    });
+    return;
+  }
+
   entry.monitoring = true;
   emitRuntimeEvent("monitor-start", {
     filePath,
@@ -722,12 +825,7 @@ async function monitorReplayFile(filePath, runtimeConfig) {
         return;
       }
 
-      if (
-        fingerprint === entry.lastFinalUploadedFingerprint &&
-        fingerprint === entry.lastObservedFingerprint &&
-        entry.lastFinalUploadAt > 0 &&
-        now - entry.lastFinalUploadAt >= runtimeConfig.finalSettleWindowMs
-      ) {
+      if (hasSettledReplayFingerprint(entry, fingerprint, runtimeConfig, now)) {
         log(`Monitor loop complete for ${path.basename(filePath)}. Replay is fully settled.`);
         return;
       }
@@ -801,7 +899,52 @@ async function monitorReplayFile(filePath, runtimeConfig) {
 }
 
 async function onFileDetected(eventType, filePath, runtimeConfig) {
+  if (!shouldHandle(filePath, runtimeConfig)) {
+    return;
+  }
+
+  const entry = getStateEntry(filePath);
   const fileName = path.basename(filePath);
+
+  if (entry.monitoring) {
+    emitRuntimeEvent("replay-detected-ignored", {
+      filePath,
+      fileName,
+      eventType,
+      reason: "monitoring",
+    });
+    return;
+  }
+
+  if (entry.importing) {
+    emitRuntimeEvent("replay-detected-ignored", {
+      filePath,
+      fileName,
+      eventType,
+      reason: "importing",
+    });
+    return;
+  }
+
+  const finalReplayShortCircuit = await resolveFinalReplayShortCircuit(
+    filePath,
+    entry,
+    runtimeConfig
+  );
+  if (finalReplayShortCircuit) {
+    log(
+      `Ignoring ${eventType} event for ${fileName} because replay already matches final upload state (${finalReplayShortCircuit.reason}).`
+    );
+    emitRuntimeEvent("replay-detected-ignored", {
+      filePath,
+      fileName,
+      eventType,
+      reason: finalReplayShortCircuit.reason,
+      replayHash: finalReplayShortCircuit.replayHash || entry.lastFinalReplayHash || null,
+    });
+    return;
+  }
+
   log(`Detected ${eventType} event: ${fileName}`);
   emitRuntimeEvent("replay-detected", {
     filePath,
@@ -1187,14 +1330,18 @@ function startWatching(config = {}, hooks = {}) {
 
 module.exports = {
   buildRuntimeConfig,
+  classifyUploadResult,
   getDefaultReplayDir,
+  getFileFingerprint,
   getRetryDelayMs: (attempt, config = {}) =>
     getRetryDelayMsFactory(buildRuntimeConfig(config), attempt),
+  getReplayContentHash,
   getRuntimeValidationError,
   getSupportedReplayExtensions,
   importHistoricalReplays,
   isRetryableUploadError,
   monitorReplayFile,
+  resolveFinalReplayShortCircuit,
   shouldHandle,
   startWatching,
   stopWatching,
