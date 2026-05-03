@@ -5,16 +5,11 @@ on:
 
 permissions:
   contents: read
-  actions: read
 
 jobs:
   sign-windows:
-    runs-on: windows-latest
-
-    env:
-      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-      AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+    runs-on: windows-2022
+    timeout-minutes: 20
 
     steps:
       - name: Checkout
@@ -27,108 +22,23 @@ jobs:
             Select-Object FullName, Length, LastWriteTime |
             Format-Table -AutoSize
 
-      - name: Install Artifact Signing Client Tools
-        shell: pwsh
-        run: |
-          $ProgressPreference = 'SilentlyContinue'
-          Invoke-WebRequest -Uri "https://download.microsoft.com/download/70ad2c3b-761f-4aa9-a9de-e7405aa2b4c1/ArtifactSigningClientTools.msi" -OutFile ".\\ArtifactSigningClientTools.msi"
-          Start-Process msiexec.exe -Wait -ArgumentList '/I ArtifactSigningClientTools.msi /quiet /norestart'
-          Remove-Item ".\\ArtifactSigningClientTools.msi" -Force
-
-      - name: Write Artifact Signing metadata
-        shell: pwsh
-        run: |
-          @'
-          {
-            "Endpoint": "https://eus.codesigning.azure.net",
-            "CodeSigningAccountName": "aoe2hdbetssigning",
-            "CertificateProfileName": "aoe2hdbetswindows",
-            "ExcludeCredentials": [
-              "ManagedIdentityCredential",
-              "WorkloadIdentityCredential",
-              "SharedTokenCacheCredential",
-              "VisualStudioCredential",
-              "VisualStudioCodeCredential",
-              "AzureCliCredential",
-              "AzurePowerShellCredential",
-              "AzureDeveloperCliCredential",
-              "InteractiveBrowserCredential"
-            ]
-          }
-          '@ | Set-Content -Path metadata.json -Encoding UTF8
-
-      - name: Locate SignTool and Azure dlib
-        shell: pwsh
-        run: |
-          $signtool = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse -Filter signtool.exe |
-            Where-Object { $_.FullName -match "\\x64\\signtool.exe$" } |
-            Sort-Object FullName -Descending |
-            Select-Object -First 1
-
-          $dlib = Get-ChildItem "C:\Program Files*" -Recurse -Filter Azure.CodeSigning.Dlib.dll -ErrorAction SilentlyContinue |
-            Where-Object { $_.FullName -match "\\x64\\Azure.CodeSigning.Dlib.dll$" } |
-            Select-Object -First 1
-
-          if (-not $signtool) { throw "signtool.exe not found" }
-          if (-not $dlib) { throw "Azure.CodeSigning.Dlib.dll not found" }
-
-          "SIGNTOOL=$($signtool.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
-          "AZURE_DLIB=$($dlib.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
-
-          Write-Host "SignTool: $($signtool.FullName)"
-          Write-Host "Dlib:     $($dlib.FullName)"
-
-      - name: Sign Windows EXEs
-        shell: pwsh
-        run: |
-          $targets = Get-ChildItem -Recurse -File -Filter *.exe |
-            Where-Object {
-              $_.FullName -match "\\build\\" -and
-              (
-                $_.Name -like "*Setup*.exe" -or
-                $_.Name -like "*Watcher*.exe"
-              )
-            }
-
-          if (-not $targets -or $targets.Count -eq 0) {
-            throw "No Windows watcher EXEs found under build/"
-          }
-
-          foreach ($file in $targets) {
-            Write-Host "Signing $($file.FullName)"
-            & $env:SIGNTOOL sign `
-              /v `
-              /debug `
-              /fd SHA256 `
-              /tr "http://timestamp.acs.microsoft.com" `
-              /td SHA256 `
-              /d "AoE2HDBets Watcher" `
-              /du "https://aoe2hdbets.com" `
-              /dlib "$env:AZURE_DLIB" `
-              /dmdf "metadata.json" `
-              "$($file.FullName)"
-
-            if ($LASTEXITCODE -ne 0) {
-              throw "Signing failed for $($file.FullName)"
-            }
-          }
-
-      - name: Verify signatures
-        shell: pwsh
-        run: |
-          $targets = Get-ChildItem -Recurse -File -Filter *.exe |
-            Where-Object {
-              $_.FullName -match "\\build\\" -and
-              (
-                $_.Name -like "*Setup*.exe" -or
-                $_.Name -like "*Watcher*.exe"
-              )
-            }
-
-          foreach ($file in $targets) {
-            Write-Host "Verifying $($file.FullName)"
-            & $env:SIGNTOOL verify /pa /v "$($file.FullName)"
-          }
+      - name: Sign Windows EXEs with Azure Artifact Signing
+        uses: azure/artifact-signing-action@v1
+        with:
+          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+          endpoint: https://eus.codesigning.azure.net/
+          signing-account-name: aoe2hdbetssigning
+          certificate-profile-name: aoe2hdbetswindows
+          files-folder: ${{ github.workspace }}\build
+          files-folder-filter: exe
+          files-folder-recurse: true
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+          description: AoE2HDBets Watcher
+          description-url: https://aoe2hdbets.com
 
       - name: Upload signed EXEs
         uses: actions/upload-artifact@v4
