@@ -295,6 +295,14 @@ function classifyUploadResult(detail = "") {
   return "uploaded";
 }
 
+function getParseSource(isFinal) {
+  return isFinal ? "watcher_final" : "watcher_live";
+}
+
+function getParseReason(isFinal) {
+  return isFinal ? "watcher_final_submission" : "watcher_live_iteration";
+}
+
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -520,13 +528,16 @@ async function uploadReplay(
     knownLength: replayBuffer.length,
   });
 
+  const parseSource = getParseSource(isFinal);
+  const parseReason = getParseReason(isFinal);
+
   const headers = {
     ...form.getHeaders(),
     "x-user-uid": runtimeConfig.watcherUid,
     "x-parse-iteration": String(parseIteration),
     "x-is-final": isFinal ? "true" : "false",
-    "x-parse-source": isFinal ? "watcher_final" : "watcher_live",
-    "x-parse-reason": isFinal ? "watcher_final_submission" : "watcher_live_iteration",
+    "x-parse-source": parseSource,
+    "x-parse-reason": parseReason,
   };
 
   if (runtimeConfig.uploadApiKey) {
@@ -587,12 +598,16 @@ async function uploadReplayWithRetry(
     for (let targetIndex = 0; targetIndex < targetSequence.length; targetIndex += 1) {
       const target = targetSequence[targetIndex];
       const targetHost = new URL(target.uploadUrl).host;
+      const parseSource = getParseSource(isFinal);
+      const parseReason = getParseReason(isFinal);
 
       emitRuntimeEvent("upload-start", {
         filePath,
         fileName: path.basename(filePath),
         isFinal,
         parseIteration,
+        parseSource,
+        parseReason,
         attempt,
         maxRetryCount: runtimeConfig.maxUploadRetries,
         uploadHost: targetHost,
@@ -646,6 +661,9 @@ async function uploadReplayWithRetry(
           fileName: path.basename(filePath),
           isFinal,
           parseIteration,
+          parseSource,
+          parseReason,
+          replayHash,
           resultType,
           responseStatus: res.status,
           detail,
@@ -696,6 +714,8 @@ async function uploadReplayWithRetry(
             fileName: path.basename(filePath),
             isFinal,
             parseIteration,
+            parseSource,
+            parseReason,
             errorMessage,
             responseStatus: err?.response?.status || null,
           });
@@ -720,6 +740,8 @@ async function uploadReplayWithRetry(
           fileName: path.basename(filePath),
           isFinal,
           parseIteration,
+          parseSource,
+          parseReason,
           errorMessage,
           retryInMs: delayMs,
           nextRetryAttempt: attempt + 1,

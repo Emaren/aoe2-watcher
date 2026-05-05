@@ -2,6 +2,8 @@ require("dotenv").config();
 
 const fs = require("fs");
 const path = require("path");
+const crypto = require("crypto");
+const axios = require("axios");
 const {
   app,
   BrowserWindow,
@@ -21,6 +23,9 @@ const {
 
 const WATCHER_PAIR_PROTOCOL = "aoe2hd-watcher";
 const APP_NAME = "AoE2HDBets Watcher";
+const TELEMETRY_HEARTBEAT_MS = Number(process.env.AOE2_TELEMETRY_HEARTBEAT_MS || 10 * 60 * 1000);
+const TELEMETRY_TIMEOUT_MS = Number(process.env.AOE2_TELEMETRY_TIMEOUT_MS || 5000);
+const APP_SESSION_ID = createRandomId("session");
 
 let mainWindow = null;
 let watcherHandle = null;
@@ -29,9 +34,26 @@ let importSession = 0;
 let rendererReady = false;
 let pendingPairingUrl = null;
 let currentImportState = createImportStateFromSummary();
+let heartbeatTimer = null;
 
 function getConfigPath() {
   return path.join(app.getPath("userData"), "watcher-config.json");
+}
+
+function createRandomId(prefix) {
+  const value =
+    typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID()
+      : crypto.randomBytes(16).toString("hex");
+  return `${prefix}_${value.replace(/-/g, "")}`;
+}
+
+function ensureWatcherId(config) {
+  const watcherId = String(config?.watcherId || "").trim();
+  return {
+    ...config,
+    watcherId: watcherId || process.env.AOE2_WATCHER_ID || createRandomId("watcher"),
+  };
 }
 
 function getDefaultConfig() {
@@ -39,7 +61,12 @@ function getDefaultConfig() {
     watchDir: process.env.AOE2_WATCH_DIR || getDefaultReplayDir() || "",
     apiBaseUrl: process.env.AOE2_API_BASE_URL || "https://api-prodn.aoe2hdbets.com",
     apiFallbackBaseUrl: process.env.AOE2_API_FALLBACK_BASE_URL || "https://aoe2hdbets.com",
+    telemetryBaseUrl:
+      process.env.AOE2_TELEMETRY_BASE_URL ||
+      process.env.AOE2_API_FALLBACK_BASE_URL ||
+      "https://aoe2hdbets.com",
     uploadApiKey: process.env.AOE2_UPLOAD_API_KEY || "",
+    watcherId: process.env.AOE2_WATCHER_ID || "",
     autoStartWatching: true,
     lastImportSummary: null,
   };
@@ -51,34 +78,158 @@ function loadConfig() {
 
   try {
     if (!fs.existsSync(configPath)) {
-      return defaults;
+      return ensureWatcherId(defaults);
     }
 
     const raw = fs.readFileSync(configPath, "utf8");
     const parsed = JSON.parse(raw);
 
-    return {
+    return ensureWatcherId({
       ...defaults,
       ...parsed,
-    };
+    });
   } catch (error) {
     console.error("Failed to load watcher config:", error);
-    return defaults;
+    return ensureWatcherId(defaults);
   }
 }
 
 function saveConfig(config) {
   const configPath = getConfigPath();
-  const merged = {
+  const merged = ensureWatcherId({
     ...getDefaultConfig(),
     ...loadConfig(),
     ...config,
-  };
+  });
 
   fs.mkdirSync(path.dirname(configPath), { recursive: true });
   fs.writeFileSync(configPath, JSON.stringify(merged, null, 2), "utf8");
 
   return merged;
+}
+
+function normalizeBaseUrl(value) {
+  return String(value || "").trim().replace(/\/$/, "");
+}
+
+function getTelemetryBaseUrl(config) {
+  return normalizeBaseUrl(
+    config.telemetryBaseUrl ||
+      config.apiFallbackBaseUrl ||
+      process.env.AOE2_TELEMETRY_BASE_URL ||
+      "https://aoe2hdbets.com"
+  );
+}
+
+function buildTelemetryPayload(eventType, payload = {}, config = loadConfig()) {
+  const replayFile = payload.fileName || (payload.filePath ? path.basename(payload.filePath) : null);
+  const metadata = {
+    ...payload.metadata,
+    runtimeEventType: payload.runtimeEventType || payload.type || null,
+    isFinal: typeof payload.isFinal === "boolean" ? payload.isFinal : undefined,
+    parseIteration: Number.isFinite(payload.parseIteration) ? payload.parseIteration : undefined,
+    attempt: Number.isFinite(payload.attempt) ? payload.attempt : undefined,
+    maxRetryCount: Number.isFinite(payload.maxRetryCount) ? payload.maxRetryCount : undefined,
+    resultType: payload.resultType || undefined,
+    responseStatus: payload.responseStatus || undefined,
+    uploadHost: payload.uploadHost || undefined,
+    errorMessage: payload.errorMessage ? String(payload.errorMessage).slice(0, 300) : undefined,
+    watchDirBasename: payload.watchDir ? path.basename(String(payload.watchDir)) : undefined,
+  };
+
+  return {
+    event_type: eventType,
+    app_version: app.getVersion(),
+    platform: process.platform,
+    artifact: app.isPackaged ? "electron-packaged" : "electron-dev",
+    watcher_id: config.watcherId,
+    session_id: APP_SESSION_ID,
+    replay_hash: payload.replayHash || null,
+    replay_file: replayFile || null,
+    parse_source: payload.parseSource || null,
+    parse_reason: payload.parseReason || null,
+    metadata,
+  };
+}
+
+async function postWatcherTelemetry(eventType, payload = {}, { wait = false, config = loadConfig() } = {}) {
+  const baseUrl = getTelemetryBaseUrl(config);
+  if (!baseUrl) {
+    return null;
+  }
+
+  const request = axios
+    .post(`${baseUrl}/api/watcher/events`, buildTelemetryPayload(eventType, payload, config), {
+      timeout: TELEMETRY_TIMEOUT_MS,
+      headers: {
+        "content-type": "application/json",
+        ...(config.uploadApiKey ? { "x-api-key": config.uploadApiKey } : {}),
+      },
+    })
+    .then((response) => response.data)
+    .catch((error) => {
+      const detail = error?.response?.status
+        ? `${error.response.status} ${error.response.statusText || ""}`.trim()
+        : error.message || "network error";
+      console.warn(`Watcher telemetry ${eventType} failed: ${detail}`);
+      return null;
+    });
+
+  if (wait) {
+    return request;
+  }
+
+  void request;
+  return null;
+}
+
+function emitWatcherTelemetry(eventType, payload = {}, config = loadConfig()) {
+  void postWatcherTelemetry(eventType, payload, { config });
+}
+
+async function verifyWatcherAuth(config = loadConfig()) {
+  if (!config.uploadApiKey) {
+    return;
+  }
+
+  const authStarted = await postWatcherTelemetry(
+    "auth_started",
+    { metadata: { authCheck: "watcher_key" } },
+    { wait: true, config }
+  );
+
+  if (authStarted?.linked) {
+    emitWatcherTelemetry("auth_success", { metadata: { authCheck: "watcher_key" } }, config);
+    return;
+  }
+
+  emitWatcherTelemetry("auth_failed", { metadata: { authCheck: "watcher_key" } }, config);
+}
+
+function startTelemetryHeartbeat() {
+  if (heartbeatTimer) {
+    clearInterval(heartbeatTimer);
+    heartbeatTimer = null;
+  }
+
+  if (!Number.isFinite(TELEMETRY_HEARTBEAT_MS) || TELEMETRY_HEARTBEAT_MS <= 0) {
+    return;
+  }
+
+  heartbeatTimer = setInterval(() => {
+    emitWatcherTelemetry("heartbeat", {
+      metadata: {
+        isWatching: Boolean(watcherHandle),
+      },
+    });
+  }, TELEMETRY_HEARTBEAT_MS);
+}
+
+function stopTelemetryHeartbeat() {
+  if (heartbeatTimer) {
+    clearInterval(heartbeatTimer);
+    heartbeatTimer = null;
+  }
 }
 
 function createImportStateFromSummary(summary = null) {
@@ -250,8 +401,43 @@ function appendSessionHeader(title) {
   });
 }
 
+function emitTelemetryForRuntimeEvent(event) {
+  if (!event || typeof event !== "object") {
+    return;
+  }
+
+  const basePayload = {
+    ...event,
+    runtimeEventType: event.type,
+  };
+
+  if (event.type === "replay-detected") {
+    emitWatcherTelemetry("replay_detected", basePayload);
+    return;
+  }
+
+  if (event.type === "upload-start") {
+    emitWatcherTelemetry("upload_attempted", basePayload);
+    return;
+  }
+
+  if (event.type === "upload-success") {
+    emitWatcherTelemetry("upload_succeeded", basePayload);
+    emitWatcherTelemetry("parse_succeeded", basePayload);
+    return;
+  }
+
+  if (event.type === "upload-failure") {
+    emitWatcherTelemetry("upload_failed", basePayload);
+    if (event.responseStatus) {
+      emitWatcherTelemetry("parse_failed", basePayload);
+    }
+  }
+}
+
 function handleWatcherRuntimeEvent(event) {
   sendToRenderer("watcher:runtime-event", event);
+  emitTelemetryForRuntimeEvent(event);
 }
 
 function focusMainWindow() {
@@ -372,6 +558,7 @@ function startCurrentWatcher(
       config.uploadApiKey ? "present" : "missing"
     }`
   );
+  void verifyWatcherAuth(config);
 
   watcherHandle = startWatching(config, {
     onLog: (message, level = "info") => appendLog(message, level),
@@ -516,6 +703,7 @@ function processPendingPairingUrl() {
 
   broadcastConfig(savedConfig);
   appendLog("Paired this watcher with your AoE2HDBets profile key.");
+  void verifyWatcherAuth(savedConfig);
 
   const setupBlocker = getSetupBlocker(savedConfig);
   if (setupBlocker) {
@@ -597,9 +785,25 @@ function bootWatcherApp() {
   });
 
   ipcMain.handle("watcher:save-config", async (_event, config) => {
+    const previous = loadConfig();
     const saved = saveConfig(config);
     appendLog("Settings saved locally.");
     broadcastConfig(saved);
+    if ((config?.watchDir || "") && config.watchDir !== previous.watchDir) {
+      emitWatcherTelemetry(
+        "watch_folder_selected",
+        {
+          watchDir: config.watchDir,
+          metadata: {
+            source: "settings_save",
+          },
+        },
+        saved
+      );
+    }
+    if ((config?.uploadApiKey || "") && config.uploadApiKey !== previous.uploadApiKey) {
+      void verifyWatcherAuth(saved);
+    }
     return saved;
   });
 
@@ -650,6 +854,13 @@ function bootWatcherApp() {
       return { ok: false, canceled: true };
     }
 
+    emitWatcherTelemetry("watch_folder_selected", {
+      watchDir: result.filePaths[0],
+      metadata: {
+        source: "folder_picker",
+      },
+    });
+
     return {
       ok: true,
       path: result.filePaths[0],
@@ -694,7 +905,7 @@ function bootWatcherApp() {
     return { ok: true };
   });
 
-  const config = loadConfig();
+  const config = saveConfig(loadConfig());
   currentImportState = createImportStateFromSummary(config.lastImportSummary);
 
   mainWindow.webContents.once("did-finish-load", () => {
@@ -707,6 +918,15 @@ function bootWatcherApp() {
         config.uploadApiKey ? "present" : "missing"
       }`
     );
+    emitWatcherTelemetry("app_open", {
+      metadata: {
+        autoStartWatching: Boolean(config.autoStartWatching),
+        hasWatcherKey: Boolean(config.uploadApiKey),
+        hasWatchDir: Boolean(config.watchDir),
+      },
+    }, config);
+    void verifyWatcherAuth(config);
+    startTelemetryHeartbeat();
 
     const pairedFromUrl = processPendingPairingUrl();
     if (pairedFromUrl) {
@@ -736,6 +956,7 @@ function bootWatcherApp() {
 
 app.on("window-all-closed", () => {
   rendererReady = false;
+  stopTelemetryHeartbeat();
   stopCurrentWatcher({ quiet: true });
   app.quit();
 });
