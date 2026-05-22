@@ -59,12 +59,12 @@ function ensureWatcherId(config) {
 function getDefaultConfig() {
   return {
     watchDir: process.env.AOE2_WATCH_DIR || getDefaultReplayDir() || "",
-    apiBaseUrl: process.env.AOE2_API_BASE_URL || "https://api-prodn.aoe2hdbets.com",
-    apiFallbackBaseUrl: process.env.AOE2_API_FALLBACK_BASE_URL || "https://aoe2hdbets.com",
+    apiBaseUrl: process.env.AOE2_API_BASE_URL || "https://api-prodn.aoe2war.com",
+    apiFallbackBaseUrl: process.env.AOE2_API_FALLBACK_BASE_URL || "https://aoe2war.com",
     telemetryBaseUrl:
       process.env.AOE2_TELEMETRY_BASE_URL ||
       process.env.AOE2_API_FALLBACK_BASE_URL ||
-      "https://aoe2hdbets.com",
+      "https://aoe2war.com",
     uploadApiKey: process.env.AOE2_UPLOAD_API_KEY || "",
     watcherId: process.env.AOE2_WATCHER_ID || "",
     autoStartWatching: true,
@@ -117,7 +117,7 @@ function getTelemetryBaseUrl(config) {
     config.telemetryBaseUrl ||
       config.apiFallbackBaseUrl ||
       process.env.AOE2_TELEMETRY_BASE_URL ||
-      "https://aoe2hdbets.com"
+      "https://aoe2war.com"
   );
 }
 

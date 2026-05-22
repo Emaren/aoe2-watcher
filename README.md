@@ -38,7 +38,7 @@ pairing:
 2. click **Open Profile Pairing**
 3. approve the `aoe2hd-watcher://` handoff in your browser
 
-That mints a fresh watcher key on `https://aoe2hdbets.com/profile?watcher_pair=1`, saves it to the
+That mints a fresh watcher key on `https://aoe2war.com/profile?watcher_pair=1`, saves it to the
 local app config, and auto-starts when the replay folder is already known. If macOS blocks the
 custom URL, use **Mint Key Only** on `/profile` and paste the fallback key into the app once.
 
@@ -54,7 +54,7 @@ The main window now includes **Scan & Import Replays**.
 
 ## Optional environment variables
 
-- `AOE2_API_BASE_URL` (default: `https://api-prodn.aoe2hdbets.com`)
+- `AOE2_API_BASE_URL` (default: `https://api-prodn.aoe2war.com`)
 - `AOE2_WATCH_DIR` (default: platform-specific AoE2HD SaveGame path)
 - `WATCHER_USER_UID` (default: hostname-derived watcher id)
 - `AOE2_UPLOAD_API_KEY` (optional manual fallback; one-click pairing normally fills this in)
@@ -69,7 +69,7 @@ The main window now includes **Scan & Import Replays**.
 ## Optional env example
 
 ```bash
-AOE2_API_BASE_URL=https://api-prodn.aoe2hdbets.com
+AOE2_API_BASE_URL=https://api-prodn.aoe2war.com
 # optional if backend protection is enabled
 AOE2_UPLOAD_API_KEY=your_key_here
 ```

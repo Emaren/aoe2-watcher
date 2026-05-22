@@ -30,7 +30,7 @@ Same watcher. Same uploads. Same replay flow.
 Recommended:
 1. Move ${appBundleName} into /Applications.
 2. Open the app.
-3. Paste your watcher key from https://aoe2hdbets.com/profile once.
+3. Paste your watcher key from https://aoe2war.com/profile once.
 4. Leave the watcher open while you play.
 
 If macOS blocks the unsigned app, run:

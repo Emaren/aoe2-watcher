@@ -49,8 +49,8 @@ const els = {
 
 const DEFAULT_CONFIG = {
   watchDir: "",
-  apiBaseUrl: "https://api-prodn.aoe2hdbets.com",
-  apiFallbackBaseUrl: "https://aoe2hdbets.com",
+  apiBaseUrl: "https://api-prodn.aoe2war.com",
+  apiFallbackBaseUrl: "https://aoe2war.com",
   uploadApiKey: "",
   autoStartWatching: true,
   lastImportSummary: null,

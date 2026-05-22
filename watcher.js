@@ -102,14 +102,14 @@ function normalizeBaseUrl(value) {
 }
 
 function buildRuntimeConfig(config = {}) {
-  const defaultApiBaseUrl = "https://api-prodn.aoe2hdbets.com";
+  const defaultApiBaseUrl = "https://api-prodn.aoe2war.com";
 
   const apiBaseUrl = normalizeBaseUrl(
     config.apiBaseUrl || process.env.AOE2_API_BASE_URL || defaultApiBaseUrl
   );
 
   const defaultFallbackApiBaseUrl =
-    apiBaseUrl === defaultApiBaseUrl ? "https://aoe2hdbets.com" : "";
+    apiBaseUrl === defaultApiBaseUrl ? "https://aoe2war.com" : "";
 
   const apiFallbackBaseUrl = normalizeBaseUrl(
     config.apiFallbackBaseUrl ||
