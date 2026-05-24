@@ -321,6 +321,18 @@
         color: #bfd0e2;
       }
 
+      .version-actions {
+        margin-top: 12px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .version-actions[hidden],
+      .button[hidden] {
+        display: none;
+      }
+
       .status-detail {
         margin-top: 10px;
         font-size: 14px;
@@ -684,6 +696,16 @@
         word-break: break-word;
       }
 
+      .version-diagnostic {
+        display: grid;
+        justify-items: end;
+        gap: 6px;
+      }
+
+      .version-diagnostic .button {
+        justify-self: end;
+      }
+
       .helper-grid {
         grid-template-columns: repeat(3, minmax(0, 1fr));
       }
@@ -889,7 +911,16 @@
             <article class="metric-card">
               <div class="metric-label">Build</div>
               <div id="heroAppVersionText" class="metric-value">Unknown</div>
+              <div id="heroVersionStatusText" class="metric-copy">Checking latest watcher release...</div>
               <div id="heroPlatformText" class="metric-copy">Unknown platform</div>
+              <div class="version-actions">
+                <button id="heroUpdateWatcherBtn" class="button primary slim" type="button" hidden>
+                  Update
+                </button>
+                <button id="heroCheckVersionBtn" class="button secondary slim" type="button" hidden>
+                  Check Again
+                </button>
+              </div>
             </article>
           </div>
         </section>
@@ -1081,7 +1112,16 @@
               <div class="diagnostic-grid">
                 <div class="diagnostic-row">
                   <strong>Version</strong>
-                  <span id="appVersionText">Unknown</span>
+                  <div class="version-diagnostic">
+                    <span id="appVersionText">Unknown</span>
+                    <span id="diagnosticsVersionStatusText">Checking latest watcher release...</span>
+                    <button id="diagnosticsUpdateWatcherBtn" class="button primary slim" type="button" hidden>
+                      Update
+                    </button>
+                    <button id="diagnosticsCheckVersionBtn" class="button secondary slim" type="button" hidden>
+                      Check Again
+                    </button>
+                  </div>
                 </div>
                 <div class="diagnostic-row">
                   <strong>Platform</strong>

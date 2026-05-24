@@ -19,6 +19,7 @@ This is the client-side edge of the AoE2HDBets replay loop. It is intentionally 
 - persists the last import summary, failed uploads, replay folder, watcher key, and auto-start preference locally
 - packages clean Windows x64 releases with both NSIS installer and portable fallback targets
 - packages a Linux AppImage fallback from the same watcher core
+- checks the public watcher release endpoint and shows either an Update button or a clear Latest Version label in the main window
 - current behavior can emit multiple live iterations before a final settled upload, which is expected during active development
 
 ## Quick Start
@@ -58,9 +59,7 @@ The main window now includes **Scan & Import Replays**.
 - `AOE2_WATCH_DIR` (default: platform-specific AoE2HD SaveGame path)
 - `WATCHER_USER_UID` (default: hostname-derived watcher id)
 - `AOE2_UPLOAD_API_KEY` (optional manual fallback; one-click pairing normally fills this in)
-
-Existing watcher installs that saved the retired `aoe2hdbets.com` endpoints migrate those
-settings to `aoe2war.com` on next launch.
+- `AOE2_WATCHER_RELEASE_BASE_URL` (optional release-check override; default: `https://aoe2war.com`)
 - `AOE2_UPLOAD_RETRY_ATTEMPTS` (default: `4`)
 - `AOE2_UPLOAD_RETRY_BASE_DELAY_MS` (default: `4000`)
 - `AOE2_UPLOAD_STABLE_CHECK_INTERVAL_MS` (default: `3000`)
@@ -68,6 +67,16 @@ settings to `aoe2war.com` on next launch.
 - `AOE2_INITIAL_LIVE_DELAY_MS` (default: `3000`)
 - `AOE2_INITIAL_LIVE_RETRY_COOLDOWN_MS` (default: `10000`)
 - `AOE2_LIVE_UPLOAD_COOLDOWN_MS` (default: `45000`)
+
+Existing watcher installs that saved the retired `aoe2hdbets.com` endpoints migrate those
+settings to `aoe2war.com` on next launch.
+
+## Update indicator
+
+The watcher fetches `https://aoe2war.com/api/watcher/release` on launch and after settings saves.
+When the installed version is behind the public release metadata, the Build card and Diagnostics
+version row show **Update** and open the best platform download path. When it is current, those
+same locations show the installed version followed by **Latest Version**.
 
 ## Optional env example
 

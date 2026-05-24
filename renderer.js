@@ -23,8 +23,14 @@ const els = {
   setupSummaryText: document.getElementById("setupSummaryText"),
   statusBar: document.getElementById("statusBar"),
   heroAppVersionText: document.getElementById("heroAppVersionText"),
+  heroVersionStatusText: document.getElementById("heroVersionStatusText"),
+  heroUpdateWatcherBtn: document.getElementById("heroUpdateWatcherBtn"),
+  heroCheckVersionBtn: document.getElementById("heroCheckVersionBtn"),
   heroPlatformText: document.getElementById("heroPlatformText"),
   appVersionText: document.getElementById("appVersionText"),
+  diagnosticsVersionStatusText: document.getElementById("diagnosticsVersionStatusText"),
+  diagnosticsUpdateWatcherBtn: document.getElementById("diagnosticsUpdateWatcherBtn"),
+  diagnosticsCheckVersionBtn: document.getElementById("diagnosticsCheckVersionBtn"),
   platformText: document.getElementById("platformText"),
   protocolStatusText: document.getElementById("protocolStatusText"),
   protocolDetailText: document.getElementById("protocolDetailText"),
@@ -173,6 +179,62 @@ function formatPlatform(value) {
   if (value === "darwin") return "macOS";
   if (value === "linux") return "Linux";
   return value || "Unknown";
+}
+
+function getReleaseStatus() {
+  const release = appInfo?.release || {};
+  const currentVersion = release.currentVersion || appInfo?.version || "Unknown";
+  const latestVersion = release.latestVersion || "";
+
+  if (release.phase === "checking") {
+    return {
+      headline: currentVersion,
+      detail: "Checking latest watcher release...",
+      showUpdate: false,
+      showCheck: false,
+      updateUrl: "",
+    };
+  }
+
+  if (release.updateAvailable) {
+    return {
+      headline: `${currentVersion} Update Available`,
+      detail: latestVersion
+        ? `Latest watcher is ${latestVersion}.`
+        : "A newer watcher build is available.",
+      showUpdate: true,
+      showCheck: false,
+      updateUrl: release.updateUrl || release.releaseUrl || "https://aoe2war.com/download",
+    };
+  }
+
+  if (release.isLatest) {
+    return {
+      headline: `${currentVersion} Latest Version`,
+      detail: "You are running the current watcher build.",
+      showUpdate: false,
+      showCheck: false,
+      updateUrl: "",
+    };
+  }
+
+  if (release.phase === "error") {
+    return {
+      headline: currentVersion,
+      detail: release.error || "Could not check the latest watcher release.",
+      showUpdate: false,
+      showCheck: true,
+      updateUrl: "",
+    };
+  }
+
+  return {
+    headline: currentVersion,
+    detail: "Latest release status will appear here.",
+    showUpdate: false,
+    showCheck: true,
+    updateUrl: "",
+  };
 }
 
 function formatDateTime(value) {
@@ -376,9 +438,21 @@ function renderStatusBar() {
 }
 
 function renderDiagnostics() {
-  els.heroAppVersionText.textContent = appInfo?.version || "Unknown";
+  const releaseStatus = getReleaseStatus();
+
+  els.heroAppVersionText.textContent = releaseStatus.headline;
+  els.heroVersionStatusText.textContent = releaseStatus.detail;
+  els.heroUpdateWatcherBtn.hidden = !releaseStatus.showUpdate;
+  els.heroUpdateWatcherBtn.disabled = !releaseStatus.showUpdate;
+  els.heroCheckVersionBtn.hidden = !releaseStatus.showCheck;
+  els.heroCheckVersionBtn.disabled = appInfo?.release?.phase === "checking";
   els.heroPlatformText.textContent = formatPlatform(appInfo?.platform);
-  els.appVersionText.textContent = appInfo?.version || "Unknown";
+  els.appVersionText.textContent = releaseStatus.headline;
+  els.diagnosticsVersionStatusText.textContent = releaseStatus.detail;
+  els.diagnosticsUpdateWatcherBtn.hidden = !releaseStatus.showUpdate;
+  els.diagnosticsUpdateWatcherBtn.disabled = !releaseStatus.showUpdate;
+  els.diagnosticsCheckVersionBtn.hidden = !releaseStatus.showCheck;
+  els.diagnosticsCheckVersionBtn.disabled = appInfo?.release?.phase === "checking";
   els.platformText.textContent = formatPlatform(appInfo?.platform);
   els.protocolStatusText.textContent = appInfo?.protocolRegistered
     ? "Browser handoff ready"
@@ -582,13 +656,56 @@ async function saveCurrentForm({ successMessage, silent = false } = {}) {
   return saved;
 }
 
+async function checkLatestRelease({ silent = false } = {}) {
+  try {
+    if (!silent) {
+      setStatus("Checking latest watcher release...", "neutral");
+    }
+
+    const release = await window.watcherApi.checkRelease();
+    appInfo = {
+      ...appInfo,
+      release,
+    };
+    renderAll();
+
+    if (!silent) {
+      setStatus(
+        release?.updateAvailable
+          ? `Watcher ${release.latestVersion} is ready to install.`
+          : `Watcher ${appInfo?.version || release?.currentVersion || ""} is the latest version.`,
+        release?.updateAvailable ? "warn" : "success"
+      );
+    }
+  } catch (error) {
+    setStatus(`Failed checking latest watcher release: ${error.message || error}`, "error", {
+      sticky: true,
+    });
+  }
+}
+
+async function openWatcherUpdate() {
+  const releaseStatus = getReleaseStatus();
+  try {
+    await window.watcherApi.openUpdate(releaseStatus.updateUrl);
+    setStatus("Opened watcher update download.", "success");
+  } catch (error) {
+    setStatus(`Failed opening update download: ${error.message || error}`, "error", {
+      sticky: true,
+    });
+  }
+}
+
 function buildSupportSnapshot() {
   const primaryStatus = getPrimaryStatus();
   const config = readForm();
+  const releaseStatus = getReleaseStatus();
 
   return [
     `Product: ${appInfo?.productName || "AoE2HDBets Watcher"}`,
     `Version: ${appInfo?.version || "Unknown"}`,
+    `Watcher release status: ${releaseStatus.headline}`,
+    `Watcher release detail: ${releaseStatus.detail}`,
     `Platform: ${formatPlatform(appInfo?.platform)}`,
     `Status: ${primaryStatus.label}`,
     `Status detail: ${primaryStatus.detail}`,
@@ -692,6 +809,11 @@ els.saveSettingsBtn.addEventListener("click", async () => {
     setStatus(`Failed saving settings: ${error.message || error}`, "error", { sticky: true });
   }
 });
+
+els.heroUpdateWatcherBtn.addEventListener("click", openWatcherUpdate);
+els.diagnosticsUpdateWatcherBtn.addEventListener("click", openWatcherUpdate);
+els.heroCheckVersionBtn.addEventListener("click", () => checkLatestRelease());
+els.diagnosticsCheckVersionBtn.addEventListener("click", () => checkLatestRelease());
 
 els.detectFolderBtn.addEventListener("click", async () => {
   try {

@@ -10,6 +10,8 @@ contextBridge.exposeInMainWorld("watcherApi", {
   chooseReplayDir: () => ipcRenderer.invoke("watcher:choose-replay-dir"),
   validateWatchDir: (targetPath) => ipcRenderer.invoke("watcher:validate-watch-dir", targetPath),
   getDefaultReplayDir: () => ipcRenderer.invoke("watcher:get-default-replay-dir"),
+  checkRelease: () => ipcRenderer.invoke("watcher:check-release"),
+  openUpdate: (updateUrl) => ipcRenderer.invoke("watcher:open-update", updateUrl),
   startImport: () => ipcRenderer.invoke("watcher:start-import"),
   retryImport: () => ipcRenderer.invoke("watcher:retry-import"),
   copyText: (value) => ipcRenderer.invoke("watcher:copy-text", value),

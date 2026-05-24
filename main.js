@@ -23,6 +23,9 @@ const {
 
 const WATCHER_PAIR_PROTOCOL = "aoe2hd-watcher";
 const APP_NAME = "AoE2HDBets Watcher";
+const DEFAULT_RELEASE_BASE_URL = "https://aoe2war.com";
+const RELEASE_ENDPOINT_PATH = "/api/watcher/release";
+const DOWNLOAD_PAGE_PATH = "/download";
 const LEGACY_DOMAIN_MIGRATIONS = [
   ["https://api-prodn.aoe2hdbets.com", "https://api-prodn.aoe2war.com"],
   ["https://api.aoe2hdbets.com", "https://api-prodn.aoe2war.com"],
@@ -32,6 +35,7 @@ const LEGACY_DOMAIN_MIGRATIONS = [
 const URL_CONFIG_KEYS = ["apiBaseUrl", "apiFallbackBaseUrl", "telemetryBaseUrl"];
 const TELEMETRY_HEARTBEAT_MS = Number(process.env.AOE2_TELEMETRY_HEARTBEAT_MS || 10 * 60 * 1000);
 const TELEMETRY_TIMEOUT_MS = Number(process.env.AOE2_TELEMETRY_TIMEOUT_MS || 5000);
+const RELEASE_CHECK_TIMEOUT_MS = Number(process.env.AOE2_RELEASE_CHECK_TIMEOUT_MS || 5000);
 const APP_SESSION_ID = createRandomId("session");
 
 let mainWindow = null;
@@ -42,6 +46,7 @@ let rendererReady = false;
 let pendingPairingUrl = null;
 let currentImportState = createImportStateFromSummary();
 let heartbeatTimer = null;
+let releaseState = createReleaseState();
 
 function getConfigPath() {
   return path.join(app.getPath("userData"), "watcher-config.json");
@@ -153,6 +158,179 @@ function getTelemetryBaseUrl(config) {
       process.env.AOE2_TELEMETRY_BASE_URL ||
       "https://aoe2war.com"
   );
+}
+
+function createReleaseState(overrides = {}) {
+  return {
+    phase: "idle",
+    currentVersion: null,
+    latestVersion: null,
+    updateAvailable: false,
+    isLatest: false,
+    label: "",
+    updateUrl: "",
+    updateLabel: "",
+    releaseUrl: `${DEFAULT_RELEASE_BASE_URL}${DOWNLOAD_PAGE_PATH}`,
+    checkedAt: null,
+    error: null,
+    ...overrides,
+  };
+}
+
+function parseVersionParts(value) {
+  const version = String(value || "").trim().replace(/^v/i, "");
+  return version
+    .split(".")
+    .map((part) => Number.parseInt(part.replace(/\D.*$/, ""), 10))
+    .map((part) => (Number.isFinite(part) ? part : 0));
+}
+
+function compareVersions(left, right) {
+  const leftParts = parseVersionParts(left);
+  const rightParts = parseVersionParts(right);
+  const length = Math.max(leftParts.length, rightParts.length, 3);
+
+  for (let index = 0; index < length; index += 1) {
+    const leftPart = leftParts[index] || 0;
+    const rightPart = rightParts[index] || 0;
+
+    if (leftPart > rightPart) {
+      return 1;
+    }
+
+    if (leftPart < rightPart) {
+      return -1;
+    }
+  }
+
+  return 0;
+}
+
+function toAbsoluteUrl(baseUrl, value) {
+  try {
+    return new URL(String(value || DOWNLOAD_PAGE_PATH), baseUrl).toString();
+  } catch {
+    return `${DEFAULT_RELEASE_BASE_URL}${DOWNLOAD_PAGE_PATH}`;
+  }
+}
+
+function getReleaseBaseUrlCandidates(config) {
+  return [
+    process.env.AOE2_WATCHER_RELEASE_BASE_URL,
+    config?.telemetryBaseUrl,
+    config?.apiFallbackBaseUrl,
+    DEFAULT_RELEASE_BASE_URL,
+  ]
+    .map(normalizeBaseUrl)
+    .filter(Boolean)
+    .filter((value, index, all) => all.indexOf(value) === index);
+}
+
+function getPreferredReleaseArtifactKey(platform = process.platform) {
+  if (platform === "win32") {
+    return "windows-installer";
+  }
+
+  if (platform === "darwin") {
+    return "mac-dmg";
+  }
+
+  if (platform === "linux") {
+    return "linux-appimage";
+  }
+
+  return null;
+}
+
+function pickReleaseArtifact(payload) {
+  const artifacts = Array.isArray(payload?.artifacts) ? payload.artifacts : [];
+  const preferredKey = getPreferredReleaseArtifactKey();
+  return (
+    artifacts.find((artifact) => artifact?.key === preferredKey) ||
+    artifacts.find((artifact) => artifact?.primary) ||
+    artifacts[0] ||
+    null
+  );
+}
+
+function buildReleaseStateFromPayload(payload, baseUrl) {
+  const currentVersion = app.getVersion();
+  const latestVersion = String(payload?.version || "").trim();
+  const artifact = pickReleaseArtifact(payload);
+  const comparison = latestVersion ? compareVersions(currentVersion, latestVersion) : 0;
+  const updateAvailable = Boolean(latestVersion && comparison < 0);
+  const isLatest = Boolean(latestVersion && comparison >= 0);
+  const releaseUrl = toAbsoluteUrl(baseUrl, payload?.releaseUrl || DOWNLOAD_PAGE_PATH);
+  const updateHref = artifact?.trackedHref || artifact?.downloadPath || payload?.downloadPath || DOWNLOAD_PAGE_PATH;
+
+  return createReleaseState({
+    phase: updateAvailable ? "available" : isLatest ? "current" : "unknown",
+    currentVersion,
+    latestVersion: latestVersion || null,
+    updateAvailable,
+    isLatest,
+    label: payload?.label || (latestVersion ? `${APP_NAME} ${latestVersion}` : ""),
+    updateUrl: toAbsoluteUrl(baseUrl, updateHref),
+    updateLabel: artifact?.title || "Download Update",
+    releaseUrl,
+    checkedAt: new Date().toISOString(),
+    error: null,
+  });
+}
+
+async function fetchWatcherRelease(config = loadConfig()) {
+  const baseUrls = getReleaseBaseUrlCandidates(config);
+  let lastError = null;
+
+  for (const baseUrl of baseUrls) {
+    try {
+      const response = await axios.get(`${baseUrl}${RELEASE_ENDPOINT_PATH}`, {
+        timeout: RELEASE_CHECK_TIMEOUT_MS,
+        headers: {
+          accept: "application/json",
+        },
+      });
+
+      if (response?.data?.version) {
+        return {
+          baseUrl,
+          payload: response.data,
+        };
+      }
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError || new Error("Latest watcher release could not be reached.");
+}
+
+async function refreshWatcherRelease(config = loadConfig()) {
+  releaseState = createReleaseState({
+    ...releaseState,
+    phase: "checking",
+    currentVersion: app.getVersion(),
+    error: null,
+  });
+  sendToRenderer("watcher:app-info", getAppInfo(config));
+
+  try {
+    const { baseUrl, payload } = await fetchWatcherRelease(config);
+    releaseState = buildReleaseStateFromPayload(payload, baseUrl);
+  } catch (error) {
+    releaseState = createReleaseState({
+      ...releaseState,
+      phase: "error",
+      currentVersion: app.getVersion(),
+      checkedAt: new Date().toISOString(),
+      error: error?.response?.status
+        ? `Release check failed with HTTP ${error.response.status}.`
+        : error?.message || "Release check failed.",
+    });
+  }
+
+  sendToRenderer("watcher:app-info", getAppInfo(config));
+  return releaseState;
 }
 
 function buildTelemetryPayload(eventType, payload = {}, config = loadConfig()) {
@@ -383,6 +561,7 @@ function getAppInfo(config = loadConfig()) {
     protocolRegistered: app.isDefaultProtocolClient(WATCHER_PAIR_PROTOCOL),
     supportedReplayExtensions: getSupportedReplayExtensions(),
     watchDirStatus: getWatchDirStatus(config.watchDir),
+    release: releaseState,
   };
 }
 
@@ -838,6 +1017,7 @@ function bootWatcherApp() {
     if ((config?.uploadApiKey || "") && config.uploadApiKey !== previous.uploadApiKey) {
       void verifyWatcherAuth(saved);
     }
+    void refreshWatcherRelease(saved);
     return saved;
   });
 
@@ -909,6 +1089,16 @@ function bootWatcherApp() {
     return getDefaultReplayDir() || "";
   });
 
+  ipcMain.handle("watcher:check-release", async () => {
+    return refreshWatcherRelease(loadConfig());
+  });
+
+  ipcMain.handle("watcher:open-update", async (_event, updateUrl) => {
+    const targetUrl = updateUrl || releaseState.updateUrl || releaseState.releaseUrl;
+    await shell.openExternal(targetUrl || `${DEFAULT_RELEASE_BASE_URL}${DOWNLOAD_PAGE_PATH}`);
+    return { ok: true };
+  });
+
   ipcMain.handle("watcher:start-import", async () => {
     return runHistoricalImport({ source: "scan" });
   });
@@ -960,6 +1150,7 @@ function bootWatcherApp() {
       },
     }, config);
     void verifyWatcherAuth(config);
+    void refreshWatcherRelease(config);
     startTelemetryHeartbeat();
 
     const pairedFromUrl = processPendingPairingUrl();
