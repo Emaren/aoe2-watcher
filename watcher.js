@@ -9,6 +9,12 @@ const FormData = require("form-data");
 const SUPPORTED_REPLAY_EXTENSIONS = [".aoe2record", ".aoe2mpgame", ".mgz", ".mgx", ".mgl"];
 const IMPORT_STABILITY_CHECK_MS = 1200;
 const IMPORT_ITEM_LIMIT = 75;
+const LEGACY_DOMAIN_MIGRATIONS = [
+  ["https://api-prodn.aoe2hdbets.com", "https://api-prodn.aoe2war.com"],
+  ["https://api.aoe2hdbets.com", "https://api-prodn.aoe2war.com"],
+  ["https://www.aoe2hdbets.com", "https://www.aoe2war.com"],
+  ["https://aoe2hdbets.com", "https://aoe2war.com"],
+];
 
 let activeWatcher = null;
 let activeUploadState = new Map();
@@ -101,17 +107,25 @@ function normalizeBaseUrl(value) {
   return (value || "").trim().replace(/\/$/, "");
 }
 
+function migrateLegacyBaseUrl(value) {
+  const normalized = normalizeBaseUrl(value);
+  return LEGACY_DOMAIN_MIGRATIONS.reduce(
+    (current, [from, to]) => current.replaceAll(from, to),
+    normalized
+  );
+}
+
 function buildRuntimeConfig(config = {}) {
   const defaultApiBaseUrl = "https://api-prodn.aoe2war.com";
 
-  const apiBaseUrl = normalizeBaseUrl(
+  const apiBaseUrl = migrateLegacyBaseUrl(
     config.apiBaseUrl || process.env.AOE2_API_BASE_URL || defaultApiBaseUrl
   );
 
   const defaultFallbackApiBaseUrl =
     apiBaseUrl === defaultApiBaseUrl ? "https://aoe2war.com" : "";
 
-  const apiFallbackBaseUrl = normalizeBaseUrl(
+  const apiFallbackBaseUrl = migrateLegacyBaseUrl(
     config.apiFallbackBaseUrl ||
       process.env.AOE2_API_FALLBACK_BASE_URL ||
       defaultFallbackApiBaseUrl

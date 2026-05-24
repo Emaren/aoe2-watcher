@@ -58,6 +58,9 @@ The main window now includes **Scan & Import Replays**.
 - `AOE2_WATCH_DIR` (default: platform-specific AoE2HD SaveGame path)
 - `WATCHER_USER_UID` (default: hostname-derived watcher id)
 - `AOE2_UPLOAD_API_KEY` (optional manual fallback; one-click pairing normally fills this in)
+
+Existing watcher installs that saved the retired `aoe2hdbets.com` endpoints migrate those
+settings to `aoe2war.com` on next launch.
 - `AOE2_UPLOAD_RETRY_ATTEMPTS` (default: `4`)
 - `AOE2_UPLOAD_RETRY_BASE_DELAY_MS` (default: `4000`)
 - `AOE2_UPLOAD_STABLE_CHECK_INTERVAL_MS` (default: `3000`)

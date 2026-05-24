@@ -23,6 +23,13 @@ const {
 
 const WATCHER_PAIR_PROTOCOL = "aoe2hd-watcher";
 const APP_NAME = "AoE2HDBets Watcher";
+const LEGACY_DOMAIN_MIGRATIONS = [
+  ["https://api-prodn.aoe2hdbets.com", "https://api-prodn.aoe2war.com"],
+  ["https://api.aoe2hdbets.com", "https://api-prodn.aoe2war.com"],
+  ["https://www.aoe2hdbets.com", "https://www.aoe2war.com"],
+  ["https://aoe2hdbets.com", "https://aoe2war.com"],
+];
+const URL_CONFIG_KEYS = ["apiBaseUrl", "apiFallbackBaseUrl", "telemetryBaseUrl"];
 const TELEMETRY_HEARTBEAT_MS = Number(process.env.AOE2_TELEMETRY_HEARTBEAT_MS || 10 * 60 * 1000);
 const TELEMETRY_TIMEOUT_MS = Number(process.env.AOE2_TELEMETRY_TIMEOUT_MS || 5000);
 const APP_SESSION_ID = createRandomId("session");
@@ -72,6 +79,28 @@ function getDefaultConfig() {
   };
 }
 
+function migrateLegacyUrl(value) {
+  if (typeof value !== "string") {
+    return value;
+  }
+
+  const normalized = normalizeBaseUrl(value);
+  return LEGACY_DOMAIN_MIGRATIONS.reduce(
+    (current, [from, to]) => current.replaceAll(from, to),
+    normalized
+  );
+}
+
+function migrateLegacyConfig(config) {
+  const migrated = { ...config };
+
+  for (const key of URL_CONFIG_KEYS) {
+    migrated[key] = migrateLegacyUrl(migrated[key]);
+  }
+
+  return migrated;
+}
+
 function loadConfig() {
   const configPath = getConfigPath();
   const defaults = getDefaultConfig();
@@ -83,11 +112,16 @@ function loadConfig() {
 
     const raw = fs.readFileSync(configPath, "utf8");
     const parsed = JSON.parse(raw);
-
-    return ensureWatcherId({
+    const merged = ensureWatcherId(migrateLegacyConfig({
       ...defaults,
       ...parsed,
-    });
+    }));
+
+    if (JSON.stringify(parsed) !== JSON.stringify({ ...parsed, ...migrateLegacyConfig(parsed) })) {
+      fs.writeFileSync(configPath, JSON.stringify(merged, null, 2), "utf8");
+    }
+
+    return merged;
   } catch (error) {
     console.error("Failed to load watcher config:", error);
     return ensureWatcherId(defaults);
@@ -99,7 +133,7 @@ function saveConfig(config) {
   const merged = ensureWatcherId({
     ...getDefaultConfig(),
     ...loadConfig(),
-    ...config,
+    ...migrateLegacyConfig(config),
   });
 
   fs.mkdirSync(path.dirname(configPath), { recursive: true });
