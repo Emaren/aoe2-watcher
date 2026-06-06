@@ -183,7 +183,7 @@ function getRuntimeValidationError(runtimeConfig) {
   }
 
   if (!runtimeConfig.uploadApiKey) {
-    return "Watcher key is missing. Paste it in Watcher settings before starting.";
+    return "Profile is not paired. Click Pair Profile before starting.";
   }
 
   return null;
@@ -321,25 +321,187 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function parseFingerprintParts(fingerprint = "") {
+  const [sizeRaw, mtimeRaw] = String(fingerprint || "").split(":");
+  const fileSizeBytes = Number(sizeRaw);
+  const mtimeMs = Number(mtimeRaw);
+
+  return {
+    fileSizeBytes: Number.isFinite(fileSizeBytes) ? fileSizeBytes : null,
+    mtimeMs: Number.isFinite(mtimeMs) ? mtimeMs : null,
+  };
+}
+
+function safeShortText(value, maxLength = 600) {
+  let text;
+
+  try {
+    text = typeof value === "string" ? value : JSON.stringify(value);
+  } catch {
+    text = String(value);
+  }
+
+  if (!text) {
+    return "";
+  }
+
+  return text.length > maxLength ? `${text.slice(0, maxLength)}…` : text;
+}
+
+function summarizeUploadResponse(data = {}) {
+  return {
+    resultType: classifyUploadResult(formatResponseBody(data)),
+    replayHash: data?.replay_hash || data?.replayHash || data?.hash || null,
+    gameId: data?.game_id || data?.gameId || data?.id || null,
+    summary: safeShortText(data, 800),
+  };
+}
+
+function isUnknownishValue(value) {
+  if (value === null || value === undefined) {
+    return true;
+  }
+
+  if (typeof value !== "string") {
+    return false;
+  }
+
+  const normalized = value.trim().toLowerCase();
+  return (
+    normalized === "" ||
+    normalized === "unknown" ||
+    normalized === "unknown map" ||
+    normalized === "unknown player" ||
+    normalized === "n/a" ||
+    normalized === "na" ||
+    normalized === "null" ||
+    normalized === "undefined"
+  );
+}
+
+function isImportantParseField(key = "") {
+  const normalized = String(key || "").toLowerCase();
+  return (
+    normalized === "map" ||
+    normalized === "map_name" ||
+    normalized === "mapname" ||
+    normalized === "winner" ||
+    normalized === "duration" ||
+    normalized === "game_duration" ||
+    normalized === "players" ||
+    normalized === "player" ||
+    normalized === "name" ||
+    normalized.includes("map") ||
+    normalized.includes("winner") ||
+    normalized.includes("duration")
+  );
+}
+
+function detectUnknownParseFields(payload) {
+  const found = new Set();
+
+  function visit(value, pathParts = []) {
+    if (!value || typeof value !== "object") {
+      return;
+    }
+
+    if (Array.isArray(value)) {
+      value.forEach((item, index) => visit(item, [...pathParts, String(index)]));
+      return;
+    }
+
+    for (const [key, child] of Object.entries(value)) {
+      const childPath = [...pathParts, key];
+      const childPathText = childPath.join(".");
+      const important = isImportantParseField(key);
+
+      if (important && isUnknownishValue(child)) {
+        found.add(childPathText);
+        continue;
+      }
+
+      if (important && Array.isArray(child) && child.length === 0) {
+        found.add(childPathText);
+        continue;
+      }
+
+      if (important && child && typeof child === "object") {
+        const objectName = child.name || child.label || child.value;
+        if (isUnknownishValue(objectName)) {
+          found.add(`${childPathText}.name`);
+        }
+      }
+
+      visit(child, childPath);
+    }
+  }
+
+  visit(payload);
+  return Array.from(found).slice(0, 30);
+}
+
 async function waitForFirstBytes(filePath, runtimeConfig) {
   const startedAt = Date.now();
+  let lastSize = null;
+  let lastProgressEventAt = 0;
+  let lastWaitingEventAt = 0;
 
   while (Date.now() - startedAt <= runtimeConfig.firstBytesTimeoutMs) {
     if (!fs.existsSync(filePath)) {
       log(`Replay disappeared before first parse: ${path.basename(filePath)}`, "warn");
+      emitRuntimeEvent("skip-file-missing", {
+        filePath,
+        fileName: path.basename(filePath),
+        reason: "missing_before_byte_floor",
+        minReplayBytes: runtimeConfig.minReplayBytes,
+        waitedMs: Date.now() - startedAt,
+      });
       return false;
     }
 
     try {
       const stats = await fs.promises.stat(filePath);
+      const now = Date.now();
+      const payload = {
+        filePath,
+        fileName: path.basename(filePath),
+        fileSizeBytes: stats.size,
+        previousFileSizeBytes: lastSize,
+        minReplayBytes: runtimeConfig.minReplayBytes,
+        mtimeMs: Math.floor(stats.mtimeMs),
+        waitedMs: now - startedAt,
+        remainingTimeoutMs: Math.max(0, runtimeConfig.firstBytesTimeoutMs - (now - startedAt)),
+      };
+
+      if (stats.size !== lastSize || now - lastProgressEventAt >= 30000) {
+        emitRuntimeEvent("file-size-progress", {
+          ...payload,
+          reachedMinimum: stats.size >= runtimeConfig.minReplayBytes,
+        });
+        lastProgressEventAt = now;
+      }
+
       if (stats.size >= runtimeConfig.minReplayBytes) {
         return true;
       }
+
+      if (now - lastWaitingEventAt >= 15000) {
+        emitRuntimeEvent("waiting-for-minimum-size", payload);
+        lastWaitingEventAt = now;
+      }
+
+      lastSize = stats.size;
     } catch (err) {
       log(
         `Unable to inspect ${path.basename(filePath)} before live parse: ${err.message}`,
         "warn"
       );
+      emitRuntimeEvent("watcher-error", {
+        filePath,
+        fileName: path.basename(filePath),
+        detail: err.message,
+        reason: "stat_failed_before_byte_floor",
+      });
       return false;
     }
 
@@ -352,6 +514,16 @@ async function waitForFirstBytes(filePath, runtimeConfig) {
     )}`,
     "warn"
   );
+
+  emitRuntimeEvent("skip-file-too-small", {
+    filePath,
+    fileName: path.basename(filePath),
+    reason: "byte_floor_timeout",
+    fileSizeBytes: lastSize,
+    minReplayBytes: runtimeConfig.minReplayBytes,
+    waitedMs: Date.now() - startedAt,
+  });
+
   return false;
 }
 
@@ -643,6 +815,28 @@ async function uploadReplayWithRetry(
         });
         const detail = formatResponseBody(res.data);
         const resultType = classifyUploadResult(detail);
+        const responseSummary = summarizeUploadResponse(res.data);
+        const unknownParseFields = detectUnknownParseFields(res.data);
+
+        if (unknownParseFields.length > 0) {
+          emitRuntimeEvent("parse-result-unknown-fields", {
+            filePath,
+            fileName: path.basename(filePath),
+            isFinal,
+            parseIteration,
+            parseSource,
+            parseReason,
+            uploadHost: targetHost,
+            attempt,
+            responseStatus: res.status,
+            resultType,
+            replayHash: responseSummary.replayHash,
+            unknownFields: unknownParseFields,
+            responseSummary: responseSummary.summary,
+            ...parseFingerprintParts(attemptFingerprint),
+          });
+        }
+
         const replayHash =
           typeof res?.data?.replay_hash === "string" && res.data.replay_hash.trim()
             ? res.data.replay_hash.trim()
@@ -783,17 +977,32 @@ async function uploadReplayWithRetry(
 async function monitorReplayFile(filePath, runtimeConfig) {
   if (!shouldHandle(filePath, runtimeConfig)) {
     log(`Ignoring non-replay file: ${path.basename(filePath)}`, "warn");
+    emitRuntimeEvent("skip-unknown", {
+      filePath,
+      fileName: path.basename(filePath),
+      reason: "unsupported_extension",
+    });
     return;
   }
 
   const entry = getStateEntry(filePath);
   if (entry.monitoring) {
     log(`Skipping duplicate monitor for ${path.basename(filePath)} because it is already active.`);
+    emitRuntimeEvent("skip-upload-in-progress", {
+      filePath,
+      fileName: path.basename(filePath),
+      reason: "monitor_already_active",
+    });
     return;
   }
 
   if (entry.importing) {
     log(`Skipping live monitor for ${path.basename(filePath)} because it is importing already.`, "warn");
+    emitRuntimeEvent("skip-upload-in-progress", {
+      filePath,
+      fileName: path.basename(filePath),
+      reason: "batch_upload_active",
+    });
     return;
   }
 
@@ -807,6 +1016,12 @@ async function monitorReplayFile(filePath, runtimeConfig) {
       `Skipping monitor for ${path.basename(filePath)} because replay already matches final upload state (${finalReplayShortCircuit.reason}).`
     );
     emitRuntimeEvent("monitor-skip-final", {
+      filePath,
+      fileName: path.basename(filePath),
+      reason: finalReplayShortCircuit.reason,
+      replayHash: finalReplayShortCircuit.replayHash || entry.lastFinalReplayHash || null,
+    });
+    emitRuntimeEvent("skip-already-finalized", {
       filePath,
       fileName: path.basename(filePath),
       reason: finalReplayShortCircuit.reason,
@@ -1121,12 +1336,73 @@ async function listImportCandidates(runtimeConfig, filePaths = null) {
   };
 }
 
+async function getImportFileFacts(filePath, fingerprint = null) {
+  const facts = {
+    filePath,
+    fileName: path.basename(filePath),
+    fileSizeBytes: null,
+    mtimeMs: null,
+    fingerprint: fingerprint || null,
+  };
+
+  if (fingerprint) {
+    Object.assign(facts, parseFingerprintParts(fingerprint));
+  }
+
+  try {
+    if (fs.existsSync(filePath)) {
+      const stats = await fs.promises.stat(filePath);
+      facts.fileSizeBytes = stats.size;
+      facts.mtimeMs = Math.floor(stats.mtimeMs);
+    }
+  } catch (error) {
+    facts.statError = error.message || String(error);
+  }
+
+  return facts;
+}
+
+function buildBatchTelemetryPayload(state, patch = {}) {
+  return {
+    source: state.source,
+    phase: state.phase,
+    found: state.found,
+    queued: state.queued,
+    totalFiles: state.queued,
+    unsupportedCount: state.unsupported,
+    uploadedCount: state.uploaded,
+    skippedCount: state.skipped,
+    failedCount: state.failed,
+    currentIndex: state.currentIndex,
+    currentFile: state.currentFile,
+    percent: state.percent,
+    startedAt: state.startedAt,
+    completedAt: state.completedAt,
+    summaryText: state.summaryText,
+    ...patch,
+  };
+}
+
+async function emitBatchFileEvent(eventType, state, filePath, patch = {}) {
+  const facts = await getImportFileFacts(filePath, patch.fingerprint || null);
+  emitRuntimeEvent(eventType, buildBatchTelemetryPayload(state, {
+    ...facts,
+    ...patch,
+  }));
+}
+
+
 async function importHistoricalReplays(config = {}, options = {}, hooks = {}) {
   setRuntimeHooks(hooks);
 
   const runtimeConfig = buildRuntimeConfig(config);
   const validationError = getRuntimeValidationError(runtimeConfig);
   if (validationError) {
+    emitRuntimeEvent("batch-upload-failed", {
+      phase: "validation",
+      reason: "validation_error",
+      detail: validationError,
+    });
     throw new Error(validationError);
   }
 
@@ -1151,6 +1427,11 @@ async function importHistoricalReplays(config = {}, options = {}, hooks = {}) {
     summaryText: "",
   };
 
+  emitRuntimeEvent("batch-upload-started", buildBatchTelemetryPayload(state, {
+    watchDir: runtimeConfig.watchDir,
+    explicitFileCount: Array.isArray(options.filePaths) ? options.filePaths.length : null,
+  }));
+
   emitImportProgress(state, hooks);
 
   const { supportedFiles, unsupported, skippedAtScan } = await listImportCandidates(
@@ -1161,28 +1442,34 @@ async function importHistoricalReplays(config = {}, options = {}, hooks = {}) {
   state.found = supportedFiles.length;
   state.unsupported = unsupported;
 
+  emitRuntimeEvent("batch-upload-scanned", buildBatchTelemetryPayload(state, {
+    supportedCount: supportedFiles.length,
+    skippedAtScanCount: skippedAtScan.length,
+  }));
+
   const queue = [];
   for (const candidate of supportedFiles) {
     const entry = getStateEntry(candidate.filePath);
+
     if (entry.monitoring) {
       state.skipped += 1;
-      pushImportItem(
-        state.skippedItems,
-        createImportItem(
-          candidate.filePath,
-          "skipped",
-          "Already being watched live. Let the watcher finish the current replay."
-        )
-      );
+      const detail = "Already being watched live. Let the watcher finish the current replay.";
+      pushImportItem(state.skippedItems, createImportItem(candidate.filePath, "skipped", detail));
+      await emitBatchFileEvent("batch-upload-file-skipped", state, candidate.filePath, {
+        reason: "monitoring",
+        detail,
+      });
       continue;
     }
 
     if (entry.importing) {
       state.skipped += 1;
-      pushImportItem(
-        state.skippedItems,
-        createImportItem(candidate.filePath, "skipped", "Already queued for import in this session.")
-      );
+      const detail = "Already queued for import in this session.";
+      pushImportItem(state.skippedItems, createImportItem(candidate.filePath, "skipped", detail));
+      await emitBatchFileEvent("batch-upload-file-skipped", state, candidate.filePath, {
+        reason: "already_importing",
+        detail,
+      });
       continue;
     }
 
@@ -1192,6 +1479,11 @@ async function importHistoricalReplays(config = {}, options = {}, hooks = {}) {
   for (const skippedItem of skippedAtScan) {
     state.skipped += 1;
     pushImportItem(state.skippedItems, skippedItem);
+    await emitBatchFileEvent("batch-upload-file-skipped", state, skippedItem.filePath, {
+      reason: "scan_skip",
+      detail: skippedItem.detail,
+      status: skippedItem.status,
+    });
   }
 
   state.queued = queue.length;
@@ -1206,7 +1498,13 @@ async function importHistoricalReplays(config = {}, options = {}, hooks = {}) {
       state.found === 0
         ? "No supported replay files were found in this folder."
         : buildImportSummaryText(state);
+    updateImportPercent(state);
     emitImportProgress(state, hooks);
+
+    emitRuntimeEvent("batch-upload-finished", buildBatchTelemetryPayload(state, {
+      reason: "empty_queue",
+    }));
+
     return cloneImportState(state);
   }
 
@@ -1219,6 +1517,10 @@ async function importHistoricalReplays(config = {}, options = {}, hooks = {}) {
     state.phase = "uploading";
     emitImportProgress(state, hooks);
 
+    await emitBatchFileEvent("batch-upload-file-started", state, candidate.filePath, {
+      reason: "queued",
+    });
+
     const stability = await getStableImportFingerprint(candidate.filePath);
 
     if (!stability.stable) {
@@ -1229,24 +1531,45 @@ async function importHistoricalReplays(config = {}, options = {}, hooks = {}) {
           : stability.reason === "missing"
             ? "Replay disappeared before import started."
             : stability.detail || "Unable to inspect replay file.";
+
       pushImportItem(state.skippedItems, createImportItem(candidate.filePath, "skipped", reason));
       pushImportItem(state.recentItems, createImportItem(candidate.filePath, "skipped", reason));
+
+      await emitBatchFileEvent("batch-upload-file-skipped", state, candidate.filePath, {
+        reason: stability.reason || "unstable",
+        detail: reason,
+        fingerprint: stability.fingerprint || null,
+      });
+
       updateImportPercent(state);
       emitImportProgress(state, hooks);
       continue;
     }
+
+    await emitBatchFileEvent("batch-upload-file-stable", state, candidate.filePath, {
+      reason: "stable",
+      fingerprint: stability.fingerprint,
+    });
 
     if (entry.lastFinalUploadedFingerprint === stability.fingerprint) {
       state.skipped += 1;
       const detail = "Already imported in this app session.";
       pushImportItem(state.skippedItems, createImportItem(candidate.filePath, "skipped", detail));
       pushImportItem(state.recentItems, createImportItem(candidate.filePath, "skipped", detail));
+
+      await emitBatchFileEvent("batch-upload-file-skipped", state, candidate.filePath, {
+        reason: "already_finalized_in_session",
+        detail,
+        fingerprint: stability.fingerprint,
+      });
+
       updateImportPercent(state);
       emitImportProgress(state, hooks);
       continue;
     }
 
     entry.importing = true;
+
     try {
       const result = await uploadReplayWithRetry(candidate.filePath, runtimeConfig, entry, {
         fingerprint: stability.fingerprint,
@@ -1257,21 +1580,60 @@ async function importHistoricalReplays(config = {}, options = {}, hooks = {}) {
       if (!result.ok) {
         state.failed += 1;
         const detail = result.errorMessage || "Upload failed.";
+
         pushImportItem(state.failedItems, createImportItem(candidate.filePath, "failed", detail));
         pushImportItem(state.recentItems, createImportItem(candidate.filePath, "failed", detail));
+
+        await emitBatchFileEvent("batch-upload-file-failed", state, candidate.filePath, {
+          reason: "upload_failed",
+          detail,
+          fingerprint: stability.fingerprint,
+          resultType: result.resultType || null,
+          responseStatus: result.responseStatus || null,
+        });
       } else if (result.resultType === "duplicate") {
         state.skipped += 1;
         const detail = result.detail || "Replay already exists on AoE2HDBets.";
+
         pushImportItem(state.skippedItems, createImportItem(candidate.filePath, "skipped", detail));
         pushImportItem(state.recentItems, createImportItem(candidate.filePath, "skipped", detail));
+
+        await emitBatchFileEvent("batch-upload-file-skipped", state, candidate.filePath, {
+          reason: "duplicate",
+          detail,
+          fingerprint: stability.fingerprint,
+          resultType: result.resultType,
+          replayHash: result.replayHash || null,
+        });
       } else {
         state.uploaded += 1;
         const detail =
           result.resultType === "refreshed"
             ? result.detail || "Replay refreshed with better final data."
             : result.detail || "Replay imported successfully.";
+
         pushImportItem(state.recentItems, createImportItem(candidate.filePath, "uploaded", detail));
+
+        await emitBatchFileEvent("batch-upload-file-succeeded", state, candidate.filePath, {
+          reason: "uploaded",
+          detail,
+          fingerprint: stability.fingerprint,
+          resultType: result.resultType || "uploaded",
+          replayHash: result.replayHash || null,
+        });
       }
+    } catch (error) {
+      state.failed += 1;
+      const detail = error.message || String(error) || "Unexpected batch upload failure.";
+
+      pushImportItem(state.failedItems, createImportItem(candidate.filePath, "failed", detail));
+      pushImportItem(state.recentItems, createImportItem(candidate.filePath, "failed", detail));
+
+      await emitBatchFileEvent("batch-upload-file-failed", state, candidate.filePath, {
+        reason: "exception",
+        detail,
+        fingerprint: stability.fingerprint,
+      });
     } finally {
       entry.importing = false;
       state.currentFile = "";
@@ -1287,8 +1649,13 @@ async function importHistoricalReplays(config = {}, options = {}, hooks = {}) {
   updateImportPercent(state);
   emitImportProgress(state, hooks);
 
+  emitRuntimeEvent("batch-upload-finished", buildBatchTelemetryPayload(state, {
+    reason: state.failed > 0 ? "complete_with_failures" : "complete",
+  }));
+
   return cloneImportState(state);
 }
+
 
 function stopWatching() {
   if (activeWatcher) {

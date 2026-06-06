@@ -1,6 +1,6 @@
 {
   "name": "aoe2-watcher",
-  "version": "1.1.5",
+  "version": "1.1.6",
   "description": "AoE2HDBets Replay Watcher",
   "author": "AoE2HDBets",
   "license": "ISC",
@@ -10,11 +10,11 @@
     "start": "electron main.js",
     "build": "electron-builder",
     "pack": "electron-builder --dir",
-    "dist:mac": "electron-builder --mac dmg",
+    "dist:mac": "electron-builder --mac dmg zip --arm64",
     "dist:win": "electron-builder --win nsis portable --x64",
     "dist:linux": "electron-builder --linux AppImage --x64",
     "dist:manual-zip": "node scripts/build-manual-zip.mjs",
-    "dist:release": "npm run dist:mac && npm run dist:manual-zip && npm run dist:linux"
+    "dist:release": "npm run dist:win && npm run dist:mac && npm run dist:manual-zip && npm run dist:linux"
   },
   "build": {
     "appId": "com.aoe2hdbets.watcher",
@@ -44,7 +44,8 @@
     "mac": {
       "category": "public.app-category.utilities",
       "target": [
-        "dmg"
+        "dmg",
+        "zip"
       ],
       "icon": "build/icon.icns",
       "minimumSystemVersion": "10.13",
@@ -55,7 +56,7 @@
       "extendInfo": {
         "CFBundleDisplayName": "AoE2HDBets Watcher",
         "CFBundleName": "AoE2HDBets Watcher",
-        "NSHumanReadableCopyright": "© AoE2HDBets"
+        "NSHumanReadableCopyright": "\u00a9 AoE2HDBets"
       }
     },
     "win": {
@@ -125,13 +126,20 @@
         "en_US"
       ]
     },
-    "afterSign": "scripts/notarize.js"
+    "afterSign": "scripts/notarize.js",
+    "publish": [
+      {
+        "provider": "generic",
+        "url": "https://aoe2war.com/downloads"
+      }
+    ]
   },
   "keywords": [],
   "dependencies": {
     "axios": "^1.8.4",
     "chokidar": "^4.0.3",
     "dotenv": "^16.5.0",
+    "electron-updater": "^6.8.9",
     "form-data": "^4.0.2"
   },
   "devDependencies": {

@@ -11,6 +11,8 @@ contextBridge.exposeInMainWorld("watcherApi", {
   validateWatchDir: (targetPath) => ipcRenderer.invoke("watcher:validate-watch-dir", targetPath),
   getDefaultReplayDir: () => ipcRenderer.invoke("watcher:get-default-replay-dir"),
   checkRelease: () => ipcRenderer.invoke("watcher:check-release"),
+  checkUpdate: () => ipcRenderer.invoke("watcher:check-update"),
+  installUpdate: () => ipcRenderer.invoke("watcher:install-update"),
   openUpdate: (updateUrl) => ipcRenderer.invoke("watcher:open-update", updateUrl),
   startImport: () => ipcRenderer.invoke("watcher:start-import"),
   retryImport: () => ipcRenderer.invoke("watcher:retry-import"),
@@ -29,6 +31,9 @@ contextBridge.exposeInMainWorld("watcherApi", {
   },
   onImportState: (callback) => {
     ipcRenderer.on("watcher:import-state", (_event, payload) => callback(payload));
+  },
+  onUpdateState: (callback) => {
+    ipcRenderer.on("watcher:update-state", (_event, payload) => callback(payload));
   },
   onLog: (callback) => {
     ipcRenderer.on("watcher:log", (_event, payload) => callback(payload));

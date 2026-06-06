@@ -3,6 +3,7 @@ require("dotenv").config();
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+const os = require("os");
 const axios = require("axios");
 const {
   app,
@@ -12,6 +13,7 @@ const {
   ipcMain,
   shell,
 } = require("electron");
+const { autoUpdater } = require("electron-updater");
 
 const {
   getDefaultReplayDir,
@@ -36,6 +38,7 @@ const URL_CONFIG_KEYS = ["apiBaseUrl", "apiFallbackBaseUrl", "telemetryBaseUrl"]
 const TELEMETRY_HEARTBEAT_MS = Number(process.env.AOE2_TELEMETRY_HEARTBEAT_MS || 10 * 60 * 1000);
 const TELEMETRY_TIMEOUT_MS = Number(process.env.AOE2_TELEMETRY_TIMEOUT_MS || 5000);
 const RELEASE_CHECK_TIMEOUT_MS = Number(process.env.AOE2_RELEASE_CHECK_TIMEOUT_MS || 5000);
+const AUTO_UPDATE_FEED_URL = process.env.AOE2_UPDATE_FEED_URL || "https://aoe2war.com/downloads";
 const APP_SESSION_ID = createRandomId("session");
 
 let mainWindow = null;
@@ -47,6 +50,338 @@ let pendingPairingUrl = null;
 let currentImportState = createImportStateFromSummary();
 let heartbeatTimer = null;
 let releaseState = createReleaseState();
+let updateState = createUpdateState();
+let updateCheckInFlight = false;
+let updateEventsConfigured = false;
+
+
+function createUpdateState(patch = {}) {
+  return {
+    supported: Boolean(autoUpdater),
+    status: "idle",
+    message: "Updates idle.",
+    feedUrl: AUTO_UPDATE_FEED_URL,
+    currentVersion: typeof app.getVersion === "function" ? app.getVersion() : null,
+    updateVersion: null,
+    downloaded: false,
+    downloadPercent: 0,
+    error: null,
+    checkedAt: null,
+    updatedAt: null,
+    ...patch,
+  };
+}
+
+function buildRuntimeMetadata(config = loadConfig()) {
+  return {
+    appVersion: typeof app.getVersion === "function" ? app.getVersion() : null,
+    platform: process.platform,
+    arch: process.arch,
+    osPlatform: os.platform(),
+    osRelease: os.release(),
+    electronVersion: process.versions.electron,
+    nodeVersion: process.versions.node,
+    watcherId: config?.watcherId || null,
+    sessionId: APP_SESSION_ID,
+    isWatching: Boolean(watcherHandle),
+    importRunning: Boolean(currentImportState?.isRunning),
+    appPackaged: Boolean(app.isPackaged),
+    updateFeedUrl: AUTO_UPDATE_FEED_URL,
+  };
+}
+
+function emitUpdateTelemetry(eventType, payload = {}, config = loadConfig()) {
+  emitWatcherTelemetry(
+    eventType,
+    {
+      ...payload,
+      metadata: {
+        ...(payload.metadata || {}),
+        ...buildRuntimeMetadata(config),
+        updateState,
+      },
+    },
+    config
+  );
+}
+
+function setUpdateState(patch = {}, options = {}) {
+  updateState = {
+    ...updateState,
+    ...patch,
+    updatedAt: new Date().toISOString(),
+  };
+
+  sendToRenderer("watcher:update-state", updateState);
+  sendToRenderer("watcher:app-info", getAppInfo(loadConfig()));
+
+  if (options.logMessage) {
+    appendLog(options.logMessage, options.level || "info");
+  }
+
+  if (options.telemetryEvent) {
+    emitUpdateTelemetry(options.telemetryEvent, options.telemetryPayload || {});
+  }
+
+  return updateState;
+}
+
+function configureAutoUpdater() {
+  if (updateEventsConfigured) {
+    return updateState;
+  }
+
+  updateEventsConfigured = true;
+
+  if (!autoUpdater) {
+    return setUpdateState({
+      supported: false,
+      status: "unsupported",
+      message: "Auto-updates are unavailable in this build.",
+    });
+  }
+
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+
+  try {
+    autoUpdater.setFeedURL({
+      provider: "generic",
+      url: AUTO_UPDATE_FEED_URL,
+    });
+  } catch (error) {
+    return setUpdateState(
+      {
+        supported: false,
+        status: "feed_error",
+        error: error.message || String(error),
+        message: "Update feed could not be configured.",
+      },
+      {
+        logMessage: `Update feed error: ${error.message || error}`,
+        level: "warn",
+        telemetryEvent: "watcher_update_error",
+      }
+    );
+  }
+
+  autoUpdater.on("checking-for-update", () => {
+    setUpdateState({
+      supported: true,
+      status: "checking",
+      message: "Checking for watcher updates...",
+      checkedAt: new Date().toISOString(),
+      error: null,
+    });
+  });
+
+  autoUpdater.on("update-available", (info = {}) => {
+    setUpdateState(
+      {
+        supported: true,
+        status: "available",
+        message: `Watcher update ${info.version || ""} is available.`.trim(),
+        updateVersion: info.version || null,
+        downloaded: false,
+        downloadPercent: 0,
+        error: null,
+      },
+      {
+        logMessage: `Watcher update ${info.version || ""} available. Downloading in the background...`.trim(),
+        telemetryEvent: "watcher_update_available",
+        telemetryPayload: { metadata: { updateInfo: info } },
+      }
+    );
+  });
+
+  autoUpdater.on("update-not-available", (info = {}) => {
+    setUpdateState(
+      {
+        supported: true,
+        status: "current",
+        message: "Watcher is up to date.",
+        updateVersion: info.version || null,
+        downloaded: false,
+        downloadPercent: 0,
+        error: null,
+      },
+      {
+        telemetryEvent: "watcher_update_not_available",
+        telemetryPayload: { metadata: { updateInfo: info } },
+      }
+    );
+  });
+
+  autoUpdater.on("download-progress", (progress = {}) => {
+    const percent = Number(progress.percent || 0);
+    setUpdateState({
+      supported: true,
+      status: "downloading",
+      message: `Downloading watcher update (${Math.round(percent)}%).`,
+      downloadPercent: percent,
+      error: null,
+    });
+  });
+
+  autoUpdater.on("update-downloaded", (info = {}) => {
+    setUpdateState(
+      {
+        supported: true,
+        status: "downloaded",
+        message: "Watcher update downloaded. It will install when the app closes.",
+        updateVersion: info.version || null,
+        downloaded: true,
+        downloadPercent: 100,
+        error: null,
+      },
+      {
+        logMessage: "Watcher update downloaded. Close and reopen the watcher to finish updating.",
+        telemetryEvent: "watcher_update_downloaded",
+        telemetryPayload: { metadata: { updateInfo: info } },
+      }
+    );
+  });
+
+  autoUpdater.on("error", (error) => {
+    setUpdateState(
+      {
+        supported: true,
+        status: "error",
+        message: "Watcher update check failed.",
+        error: error?.message || String(error),
+      },
+      {
+        logMessage: `Watcher update error: ${error?.message || error}`,
+        level: "warn",
+        telemetryEvent: "watcher_update_error",
+      }
+    );
+  });
+
+  return updateState;
+}
+
+async function checkForWatcherUpdates({ manual = false, config = loadConfig() } = {}) {
+  configureAutoUpdater();
+
+  if (!autoUpdater) {
+    return setUpdateState({
+      supported: false,
+      status: "unsupported",
+      message: "Auto-updates are unavailable in this build.",
+    });
+  }
+
+  if (!app.isPackaged && process.env.AOE2_UPDATE_CHECK_IN_DEV !== "1") {
+    return setUpdateState(
+      {
+        supported: true,
+        status: "dev_skipped",
+        message: "Update checks are skipped while running from source.",
+        checkedAt: new Date().toISOString(),
+      },
+      {
+        telemetryEvent: "watcher_update_not_available",
+        telemetryPayload: {
+          metadata: {
+            manual,
+            reason: "development_mode",
+          },
+        },
+      }
+    );
+  }
+
+  if (updateCheckInFlight) {
+    return updateState;
+  }
+
+  updateCheckInFlight = true;
+
+  setUpdateState(
+    {
+      supported: true,
+      status: "checking",
+      message: manual ? "Manual update check started." : "Checking for watcher updates...",
+      checkedAt: new Date().toISOString(),
+      error: null,
+    },
+    {
+      logMessage: manual ? "Checking for watcher updates..." : null,
+      telemetryEvent: "watcher_update_check_started",
+      telemetryPayload: {
+        metadata: {
+          manual,
+        },
+      },
+    }
+  );
+
+  try {
+    await autoUpdater.checkForUpdates();
+    return updateState;
+  } catch (error) {
+    return setUpdateState(
+      {
+        supported: true,
+        status: "error",
+        message: "Watcher update check failed.",
+        error: error?.message || String(error),
+      },
+      {
+        logMessage: `Watcher update check failed: ${error?.message || error}`,
+        level: "warn",
+        telemetryEvent: "watcher_update_error",
+        telemetryPayload: {
+          metadata: {
+            manual,
+          },
+        },
+      }
+    );
+  } finally {
+    updateCheckInFlight = false;
+  }
+}
+
+async function installDownloadedWatcherUpdate(config = loadConfig()) {
+  configureAutoUpdater();
+
+  if (!autoUpdater || !updateState.downloaded) {
+    return {
+      ok: false,
+      error: "No downloaded watcher update is ready to install.",
+      update: updateState,
+    };
+  }
+
+  emitUpdateTelemetry("watcher_update_install_requested", {
+    metadata: {
+      isWatching: Boolean(watcherHandle),
+      importRunning: Boolean(currentImportState?.isRunning),
+    },
+  }, config);
+
+  if (watcherHandle || currentImportState?.isRunning) {
+    autoUpdater.autoInstallOnAppQuit = true;
+    appendLog("Update is ready. It will install after uploads/watching stop and the app closes.", "warn");
+    return {
+      ok: true,
+      deferred: true,
+      update: updateState,
+    };
+  }
+
+  appendLog("Installing watcher update now...");
+  autoUpdater.quitAndInstall(false, true);
+
+  return {
+    ok: true,
+    installing: true,
+    update: updateState,
+  };
+}
+
 
 function getConfigPath() {
   return path.join(app.getPath("userData"), "watcher-config.json");
@@ -562,6 +897,8 @@ function getAppInfo(config = loadConfig()) {
     supportedReplayExtensions: getSupportedReplayExtensions(),
     watchDirStatus: getWatchDirStatus(config.watchDir),
     release: releaseState,
+    update: updateState,
+    autoUpdate: updateState,
   };
 }
 
@@ -811,7 +1148,7 @@ async function runHistoricalImport({ source, filePaths = [] }) {
   importSession += 1;
   const thisRun = importSession;
 
-  appendSessionHeader(source === "retry" ? `Import retry ${thisRun}` : `Historical import ${thisRun}`);
+  appendSessionHeader(source === "retry" ? `Import retry ${thisRun}` : `Batch upload ${thisRun}`);
   appendLog(
     source === "retry"
       ? "Retrying the failed replay uploads from the last import summary."
@@ -862,15 +1199,15 @@ async function runHistoricalImport({ source, filePaths = [] }) {
     );
 
     setImportState(finalState, { persist: true });
-    appendLog(finalState.summaryText || "Historical import complete.");
+    appendLog(finalState.summaryText || "Batch upload complete.");
 
     return {
       ok: true,
       state: finalState,
     };
   } catch (error) {
-    const message = error.message || "Historical import failed.";
-    appendLog(`Historical import failed: ${message}`, "error");
+    const message = error.message || "Batch upload failed.";
+    appendLog(`Batch upload failed: ${message}`, "error");
 
     const failedState = {
       ...currentImportState,
@@ -987,6 +1324,7 @@ function bootWatcherApp() {
   }
 
   registerPairingProtocol();
+  configureAutoUpdater();
   createWindow();
 
   ipcMain.handle("watcher:get-config", async () => {
@@ -1099,6 +1437,14 @@ function bootWatcherApp() {
     return { ok: true };
   });
 
+  ipcMain.handle("watcher:check-update", async () => {
+    return checkForWatcherUpdates({ manual: true, config: loadConfig() });
+  });
+
+  ipcMain.handle("watcher:install-update", async () => {
+    return installDownloadedWatcherUpdate(loadConfig());
+  });
+
   ipcMain.handle("watcher:start-import", async () => {
     return runHistoricalImport({ source: "scan" });
   });
@@ -1149,8 +1495,15 @@ function bootWatcherApp() {
         hasWatchDir: Boolean(config.watchDir),
       },
     }, config);
+    emitWatcherTelemetry("watcher_started", {
+      metadata: buildRuntimeMetadata(config),
+    }, config);
+    emitWatcherTelemetry("watcher_version_seen", {
+      metadata: buildRuntimeMetadata(config),
+    }, config);
     void verifyWatcherAuth(config);
     void refreshWatcherRelease(config);
+    void checkForWatcherUpdates({ config });
     startTelemetryHeartbeat();
 
     const pairedFromUrl = processPendingPairingUrl();
