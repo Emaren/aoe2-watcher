@@ -87,6 +87,16 @@ let currentConfig = { ...DEFAULT_CONFIG };
 let appInfo = null;
 let watcherState = { isWatching: false };
 let importState = { ...EMPTY_IMPORT_STATE };
+let updateState = {
+  supported: false,
+  status: "idle",
+  message: "Updates idle.",
+  currentVersion: null,
+  updateVersion: null,
+  downloaded: false,
+  downloadPercent: 0,
+  error: null,
+};
 let runtimeState = {
   phase: "booting",
   detail: "Loading watcher…",
@@ -183,16 +193,56 @@ function formatPlatform(value) {
 
 function getReleaseStatus() {
   const release = appInfo?.release || {};
-  const currentVersion = release.currentVersion || appInfo?.version || "Unknown";
-  const latestVersion = release.latestVersion || "";
+  const autoUpdate = updateState || appInfo?.autoUpdate || appInfo?.update || {};
+  const currentVersion =
+    autoUpdate.currentVersion || release.currentVersion || appInfo?.version || "Unknown";
+  const latestVersion = release.latestVersion || autoUpdate.updateVersion || "";
 
-  if (release.phase === "checking") {
+  if (autoUpdate.status === "checking" || release.phase === "checking") {
     return {
       headline: currentVersion,
-      detail: "Checking latest watcher release...",
+      detail: "Checking for watcher updates...",
       showUpdate: false,
       showCheck: false,
       updateUrl: "",
+      canInstall: false,
+    };
+  }
+
+  if (autoUpdate.status === "downloading") {
+    return {
+      headline: `${currentVersion} Updating`,
+      detail: autoUpdate.downloadPercent
+        ? `Downloading update: ${Math.round(autoUpdate.downloadPercent)}%.`
+        : "Downloading watcher update.",
+      showUpdate: false,
+      showCheck: false,
+      updateUrl: "",
+      canInstall: false,
+    };
+  }
+
+  if (autoUpdate.downloaded) {
+    return {
+      headline: `${currentVersion} Update Ready`,
+      detail: "Update downloaded. Close and reopen, or install now when safe.",
+      showUpdate: true,
+      showCheck: false,
+      updateUrl: "",
+      canInstall: true,
+    };
+  }
+
+  if (autoUpdate.status === "available") {
+    return {
+      headline: `${currentVersion} Update Available`,
+      detail: autoUpdate.updateVersion
+        ? `Watcher ${autoUpdate.updateVersion} is downloading in the background.`
+        : "A watcher update is downloading in the background.",
+      showUpdate: false,
+      showCheck: false,
+      updateUrl: "",
+      canInstall: false,
     };
   }
 
@@ -203,37 +253,56 @@ function getReleaseStatus() {
         ? `Latest watcher is ${latestVersion}.`
         : "A newer watcher build is available.",
       showUpdate: true,
-      showCheck: false,
+      showCheck: true,
       updateUrl: release.updateUrl || release.releaseUrl || "https://aoe2war.com/download",
+      canInstall: false,
     };
   }
 
-  if (release.isLatest) {
+  if (autoUpdate.status === "current" || release.isLatest) {
     return {
-      headline: `${currentVersion} Latest Version`,
-      detail: "You are running the current watcher build.",
-      showUpdate: false,
-      showCheck: false,
-      updateUrl: "",
-    };
-  }
-
-  if (release.phase === "error") {
-    return {
-      headline: currentVersion,
-      detail: release.error || "Could not check the latest watcher release.",
+      headline: `${currentVersion} Current`,
+      detail: "Watcher is up to date.",
       showUpdate: false,
       showCheck: true,
       updateUrl: "",
+      canInstall: false,
+    };
+  }
+
+  if (autoUpdate.status === "dev_skipped") {
+    return {
+      headline: currentVersion,
+      detail: "Update checks are skipped while running from source.",
+      showUpdate: false,
+      showCheck: true,
+      updateUrl: "",
+      canInstall: false,
+    };
+  }
+
+  if (autoUpdate.status === "error" || release.phase === "error") {
+    return {
+      headline: currentVersion,
+      detail:
+        autoUpdate.error ||
+        autoUpdate.message ||
+        release.error ||
+        "Could not check the latest watcher release.",
+      showUpdate: false,
+      showCheck: true,
+      updateUrl: "",
+      canInstall: false,
     };
   }
 
   return {
     headline: currentVersion,
-    detail: "Latest release status will appear here.",
+    detail: autoUpdate.message || "Watcher update status will appear here.",
     showUpdate: false,
     showCheck: true,
     updateUrl: "",
+    canInstall: false,
   };
 }
 
@@ -316,7 +385,7 @@ function getPrimaryStatus() {
   if (!hasWatcherKey() && !isReplayFolderReady()) {
     return {
       label: "Finish setup",
-      detail: "Choose the replay folder and add a watcher key. Manual key paste always works.",
+      detail: "Click Pair Profile, then choose the replay folder if needed.",
       kind: "warn",
     };
   }
@@ -334,7 +403,7 @@ function getPrimaryStatus() {
   if (!hasWatcherKey()) {
     return {
       label: "Not paired",
-      detail: "Open Profile Pairing or paste a watcher key manually, then save once.",
+      detail: "Click Pair Profile to connect this watcher to your AoE2WAR account.",
       kind: "warn",
     };
   }
@@ -373,29 +442,29 @@ function getPrimaryStatus() {
 
   return {
     label: "Idle but ready",
-    detail: "Setup is saved. Start watching before the next set, or scan the folder to import your history.",
+    detail: "Ready. Start watching, or batch upload saved replays.",
     kind: "success",
   };
 }
 
 function getSetupSummaryText() {
   if (!hasWatcherKey() && !isReplayFolderReady()) {
-    return "Choose the replay folder, pair your watcher key, then either start live watching or import your saved replays.";
+    return "Pair Profile, Start Watching, or Batch Upload Replays. Simple wins."; 
   }
 
   if (!isReplayFolderReady()) {
-    return "Watcher key looks good. Choose the AoE2 SaveGame folder next so live watching and import can run cleanly.";
+    return "Profile pairing is ready. Choose the AoE2 SaveGame folder next."; 
   }
 
   if (!hasWatcherKey()) {
-    return "Replay folder is ready. Pair now from your AoE2HDBets profile, or paste a watcher key manually and save once.";
+    return "Replay folder is ready. Click Pair Profile to connect your account."; 
   }
 
   if (importState.isRunning) {
-    return "Historical import is running. The app stays responsive, and live watching can still stay armed.";
+    return "Batch upload is running. The app stays responsive, and live watching can still stay armed.";
   }
 
-  return "Everything is ready. Start watching for new replays, or use Scan & Import Replays to bring older matches online.";
+  return "Everything is ready. Start watching or batch upload saved replays."; 
 }
 
 function renderReadiness() {
@@ -415,10 +484,10 @@ function renderReadiness() {
       : "Choose or auto-detect the SaveGame folder.";
 
   setReadinessState(els.keyReadyText, keyReady);
-  els.keyReadyText.textContent = keyReady ? "Watcher key saved" : "Watcher key missing";
+  els.keyReadyText.textContent = keyReady ? "Profile paired" : "Not paired";
   els.keyHintText.textContent = keyReady
-    ? "Manual paste is still available any time."
-    : "Open Profile Pairing or paste the watcher key yourself.";
+    ? "Manual key recovery lives in Advanced."
+    : "Click Pair Profile. Manual key paste is only for recovery."; 
 
   els.setupSummaryText.textContent = getSetupSummaryText();
 }
@@ -458,8 +527,8 @@ function renderDiagnostics() {
     ? "Browser handoff ready"
     : "Manual key fallback ready";
   els.protocolDetailText.textContent = appInfo?.protocolRegistered
-    ? "Profile Pairing should be able to hand the key to the app."
-    : "If browser handoff does not register, click Mint Key Only and paste the key here.";
+    ? "Profile Pairing can hand the key to the watcher automatically."
+    : "Manual key paste is available in Advanced if browser pairing fails."; 
   els.apiHostText.textContent = readForm().apiBaseUrl || DEFAULT_CONFIG.apiBaseUrl;
   els.replayPathDiagText.textContent = shortenPath(readForm().watchDir, "Not chosen yet");
   els.supportedExtensionsText.textContent =
@@ -510,8 +579,8 @@ function describeImportPhase() {
   }
 
   return {
-    title: "Historical import",
-    detail: "Scan the SaveGame folder to import older replays while live watching stays available.",
+    title: "Batch upload",
+    detail: "Upload saved replays from your SaveGame folder while live watching stays available.",
   };
 }
 
@@ -599,7 +668,40 @@ function renderButtons() {
   els.openFolderBtn.disabled = !hasReplayFolder();
 }
 
+function polishStaticUiCopy() {
+  if (els.scanImportBtn) {
+    els.scanImportBtn.textContent = "Batch Upload Replays";
+  }
+
+  if (els.retryFailedBtn) {
+    els.retryFailedBtn.textContent = "Retry Failed";
+  }
+
+  if (els.saveSettingsBtn) {
+    els.saveSettingsBtn.textContent = "Save";
+  }
+
+  if (els.heroCheckVersionBtn) {
+    els.heroCheckVersionBtn.textContent = "Check Update";
+  }
+
+  if (els.diagnosticsCheckVersionBtn) {
+    els.diagnosticsCheckVersionBtn.textContent = "Check Update";
+  }
+
+  if (els.heroUpdateWatcherBtn) {
+    els.heroUpdateWatcherBtn.textContent =
+      getReleaseStatus().canInstall ? "Install Update" : "Download Update";
+  }
+
+  if (els.diagnosticsUpdateWatcherBtn) {
+    els.diagnosticsUpdateWatcherBtn.textContent =
+      getReleaseStatus().canInstall ? "Install Update" : "Download Update";
+  }
+}
+
 function renderAll() {
+  polishStaticUiCopy();
   renderReadiness();
   renderStatusBar();
   renderDiagnostics();
@@ -672,25 +774,76 @@ async function checkLatestRelease({ silent = false } = {}) {
     if (!silent) {
       setStatus(
         release?.updateAvailable
-          ? `Watcher ${release.latestVersion} is ready to install.`
-          : `Watcher ${appInfo?.version || release?.currentVersion || ""} is the latest version.`,
+          ? `Watcher ${release.latestVersion} is available.`
+          : `Watcher ${appInfo?.version || release?.currentVersion || ""} is current.`,
         release?.updateAvailable ? "warn" : "success"
       );
     }
+
+    return release;
   } catch (error) {
-    setStatus(`Failed checking latest watcher release: ${error.message || error}`, "error", {
+    setStatus(`Failed checking watcher release: ${error.message || error}`, "error", {
       sticky: true,
     });
+    return null;
+  }
+}
+
+async function checkWatcherUpdate({ silent = false } = {}) {
+  try {
+    if (!silent) {
+      setStatus("Checking watcher update...", "neutral");
+    }
+
+    const update = await window.watcherApi.checkUpdate();
+    updateState = {
+      ...updateState,
+      ...(update || {}),
+    };
+    appInfo = {
+      ...appInfo,
+      update: updateState,
+      autoUpdate: updateState,
+    };
+    renderAll();
+
+    if (!silent) {
+      const status = getReleaseStatus();
+      setStatus(status.detail || "Watcher update check finished.", status.canInstall ? "warn" : "success");
+    }
+
+    return update;
+  } catch (error) {
+    setStatus(`Failed checking watcher update: ${error.message || error}`, "error", {
+      sticky: true,
+    });
+
+    return checkLatestRelease({ silent: true });
   }
 }
 
 async function openWatcherUpdate() {
   const releaseStatus = getReleaseStatus();
+
   try {
+    if (releaseStatus.canInstall && window.watcherApi.installUpdate) {
+      const result = await window.watcherApi.installUpdate();
+
+      if (result?.deferred) {
+        setStatus("Update is ready. It will install when the watcher closes safely.", "warn");
+        return;
+      }
+
+      if (result?.ok) {
+        setStatus("Installing watcher update.", "success");
+        return;
+      }
+    }
+
     await window.watcherApi.openUpdate(releaseStatus.updateUrl);
     setStatus("Opened watcher update download.", "success");
   } catch (error) {
-    setStatus(`Failed opening update download: ${error.message || error}`, "error", {
+    setStatus(`Failed opening/installing update: ${error.message || error}`, "error", {
       sticky: true,
     });
   }
@@ -704,8 +857,10 @@ function buildSupportSnapshot() {
   return [
     `Product: ${appInfo?.productName || "AoE2HDBets Watcher"}`,
     `Version: ${appInfo?.version || "Unknown"}`,
-    `Watcher release status: ${releaseStatus.headline}`,
-    `Watcher release detail: ${releaseStatus.detail}`,
+    `Watcher update status: ${releaseStatus.headline}`,
+    `Watcher update detail: ${releaseStatus.detail}`,
+    `Auto-update status: ${updateState.status || "unknown"}`,
+    `Auto-update detail: ${updateState.message || updateState.error || "none"}`,
     `Platform: ${formatPlatform(appInfo?.platform)}`,
     `Status: ${primaryStatus.label}`,
     `Status detail: ${primaryStatus.detail}`,
@@ -716,8 +871,8 @@ function buildSupportSnapshot() {
     `Protocol registered: ${appInfo?.protocolRegistered ? "yes" : "no"}`,
     `API base: ${config.apiBaseUrl || "(empty)"}`,
     `Fallback API: ${config.apiFallbackBaseUrl || "(empty)"}`,
-    `Import phase: ${importState.phase || "idle"}`,
-    `Import summary: ${importState.summaryText || "none"}`,
+    `Batch upload phase: ${importState.phase || "idle"}`,
+    `Batch upload summary: ${importState.summaryText || "none"}`,
   ].join("\n");
 }
 
@@ -792,6 +947,7 @@ async function loadInitialData() {
     ...config,
   };
   appInfo = info;
+  updateState = info?.autoUpdate || info?.update || updateState;
   writeForm(currentConfig);
   watchDirStatus = info?.watchDirStatus || watchDirStatus;
   renderAll();
@@ -812,8 +968,8 @@ els.saveSettingsBtn.addEventListener("click", async () => {
 
 els.heroUpdateWatcherBtn.addEventListener("click", openWatcherUpdate);
 els.diagnosticsUpdateWatcherBtn.addEventListener("click", openWatcherUpdate);
-els.heroCheckVersionBtn.addEventListener("click", () => checkLatestRelease());
-els.diagnosticsCheckVersionBtn.addEventListener("click", () => checkLatestRelease());
+els.heroCheckVersionBtn.addEventListener("click", () => checkWatcherUpdate());
+els.diagnosticsCheckVersionBtn.addEventListener("click", () => checkWatcherUpdate());
 
 els.detectFolderBtn.addEventListener("click", async () => {
   try {
@@ -871,7 +1027,7 @@ els.startWatchingBtn.addEventListener("click", async () => {
 
     if (!saved.uploadApiKey) {
       setStatus(
-        "Watcher key required. Open Profile Pairing, or paste the key manually.",
+        "Pair Profile first. Manual key paste is available in Advanced if needed.",
         "error",
         { sticky: true }
       );
@@ -890,7 +1046,7 @@ els.startWatchingBtn.addEventListener("click", async () => {
       clearStatusNotice();
       renderAll();
     } else {
-      setStatus("Watcher did not start. Check the replay folder and watcher key.", "error", {
+      setStatus("Watcher did not start. Check pairing and replay folder.", "error", {
         sticky: true,
       });
     }
@@ -1037,6 +1193,21 @@ window.watcherApi.onImportState((state) => {
   };
   renderAll();
 });
+
+if (window.watcherApi.onUpdateState) {
+  window.watcherApi.onUpdateState((state) => {
+    updateState = {
+      ...updateState,
+      ...(state || {}),
+    };
+    appInfo = {
+      ...appInfo,
+      update: updateState,
+      autoUpdate: updateState,
+    };
+    renderAll();
+  });
+}
 
 window.watcherApi.onLog(({ line, level }) => {
   addLog(line, level);

@@ -183,7 +183,7 @@ function getRuntimeValidationError(runtimeConfig) {
   }
 
   if (!runtimeConfig.uploadApiKey) {
-    return "Watcher key is missing. Paste it in Watcher settings before starting.";
+    return "Profile is not paired. Click Pair Profile before starting.";
   }
 
   return null;
@@ -321,25 +321,187 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function parseFingerprintParts(fingerprint = "") {
+  const [sizeRaw, mtimeRaw] = String(fingerprint || "").split(":");
+  const fileSizeBytes = Number(sizeRaw);
+  const mtimeMs = Number(mtimeRaw);
+
+  return {
+    fileSizeBytes: Number.isFinite(fileSizeBytes) ? fileSizeBytes : null,
+    mtimeMs: Number.isFinite(mtimeMs) ? mtimeMs : null,
+  };
+}
+
+function safeShortText(value, maxLength = 600) {
+  let text;
+
+  try {
+    text = typeof value === "string" ? value : JSON.stringify(value);
+  } catch {
+    text = String(value);
+  }
+
+  if (!text) {
+    return "";
+  }
+
+  return text.length > maxLength ? `${text.slice(0, maxLength)}…` : text;
+}
+
+function summarizeUploadResponse(data = {}) {
+  return {
+    resultType: classifyUploadResult(formatResponseBody(data)),
+    replayHash: data?.replay_hash || data?.replayHash || data?.hash || null,
+    gameId: data?.game_id || data?.gameId || data?.id || null,
+    summary: safeShortText(data, 800),
+  };
+}
+
+function isUnknownishValue(value) {
+  if (value === null || value === undefined) {
+    return true;
+  }
+
+  if (typeof value !== "string") {
+    return false;
+  }
+
+  const normalized = value.trim().toLowerCase();
+  return (
+    normalized === "" ||
+    normalized === "unknown" ||
+    normalized === "unknown map" ||
+    normalized === "unknown player" ||
+    normalized === "n/a" ||
+    normalized === "na" ||
+    normalized === "null" ||
+    normalized === "undefined"
+  );
+}
+
+function isImportantParseField(key = "") {
+  const normalized = String(key || "").toLowerCase();
+  return (
+    normalized === "map" ||
+    normalized === "map_name" ||
+    normalized === "mapname" ||
+    normalized === "winner" ||
+    normalized === "duration" ||
+    normalized === "game_duration" ||
+    normalized === "players" ||
+    normalized === "player" ||
+    normalized === "name" ||
+    normalized.includes("map") ||
+    normalized.includes("winner") ||
+    normalized.includes("duration")
+  );
+}
+
+function detectUnknownParseFields(payload) {
+  const found = new Set();
+
+  function visit(value, pathParts = []) {
+    if (!value || typeof value !== "object") {
+      return;
+    }
+
+    if (Array.isArray(value)) {
+      value.forEach((item, index) => visit(item, [...pathParts, String(index)]));
+      return;
+    }
+
+    for (const [key, child] of Object.entries(value)) {
+      const childPath = [...pathParts, key];
+      const childPathText = childPath.join(".");
+      const important = isImportantParseField(key);
+
+      if (important && isUnknownishValue(child)) {
+        found.add(childPathText);
+        continue;
+      }
+
+      if (important && Array.isArray(child) && child.length === 0) {
+        found.add(childPathText);
+        continue;
+      }
+
+      if (important && child && typeof child === "object") {
+        const objectName = child.name || child.label || child.value;
+        if (isUnknownishValue(objectName)) {
+          found.add(`${childPathText}.name`);
+        }
+      }
+
+      visit(child, childPath);
+    }
+  }
+
+  visit(payload);
+  return Array.from(found).slice(0, 30);
+}
+
 async function waitForFirstBytes(filePath, runtimeConfig) {
   const startedAt = Date.now();
+  let lastSize = null;
+  let lastProgressEventAt = 0;
+  let lastWaitingEventAt = 0;
 
   while (Date.now() - startedAt <= runtimeConfig.firstBytesTimeoutMs) {
     if (!fs.existsSync(filePath)) {
       log(`Replay disappeared before first parse: ${path.basename(filePath)}`, "warn");
+      emitRuntimeEvent("skip-file-missing", {
+        filePath,
+        fileName: path.basename(filePath),
+        reason: "missing_before_byte_floor",
+        minReplayBytes: runtimeConfig.minReplayBytes,
+        waitedMs: Date.now() - startedAt,
+      });
       return false;
     }
 
     try {
       const stats = await fs.promises.stat(filePath);
+      const now = Date.now();
+      const payload = {
+        filePath,
+        fileName: path.basename(filePath),
+        fileSizeBytes: stats.size,
+        previousFileSizeBytes: lastSize,
+        minReplayBytes: runtimeConfig.minReplayBytes,
+        mtimeMs: Math.floor(stats.mtimeMs),
+        waitedMs: now - startedAt,
+        remainingTimeoutMs: Math.max(0, runtimeConfig.firstBytesTimeoutMs - (now - startedAt)),
+      };
+
+      if (stats.size !== lastSize || now - lastProgressEventAt >= 30000) {
+        emitRuntimeEvent("file-size-progress", {
+          ...payload,
+          reachedMinimum: stats.size >= runtimeConfig.minReplayBytes,
+        });
+        lastProgressEventAt = now;
+      }
+
       if (stats.size >= runtimeConfig.minReplayBytes) {
         return true;
       }
+
+      if (now - lastWaitingEventAt >= 15000) {
+        emitRuntimeEvent("waiting-for-minimum-size", payload);
+        lastWaitingEventAt = now;
+      }
+
+      lastSize = stats.size;
     } catch (err) {
       log(
         `Unable to inspect ${path.basename(filePath)} before live parse: ${err.message}`,
         "warn"
       );
+      emitRuntimeEvent("watcher-error", {
+        filePath,
+        fileName: path.basename(filePath),
+        detail: err.message,
+        reason: "stat_failed_before_byte_floor",
+      });
       return false;
     }
 
@@ -352,6 +514,16 @@ async function waitForFirstBytes(filePath, runtimeConfig) {
     )}`,
     "warn"
   );
+
+  emitRuntimeEvent("skip-file-too-small", {
+    filePath,
+    fileName: path.basename(filePath),
+    reason: "byte_floor_timeout",
+    fileSizeBytes: lastSize,
+    minReplayBytes: runtimeConfig.minReplayBytes,
+    waitedMs: Date.now() - startedAt,
+  });
+
   return false;
 }
 
@@ -643,6 +815,28 @@ async function uploadReplayWithRetry(
         });
         const detail = formatResponseBody(res.data);
         const resultType = classifyUploadResult(detail);
+        const responseSummary = summarizeUploadResponse(res.data);
+        const unknownParseFields = detectUnknownParseFields(res.data);
+
+        if (unknownParseFields.length > 0) {
+          emitRuntimeEvent("parse-result-unknown-fields", {
+            filePath,
+            fileName: path.basename(filePath),
+            isFinal,
+            parseIteration,
+            parseSource,
+            parseReason,
+            uploadHost: targetHost,
+            attempt,
+            responseStatus: res.status,
+            resultType,
+            replayHash: responseSummary.replayHash,
+            unknownFields: unknownParseFields,
+            responseSummary: responseSummary.summary,
+            ...parseFingerprintParts(attemptFingerprint),
+          });
+        }
+
         const replayHash =
           typeof res?.data?.replay_hash === "string" && res.data.replay_hash.trim()
             ? res.data.replay_hash.trim()
@@ -783,17 +977,32 @@ async function uploadReplayWithRetry(
 async function monitorReplayFile(filePath, runtimeConfig) {
   if (!shouldHandle(filePath, runtimeConfig)) {
     log(`Ignoring non-replay file: ${path.basename(filePath)}`, "warn");
+    emitRuntimeEvent("skip-unknown", {
+      filePath,
+      fileName: path.basename(filePath),
+      reason: "unsupported_extension",
+    });
     return;
   }
 
   const entry = getStateEntry(filePath);
   if (entry.monitoring) {
     log(`Skipping duplicate monitor for ${path.basename(filePath)} because it is already active.`);
+    emitRuntimeEvent("skip-upload-in-progress", {
+      filePath,
+      fileName: path.basename(filePath),
+      reason: "monitor_already_active",
+    });
     return;
   }
 
   if (entry.importing) {
     log(`Skipping live monitor for ${path.basename(filePath)} because it is importing already.`, "warn");
+    emitRuntimeEvent("skip-upload-in-progress", {
+      filePath,
+      fileName: path.basename(filePath),
+      reason: "batch_upload_active",
+    });
     return;
   }
 
@@ -807,6 +1016,12 @@ async function monitorReplayFile(filePath, runtimeConfig) {
       `Skipping monitor for ${path.basename(filePath)} because replay already matches final upload state (${finalReplayShortCircuit.reason}).`
     );
     emitRuntimeEvent("monitor-skip-final", {
+      filePath,
+      fileName: path.basename(filePath),
+      reason: finalReplayShortCircuit.reason,
+      replayHash: finalReplayShortCircuit.replayHash || entry.lastFinalReplayHash || null,
+    });
+    emitRuntimeEvent("skip-already-finalized", {
       filePath,
       fileName: path.basename(filePath),
       reason: finalReplayShortCircuit.reason,
