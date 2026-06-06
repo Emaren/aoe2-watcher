@@ -161,7 +161,7 @@ function buildRuntimeConfig(config = {}) {
     ),
     liveUploadCooldownMs: Number(process.env.AOE2_LIVE_UPLOAD_COOLDOWN_MS || 45000),
     finalSettleWindowMs: Number(process.env.AOE2_FINAL_SETTLE_WINDOW_MS || 90000),
-    firstBytesTimeoutMs: Number(process.env.AOE2_FIRST_BYTES_TIMEOUT_MS || 30000),
+    firstBytesTimeoutMs: Number(process.env.AOE2_FIRST_BYTES_TIMEOUT_MS || 15 * 60 * 1000),
     firstBytesPollMs: Number(process.env.AOE2_FIRST_BYTES_POLL_MS || 1000),
     replayProgressLogIntervalMs: Number(
       process.env.AOE2_REPLAY_PROGRESS_LOG_INTERVAL_MS || 180000
