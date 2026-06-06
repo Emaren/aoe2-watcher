@@ -1148,7 +1148,7 @@ async function runHistoricalImport({ source, filePaths = [] }) {
   importSession += 1;
   const thisRun = importSession;
 
-  appendSessionHeader(source === "retry" ? `Import retry ${thisRun}` : `Historical import ${thisRun}`);
+  appendSessionHeader(source === "retry" ? `Import retry ${thisRun}` : `Batch upload ${thisRun}`);
   appendLog(
     source === "retry"
       ? "Retrying the failed replay uploads from the last import summary."
@@ -1199,15 +1199,15 @@ async function runHistoricalImport({ source, filePaths = [] }) {
     );
 
     setImportState(finalState, { persist: true });
-    appendLog(finalState.summaryText || "Historical import complete.");
+    appendLog(finalState.summaryText || "Batch upload complete.");
 
     return {
       ok: true,
       state: finalState,
     };
   } catch (error) {
-    const message = error.message || "Historical import failed.";
-    appendLog(`Historical import failed: ${message}`, "error");
+    const message = error.message || "Batch upload failed.";
+    appendLog(`Batch upload failed: ${message}`, "error");
 
     const failedState = {
       ...currentImportState,
