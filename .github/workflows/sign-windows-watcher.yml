@@ -15,35 +15,47 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Show candidate EXEs before download
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        shell: pwsh
+        run: npm ci
+
+      - name: Build Windows watcher EXEs on Windows
         shell: pwsh
         run: |
-          Get-ChildItem -Recurse -File -Filter *.exe |
-            Select-Object FullName, Length, LastWriteTime |
-            Format-Table -AutoSize
+          if (Test-Path dist) {
+            Remove-Item dist -Recurse -Force
+          }
 
-      - name: Download live Windows watcher EXEs
+          npm run dist:win
+
+      - name: Stage candidate EXEs for signing
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path "build" | Out-Null
 
-          $files = @(
-            @{
-              Url = "https://aoe2hdbets.com/downloads/AoE2HDBets%20Watcher%20Setup%201.1.8.exe"
-              Out = "build\\AoE2HDBets Watcher Setup 1.1.8.exe"
-            },
-            @{
-              Url = "https://aoe2hdbets.com/downloads/AoE2HDBets%20Watcher%201.1.8.exe"
-              Out = "build\\AoE2HDBets Watcher 1.1.8.exe"
+          $targets = Get-ChildItem "dist" -File -Filter "*.exe" |
+            Where-Object {
+              $_.Name -like "*Setup*.exe" -or
+              $_.Name -like "*Watcher*.exe"
             }
-          )
 
-          foreach ($f in $files) {
-            Write-Host "Downloading $($f.Url)"
-            Invoke-WebRequest -Uri $f.Url -OutFile $f.Out
+          if (-not $targets -or $targets.Count -eq 0) {
+            throw "No top-level Windows watcher EXEs found in dist/"
           }
 
-          Get-ChildItem -Recurse -File -Filter *.exe |
+          foreach ($file in $targets) {
+            Write-Host "Staging $($file.FullName)"
+            Copy-Item $file.FullName -Destination "build\$($file.Name)" -Force
+          }
+
+          Write-Host "Candidate EXEs staged for signing:"
+          Get-ChildItem -File "build" -Filter "*.exe" |
             Select-Object FullName, Length, LastWriteTime |
             Format-Table -AutoSize
 
