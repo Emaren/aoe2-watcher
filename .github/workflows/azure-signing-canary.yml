@@ -60,7 +60,7 @@ jobs:
           timestamp-rfc3161: http://timestamp.acs.microsoft.com
           timestamp-digest: SHA256
           description: AoE2HDBets Signing Canary
-          description-url: https://aoe2hdbets.com
+          description-url: https://aoe2war.com
 
       - name: Upload signed canary
         uses: actions/upload-artifact@v4
