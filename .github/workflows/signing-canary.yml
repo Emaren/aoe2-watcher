@@ -1,7 +1,7 @@
 name: Azure Signing Canary
 
-on:
-  workflow_dispatch:
+"on":
+  workflow_dispatch: {}
 
 jobs:
   sign-canary:
@@ -14,8 +14,9 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path build | Out-Null
 
-          New-Item -ItemType Directory -Force -Path canary | Out-Null
-          Set-Content -Path canary\Program.cs -Value @'
+          dotnet new console -n CanaryApp -o canary-app --force
+
+          Set-Content -Path canary-app\Program.cs -Value @'
           using System;
           class Program
           {
@@ -25,9 +26,6 @@ jobs:
               }
           }
 '@
-
-          dotnet new console -n CanaryApp -o canary-app --force
-          Copy-Item canary\Program.cs canary-app\Program.cs -Force
 
           dotnet publish canary-app `
             -c Release `
