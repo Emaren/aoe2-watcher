@@ -50,7 +50,7 @@ jobs:
           azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
           endpoint: https://eus.codesigning.azure.net/
           signing-account-name: aoe2hdbetssigning
-          certificate-profile-name: aoe2hdbetswindows
+          certificate-profile-name: aoe2warwindows
           files-folder: ${{ github.workspace }}\build
           files-folder-filter: exe
           files-folder-recurse: true
