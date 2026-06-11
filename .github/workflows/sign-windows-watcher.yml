@@ -59,6 +59,13 @@ jobs:
             Select-Object FullName, Length, LastWriteTime |
             Format-Table -AutoSize
 
+      - name: Upload unsigned Windows candidates for diagnostics
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-windows-candidates
+          path: build/*.exe
+          if-no-files-found: error
+
       - name: Sign Windows EXEs with Azure Artifact Signing
         uses: azure/artifact-signing-action@v1
         with:
@@ -71,6 +78,8 @@ jobs:
           files-folder: ${{ github.workspace }}\build
           files-folder-filter: exe
           files-folder-recurse: true
+          batch-size: 1
+          timeout: 300
           file-digest: SHA256
           timestamp-rfc3161: http://timestamp.acs.microsoft.com
           timestamp-digest: SHA256
