@@ -14,11 +14,14 @@ This is the client-side edge of the AoE2HDBets replay loop. It is intentionally 
 - supports one-click profile pairing through `aoe2hd-watcher://pair?apiKey=...`
 - supports `.aoe2record`, `.aoe2mpgame`, `.mgz`, `.mgx`, and `.mgl`
 - retries transient parse/upload failures automatically
-- skips duplicate re-uploads for the same finished replay
+- treats final uploads as server-verified candidates; a replay is only considered settled when the API returns `should_settle=true`
+- reopens a final candidate automatically if the replay grows after a prior upload
+- skips duplicate re-uploads only after a final was accepted by the server
 - adds a first-class `Scan & Import Replays` flow for historical saved games
 - persists the last import summary, failed uploads, replay folder, watcher key, and auto-start preference locally
-- packages clean Windows x64 releases with both NSIS installer and portable fallback targets
+- packages Windows x64 releases with both NSIS installer and portable fallback targets
 - packages a Linux AppImage fallback from the same watcher core
+- emits rich support telemetry for app opens, auth, heartbeat, monitor lifecycle, file growth, final deferrals, upload retries, parse results, and batch import lifecycle
 - checks the public watcher release endpoint and shows either an Update button or a clear Latest Version label in the main window
 - current behavior can emit multiple live iterations before a final settled upload, which is expected during active development
 
@@ -56,17 +59,25 @@ The main window now includes **Scan & Import Replays**.
 ## Optional environment variables
 
 - `AOE2_API_BASE_URL` (default: `https://api-prodn.aoe2war.com`)
+- `AOE2_API_FALLBACK_BASE_URL` (default: `https://aoe2war.com`)
+- `AOE2_TELEMETRY_BASE_URL` (default: fallback base URL)
 - `AOE2_WATCH_DIR` (default: platform-specific AoE2HD SaveGame path)
 - `WATCHER_USER_UID` (default: hostname-derived watcher id)
+- `AOE2_WATCHER_ID` (optional stable watcher id override; generated and persisted by the app normally)
 - `AOE2_UPLOAD_API_KEY` (optional manual fallback; one-click pairing normally fills this in)
 - `AOE2_WATCHER_RELEASE_BASE_URL` (optional release-check override; default: `https://aoe2war.com`)
+- `AOE2_TELEMETRY_HEARTBEAT_MS` (default: `60000`)
 - `AOE2_UPLOAD_RETRY_ATTEMPTS` (default: `4`)
 - `AOE2_UPLOAD_RETRY_BASE_DELAY_MS` (default: `4000`)
 - `AOE2_UPLOAD_STABLE_CHECK_INTERVAL_MS` (default: `3000`)
-- `AOE2_UPLOAD_QUIET_PERIOD_MS` (default: `30000`)
+- `AOE2_UPLOAD_QUIET_PERIOD_MS` (default: `120000`)
 - `AOE2_INITIAL_LIVE_DELAY_MS` (default: `3000`)
 - `AOE2_INITIAL_LIVE_RETRY_COOLDOWN_MS` (default: `10000`)
 - `AOE2_LIVE_UPLOAD_COOLDOWN_MS` (default: `45000`)
+- `AOE2_FINAL_CANDIDATE_MIN_AGE_MS` (default: `480000`)
+- `AOE2_FINAL_CANDIDATE_COOLDOWN_MS` (default: `180000`)
+- `AOE2_FINAL_CANDIDATE_STABLE_SAMPLES` (default: `3`)
+- `AOE2_FINAL_SETTLE_WINDOW_MS` (default: `180000`)
 
 Existing watcher installs that saved the retired `aoe2hdbets.com` endpoints migrate those
 settings to `aoe2war.com` on next launch.
@@ -94,8 +105,9 @@ A normal successful session can look like this:
 2. watcher emits one or more live uploads while the file is still growing
 3. backend may store non-final/live state first
 4. watcher waits for file quiet/stability
-5. watcher sends final replay upload
-6. backend stores final parsed replay
+5. watcher sends a final candidate
+6. backend either defers it, preserves non-settling proof, or accepts it as settlement-safe final data
+7. watcher keeps monitoring until the final candidate is accepted and the replay remains unchanged
 
 This means multiple live iterations in logs are not automatically a bug.
 
@@ -105,7 +117,7 @@ Current watcher logs are intentionally useful while building. Expect to see mess
 
 - file growth / quiet-period waiting
 - live iteration numbers
-- final replay upload attempts
+- final-candidate readiness, deferral, acceptance, and reopen events
 - transient retry behavior
 - minimum parseable-size thresholds
 
@@ -119,7 +131,7 @@ npm run dist:release
 
 `npm run dist:release` builds:
 
-- the signed-state-pending DMG
+- the unsigned macOS DMG
 - a Direct ZIP that contains the same `AoE2HDBets Watcher.app` bundle as the DMG
 
 The Direct ZIP is the legitimate fallback while Apple signing and notarization are offline. It is

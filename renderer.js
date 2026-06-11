@@ -857,6 +857,9 @@ function buildSupportSnapshot() {
   return [
     `Product: ${appInfo?.productName || "AoE2HDBets Watcher"}`,
     `Version: ${appInfo?.version || "Unknown"}`,
+    `Watcher ID: ${appInfo?.watcherId || "Unknown"}`,
+    `Session ID: ${appInfo?.sessionId || "Unknown"}`,
+    `Finality contract: v${appInfo?.finalityContractVersion || "1"}`,
     `Watcher update status: ${releaseStatus.headline}`,
     `Watcher update detail: ${releaseStatus.detail}`,
     `Auto-update status: ${updateState.status || "unknown"}`,
@@ -884,9 +887,46 @@ function consumeRuntimeEvent(event) {
       runtimeState.detail = "Watching for new replay files in the configured SaveGame folder.";
       runtimeState.activeUpload = null;
       break;
+    case "monitor-start":
+      runtimeState.phase = "watching";
+      runtimeState.detail = `${event.fileName} is being monitored. Waiting for parseable replay bytes.`;
+      runtimeState.activeUpload = event;
+      break;
     case "replay-detected":
       runtimeState.phase = "watching";
       runtimeState.detail = `${event.fileName} detected. Waiting for upload timing.`;
+      break;
+    case "waiting-for-minimum-size":
+    case "file-size-progress":
+      runtimeState.phase = "watching";
+      runtimeState.activeUpload = event;
+      runtimeState.detail = `${event.fileName} is still being written (${Math.max(
+        0,
+        event.fileSizeBytes || 0
+      ).toLocaleString()} bytes).`;
+      break;
+    case "final-candidate-ready":
+      runtimeState.phase = "uploading";
+      runtimeState.activeUpload = event;
+      runtimeState.detail = `${event.fileName} looks quiet and stable. Sending final candidate.`;
+      break;
+    case "final-candidate-deferred":
+      runtimeState.phase = "watching";
+      runtimeState.activeUpload = event;
+      runtimeState.detail = `Holding ${event.fileName} open until the replay is safer to finalize${
+        event.waitMs ? ` (${Math.max(1, Math.round(event.waitMs / 1000))}s)` : ""
+      }.`;
+      break;
+    case "final-candidate-accepted":
+      runtimeState.phase = "watching";
+      runtimeState.activeUpload = null;
+      runtimeState.lastUploadSuccess = `${event.fileName} accepted as final.`;
+      runtimeState.detail = `${event.fileName} is final and settlement-safe.`;
+      break;
+    case "final-candidate-reopened":
+      runtimeState.phase = "watching";
+      runtimeState.activeUpload = event;
+      runtimeState.detail = `${event.fileName} grew after a final upload. Reopening the live monitor.`;
       break;
     case "upload-start":
       runtimeState.phase = "uploading";
@@ -919,6 +959,13 @@ function consumeRuntimeEvent(event) {
       runtimeState.activeUpload = null;
       runtimeState.lastUploadError = event.errorMessage || `Upload failed for ${event.fileName}.`;
       runtimeState.detail = runtimeState.lastUploadError;
+      break;
+    case "monitor-stop":
+      runtimeState.activeUpload = null;
+      runtimeState.detail = watcherState.isWatching
+        ? "Watching for new replays."
+        : "Watcher stopped. Start again before the next set.";
+      runtimeState.phase = watcherState.isWatching ? "watching" : "idle";
       break;
     case "watching-stopped":
       runtimeState.phase = "idle";

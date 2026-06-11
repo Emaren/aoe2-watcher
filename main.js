@@ -35,7 +35,7 @@ const LEGACY_DOMAIN_MIGRATIONS = [
   ["https://aoe2hdbets.com", "https://aoe2war.com"],
 ];
 const URL_CONFIG_KEYS = ["apiBaseUrl", "apiFallbackBaseUrl", "telemetryBaseUrl"];
-const TELEMETRY_HEARTBEAT_MS = Number(process.env.AOE2_TELEMETRY_HEARTBEAT_MS || 10 * 60 * 1000);
+const TELEMETRY_HEARTBEAT_MS = Number(process.env.AOE2_TELEMETRY_HEARTBEAT_MS || 60 * 1000);
 const TELEMETRY_TIMEOUT_MS = Number(process.env.AOE2_TELEMETRY_TIMEOUT_MS || 5000);
 const RELEASE_CHECK_TIMEOUT_MS = Number(process.env.AOE2_RELEASE_CHECK_TIMEOUT_MS || 5000);
 const AUTO_UPDATE_FEED_URL = process.env.AOE2_UPDATE_FEED_URL || "https://aoe2war.com/downloads";
@@ -87,6 +87,7 @@ function buildRuntimeMetadata(config = loadConfig()) {
     importRunning: Boolean(currentImportState?.isRunning),
     appPackaged: Boolean(app.isPackaged),
     updateFeedUrl: AUTO_UPDATE_FEED_URL,
+    finalityContractVersion: 2,
   };
 }
 
@@ -678,10 +679,57 @@ function buildTelemetryPayload(eventType, payload = {}, config = loadConfig()) {
     attempt: Number.isFinite(payload.attempt) ? payload.attempt : undefined,
     maxRetryCount: Number.isFinite(payload.maxRetryCount) ? payload.maxRetryCount : undefined,
     resultType: payload.resultType || undefined,
+    reason: payload.reason || undefined,
+    detail: payload.detail ? String(payload.detail).slice(0, 500) : undefined,
     responseStatus: payload.responseStatus || undefined,
     uploadHost: payload.uploadHost || undefined,
+    fileSizeBytes: Number.isFinite(payload.fileSizeBytes) ? payload.fileSizeBytes : undefined,
+    previousFileSizeBytes: Number.isFinite(payload.previousFileSizeBytes)
+      ? payload.previousFileSizeBytes
+      : undefined,
+    minReplayBytes: Number.isFinite(payload.minReplayBytes) ? payload.minReplayBytes : undefined,
+    mtimeMs: Number.isFinite(payload.mtimeMs) ? payload.mtimeMs : undefined,
+    waitedMs: Number.isFinite(payload.waitedMs) ? payload.waitedMs : undefined,
+    waitMs: Number.isFinite(payload.waitMs) ? payload.waitMs : undefined,
+    remainingTimeoutMs: Number.isFinite(payload.remainingTimeoutMs)
+      ? payload.remainingTimeoutMs
+      : undefined,
+    observedForMs: Number.isFinite(payload.observedForMs) ? payload.observedForMs : undefined,
+    requiredMs: Number.isFinite(payload.requiredMs) ? payload.requiredMs : undefined,
+    sampleCount: Number.isFinite(payload.sampleCount) ? payload.sampleCount : undefined,
+    retryInMs: Number.isFinite(payload.retryInMs) ? payload.retryInMs : undefined,
+    nextRetryAttempt: Number.isFinite(payload.nextRetryAttempt)
+      ? payload.nextRetryAttempt
+      : undefined,
+    reachedMinimum:
+      typeof payload.reachedMinimum === "boolean" ? payload.reachedMinimum : undefined,
+    finalityStatus: payload.finalityStatus || undefined,
+    shouldSettle: typeof payload.shouldSettle === "boolean" ? payload.shouldSettle : undefined,
+    pendingParse: typeof payload.pendingParse === "boolean" ? payload.pendingParse : undefined,
+    unparsedFinal:
+      typeof payload.unparsedFinal === "boolean" ? payload.unparsedFinal : undefined,
+    finalAccepted:
+      typeof payload.finalAccepted === "boolean" ? payload.finalAccepted : undefined,
+    fingerprint: payload.fingerprint || undefined,
+    previousFinalFingerprint: payload.previousFinalFingerprint || undefined,
+    unknownFields: Array.isArray(payload.unknownFields) ? payload.unknownFields : undefined,
+    found: Number.isFinite(payload.found) ? payload.found : undefined,
+    queued: Number.isFinite(payload.queued) ? payload.queued : undefined,
+    totalFiles: Number.isFinite(payload.totalFiles) ? payload.totalFiles : undefined,
+    unsupportedCount: Number.isFinite(payload.unsupportedCount)
+      ? payload.unsupportedCount
+      : undefined,
+    uploadedCount: Number.isFinite(payload.uploadedCount) ? payload.uploadedCount : undefined,
+    skippedCount: Number.isFinite(payload.skippedCount) ? payload.skippedCount : undefined,
+    failedCount: Number.isFinite(payload.failedCount) ? payload.failedCount : undefined,
+    currentIndex: Number.isFinite(payload.currentIndex) ? payload.currentIndex : undefined,
+    percent: Number.isFinite(payload.percent) ? payload.percent : undefined,
+    phase: payload.phase || undefined,
+    source: payload.source || undefined,
+    summaryText: payload.summaryText || undefined,
     errorMessage: payload.errorMessage ? String(payload.errorMessage).slice(0, 300) : undefined,
     watchDirBasename: payload.watchDir ? path.basename(String(payload.watchDir)) : undefined,
+    ...buildRuntimeMetadata(config),
   };
 
   return {
@@ -697,6 +745,19 @@ function buildTelemetryPayload(eventType, payload = {}, config = loadConfig()) {
     parse_reason: payload.parseReason || null,
     metadata,
   };
+}
+
+function normalizeRuntimeEventType(type) {
+  if (typeof type !== "string" || !type.trim()) {
+    return null;
+  }
+
+  return type
+    .trim()
+    .replace(/[^a-zA-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .toLowerCase()
+    .slice(0, 40);
 }
 
 async function postWatcherTelemetry(eventType, payload = {}, { wait = false, config = loadConfig() } = {}) {
@@ -891,6 +952,9 @@ function getAppInfo(config = loadConfig()) {
     productName: APP_NAME,
     platform: process.platform,
     isPackaged: app.isPackaged,
+    watcherId: config.watcherId || null,
+    sessionId: APP_SESSION_ID,
+    finalityContractVersion: 2,
     configPath: getConfigPath(),
     protocolScheme: WATCHER_PAIR_PROTOCOL,
     protocolRegistered: app.isDefaultProtocolClient(WATCHER_PAIR_PROTOCOL),
@@ -973,7 +1037,12 @@ function emitTelemetryForRuntimeEvent(event) {
 
   if (event.type === "upload-success") {
     emitWatcherTelemetry("upload_succeeded", basePayload);
-    emitWatcherTelemetry("parse_succeeded", basePayload);
+    emitWatcherTelemetry(
+      event.pendingParse || (event.isFinal && event.finalAccepted === false)
+        ? "parse_pending"
+        : "parse_succeeded",
+      basePayload
+    );
     return;
   }
 
@@ -982,6 +1051,12 @@ function emitTelemetryForRuntimeEvent(event) {
     if (event.responseStatus) {
       emitWatcherTelemetry("parse_failed", basePayload);
     }
+    return;
+  }
+
+  const normalizedType = normalizeRuntimeEventType(event.type);
+  if (normalizedType) {
+    emitWatcherTelemetry(normalizedType, basePayload);
   }
 }
 
@@ -1085,6 +1160,9 @@ function stopCurrentWatcher({ quiet = false } = {}) {
   watcherHandle = null;
   stopWatching();
   setWatchingState(false);
+  emitWatcherTelemetry("watcher_stopped", {
+    metadata: buildRuntimeMetadata(loadConfig()),
+  });
 
   if (!quiet) {
     appendLog("Watcher is now idle.");
@@ -1110,7 +1188,12 @@ function startCurrentWatcher(
   );
   void verifyWatcherAuth(config);
 
-  watcherHandle = startWatching(config, {
+  const runtimeConfig = {
+    ...config,
+    appSessionId: APP_SESSION_ID,
+  };
+
+  watcherHandle = startWatching(runtimeConfig, {
     onLog: (message, level = "info") => appendLog(message, level),
     onEvent: handleWatcherRuntimeEvent,
   });
@@ -1181,7 +1264,10 @@ async function runHistoricalImport({ source, filePaths = [] }) {
 
   try {
     const finalState = await importHistoricalReplays(
-      config,
+      {
+        ...config,
+        appSessionId: APP_SESSION_ID,
+      },
       {
         source,
         filePaths,

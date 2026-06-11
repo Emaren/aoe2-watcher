@@ -9,6 +9,10 @@ const FormData = require("form-data");
 const SUPPORTED_REPLAY_EXTENSIONS = [".aoe2record", ".aoe2mpgame", ".mgz", ".mgx", ".mgl"];
 const IMPORT_STABILITY_CHECK_MS = 1200;
 const IMPORT_ITEM_LIMIT = 75;
+const DEFAULT_FINAL_CANDIDATE_MIN_AGE_MS = 8 * 60 * 1000;
+const DEFAULT_FINAL_CANDIDATE_COOLDOWN_MS = 3 * 60 * 1000;
+const DEFAULT_FINAL_SETTLE_WINDOW_MS = 3 * 60 * 1000;
+const DEFAULT_FINAL_QUIET_PERIOD_MS = 2 * 60 * 1000;
 const LEGACY_DOMAIN_MIGRATIONS = [
   ["https://api-prodn.aoe2hdbets.com", "https://api-prodn.aoe2war.com"],
   ["https://api.aoe2hdbets.com", "https://api-prodn.aoe2war.com"],
@@ -154,13 +158,22 @@ function buildRuntimeConfig(config = {}) {
     retryBaseDelayMs: Number(process.env.AOE2_UPLOAD_RETRY_BASE_DELAY_MS || 4000),
     retryPollMs: Number(process.env.AOE2_UPLOAD_RETRY_POLL_MS || 1000),
     stableCheckIntervalMs: Number(process.env.AOE2_UPLOAD_STABLE_CHECK_INTERVAL_MS || 3000),
-    quietPeriodMs: Number(process.env.AOE2_UPLOAD_QUIET_PERIOD_MS || 30000),
+    quietPeriodMs: Number(process.env.AOE2_UPLOAD_QUIET_PERIOD_MS || DEFAULT_FINAL_QUIET_PERIOD_MS),
     initialLiveDelayMs: Number(process.env.AOE2_INITIAL_LIVE_DELAY_MS || 3000),
     initialLiveRetryCooldownMs: Number(
       process.env.AOE2_INITIAL_LIVE_RETRY_COOLDOWN_MS || 10000
     ),
     liveUploadCooldownMs: Number(process.env.AOE2_LIVE_UPLOAD_COOLDOWN_MS || 45000),
-    finalSettleWindowMs: Number(process.env.AOE2_FINAL_SETTLE_WINDOW_MS || 90000),
+    finalCandidateMinAgeMs: Number(
+      process.env.AOE2_FINAL_CANDIDATE_MIN_AGE_MS || DEFAULT_FINAL_CANDIDATE_MIN_AGE_MS
+    ),
+    finalCandidateCooldownMs: Number(
+      process.env.AOE2_FINAL_CANDIDATE_COOLDOWN_MS || DEFAULT_FINAL_CANDIDATE_COOLDOWN_MS
+    ),
+    finalCandidateStableSamples: Number(process.env.AOE2_FINAL_CANDIDATE_STABLE_SAMPLES || 3),
+    finalSettleWindowMs: Number(
+      process.env.AOE2_FINAL_SETTLE_WINDOW_MS || DEFAULT_FINAL_SETTLE_WINDOW_MS
+    ),
     firstBytesTimeoutMs: Number(process.env.AOE2_FIRST_BYTES_TIMEOUT_MS || 15 * 60 * 1000),
     firstBytesPollMs: Number(process.env.AOE2_FIRST_BYTES_POLL_MS || 1000),
     replayProgressLogIntervalMs: Number(
@@ -174,6 +187,8 @@ function buildRuntimeConfig(config = {}) {
         .update(os.hostname())
         .digest("hex")
         .slice(0, 12)}`,
+    watcherId: config.watcherId || process.env.AOE2_WATCHER_ID || null,
+    appSessionId: config.appSessionId || process.env.AOE2_WATCHER_SESSION_ID || null,
   };
 }
 
@@ -243,7 +258,13 @@ function getStateEntry(filePath) {
       lastFinalUploadedFingerprint: null,
       lastFinalReplayHash: null,
       lastFinalUploadAt: 0,
+      lastFinalCandidateAt: 0,
+      lastFinalCandidateFingerprint: null,
+      lastFinalDeferralReason: null,
+      lastFinalDeferralNoticeAt: 0,
       lastReplayGrowthNoticeAt: 0,
+      monitorStartedAt: 0,
+      finalAccepted: false,
       liveIteration: 0,
     };
     activeUploadState.set(filePath, entry);
@@ -332,6 +353,10 @@ function parseFingerprintParts(fingerprint = "") {
   };
 }
 
+function isTruthyResponseFlag(value) {
+  return value === true || value === "true" || value === 1 || value === "1";
+}
+
 function safeShortText(value, maxLength = 600) {
   let text;
 
@@ -353,8 +378,26 @@ function summarizeUploadResponse(data = {}) {
     resultType: classifyUploadResult(formatResponseBody(data)),
     replayHash: data?.replay_hash || data?.replayHash || data?.hash || null,
     gameId: data?.game_id || data?.gameId || data?.id || null,
+    finalityStatus: data?.finality_status || data?.finalityStatus || null,
+    shouldSettle: isTruthyResponseFlag(data?.should_settle ?? data?.shouldSettle),
+    pendingParse: isTruthyResponseFlag(data?.pending_parse ?? data?.pendingParse),
+    unparsedFinal: isTruthyResponseFlag(data?.unparsed_final ?? data?.unparsedFinal),
     summary: safeShortText(data, 800),
   };
+}
+
+function isTrustedFinalResponse(responseSummary = {}) {
+  if (responseSummary.shouldSettle) {
+    return true;
+  }
+
+  return [
+    "trusted_final",
+    "trusted_final_duplicate",
+    "trusted_final_refreshed",
+    "reviewed_match_duplicate",
+    "reviewed_match_refreshed",
+  ].includes(String(responseSummary.finalityStatus || ""));
 }
 
 function isUnknownishValue(value) {
@@ -636,7 +679,8 @@ function shouldLogReplayGrowthNotice(entry, runtimeConfig, isFinal) {
 
 function hasSettledReplayFingerprint(entry, fingerprint, runtimeConfig, now = Date.now()) {
   return Boolean(
-    fingerprint &&
+    entry.finalAccepted &&
+      fingerprint &&
       fingerprint === entry.lastFinalUploadedFingerprint &&
       fingerprint === entry.lastObservedFingerprint &&
       entry.lastFinalUploadAt > 0 &&
@@ -650,7 +694,7 @@ async function resolveFinalReplayShortCircuit(
   runtimeConfig,
   { fingerprint = null, now = Date.now() } = {}
 ) {
-  if (!entry.lastFinalUploadedFingerprint && !entry.lastFinalReplayHash) {
+  if (!entry.finalAccepted || (!entry.lastFinalUploadedFingerprint && !entry.lastFinalReplayHash)) {
     return null;
   }
 
@@ -703,7 +747,7 @@ async function resolveFinalReplayShortCircuit(
 async function uploadReplay(
   filePath,
   runtimeConfig,
-  { parseIteration = 1, isFinal = true, uploadUrl } = {}
+  { parseIteration = 1, isFinal = true, uploadUrl, uploadContext = {} } = {}
 ) {
   const replayBuffer = await fs.promises.readFile(filePath);
 
@@ -725,6 +769,21 @@ async function uploadReplay(
     "x-parse-source": parseSource,
     "x-parse-reason": parseReason,
   };
+
+  const metadataHeaders = {
+    "x-watcher-id": runtimeConfig.watcherId,
+    "x-watcher-session-id": runtimeConfig.appSessionId,
+    "x-replay-fingerprint": uploadContext.fingerprint,
+    "x-file-size-bytes": uploadContext.fileSizeBytes,
+    "x-file-mtime-ms": uploadContext.mtimeMs,
+    "x-final-candidate": isFinal ? "true" : "false",
+  };
+
+  for (const [name, value] of Object.entries(metadataHeaders)) {
+    if (value !== null && value !== undefined && value !== "") {
+      headers[name] = String(value);
+    }
+  }
 
   if (runtimeConfig.uploadApiKey) {
     headers["x-api-key"] = runtimeConfig.uploadApiKey;
@@ -797,6 +856,8 @@ async function uploadReplayWithRetry(
         attempt,
         maxRetryCount: runtimeConfig.maxUploadRetries,
         uploadHost: targetHost,
+        fingerprint: attemptFingerprint,
+        ...parseFingerprintParts(attemptFingerprint),
       });
 
       log(
@@ -808,15 +869,21 @@ async function uploadReplayWithRetry(
 
       try {
         attemptFingerprint = await getFileFingerprint(filePath);
+        const fingerprintParts = parseFingerprintParts(attemptFingerprint);
         const res = await uploadReplay(filePath, runtimeConfig, {
           parseIteration,
           isFinal,
           uploadUrl: target.uploadUrl,
+          uploadContext: {
+            fingerprint: attemptFingerprint,
+            ...fingerprintParts,
+          },
         });
         const detail = formatResponseBody(res.data);
         const resultType = classifyUploadResult(detail);
         const responseSummary = summarizeUploadResponse(res.data);
         const unknownParseFields = detectUnknownParseFields(res.data);
+        const finalAccepted = isFinal ? isTrustedFinalResponse(responseSummary) : false;
 
         if (unknownParseFields.length > 0) {
           emitRuntimeEvent("parse-result-unknown-fields", {
@@ -844,12 +911,16 @@ async function uploadReplayWithRetry(
 
         rememberWorkingUploadTarget(target);
 
-        if (isFinal || detail.toLowerCase().includes("already parsed as final")) {
+        if (isFinal && finalAccepted) {
           entry.lastFinalUploadedFingerprint = attemptFingerprint;
           entry.lastFinalUploadAt = Date.now();
+          entry.finalAccepted = true;
           if (replayHash) {
             entry.lastFinalReplayHash = replayHash;
           }
+        } else if (isFinal) {
+          entry.lastFinalCandidateFingerprint = attemptFingerprint;
+          entry.lastFinalCandidateAt = Date.now();
         } else {
           entry.lastLiveUploadedFingerprint = attemptFingerprint;
           entry.liveIteration = parseIteration;
@@ -873,9 +944,34 @@ async function uploadReplayWithRetry(
           parseReason,
           replayHash,
           resultType,
+          finalityStatus: responseSummary.finalityStatus,
+          shouldSettle: responseSummary.shouldSettle,
+          pendingParse: responseSummary.pendingParse,
+          unparsedFinal: responseSummary.unparsedFinal,
+          finalAccepted,
           responseStatus: res.status,
           detail,
+          ...fingerprintParts,
         });
+
+        if (isFinal) {
+          emitRuntimeEvent(finalAccepted ? "final-candidate-accepted" : "final-candidate-deferred", {
+            filePath,
+            fileName: path.basename(filePath),
+            isFinal,
+            parseIteration,
+            parseSource,
+            parseReason,
+            replayHash,
+            resultType,
+            finalityStatus: responseSummary.finalityStatus,
+            shouldSettle: responseSummary.shouldSettle,
+            pendingParse: responseSummary.pendingParse,
+            unparsedFinal: responseSummary.unparsedFinal,
+            detail,
+            ...fingerprintParts,
+          });
+        }
 
         if (changedDuringUpload && shouldLogReplayGrowthNotice(entry, runtimeConfig, isFinal)) {
           log(
@@ -892,6 +988,10 @@ async function uploadReplayWithRetry(
           resultType,
           responseData: res.data,
           responseStatus: res.status,
+          finalAccepted,
+          finalityStatus: responseSummary.finalityStatus,
+          shouldSettle: responseSummary.shouldSettle,
+          replayHash,
         };
       } catch (err) {
         const responseDetail = formatResponseBody(err?.response?.data);
@@ -926,6 +1026,8 @@ async function uploadReplayWithRetry(
             parseReason,
             errorMessage,
             responseStatus: err?.response?.status || null,
+            fingerprint: attemptFingerprint,
+            ...parseFingerprintParts(attemptFingerprint),
           });
           return {
             ok: false,
@@ -955,6 +1057,8 @@ async function uploadReplayWithRetry(
           nextRetryAttempt: attempt + 1,
           maxRetryCount: runtimeConfig.maxUploadRetries,
           responseStatus: err?.response?.status || null,
+          fingerprint: attemptFingerprint,
+          ...parseFingerprintParts(attemptFingerprint),
         });
 
         if (isReplayFinalizingError(err)) {
@@ -972,6 +1076,117 @@ async function uploadReplayWithRetry(
     ok: false,
     errorMessage: "Upload failed after all retries.",
   };
+}
+
+function shouldEmitFinalDeferral(entry, reason, now = Date.now()) {
+  if (
+    entry.lastFinalDeferralReason !== reason ||
+    entry.lastFinalDeferralNoticeAt === 0 ||
+    now - entry.lastFinalDeferralNoticeAt >= 60000
+  ) {
+    entry.lastFinalDeferralReason = reason;
+    entry.lastFinalDeferralNoticeAt = now;
+    return true;
+  }
+
+  return false;
+}
+
+async function getFinalCandidateReadiness(filePath, entry, runtimeConfig, fingerprint, now) {
+  const observedForMs = entry.monitorStartedAt > 0 ? now - entry.monitorStartedAt : 0;
+  if (observedForMs < runtimeConfig.finalCandidateMinAgeMs) {
+    return {
+      ready: false,
+      reason: "minimum_observation_window",
+      observedForMs,
+      requiredMs: runtimeConfig.finalCandidateMinAgeMs,
+      waitMs: runtimeConfig.finalCandidateMinAgeMs - observedForMs,
+    };
+  }
+
+  if (
+    entry.lastFinalCandidateAt > 0 &&
+    entry.lastFinalCandidateFingerprint === fingerprint &&
+    now - entry.lastFinalCandidateAt < runtimeConfig.finalCandidateCooldownMs
+  ) {
+    return {
+      ready: false,
+      reason: "final_candidate_cooldown",
+      waitMs: runtimeConfig.finalCandidateCooldownMs - (now - entry.lastFinalCandidateAt),
+    };
+  }
+
+  let stableFingerprint = fingerprint;
+  const sampleCount = Math.max(1, runtimeConfig.finalCandidateStableSamples || 1);
+
+  for (let sample = 1; sample < sampleCount; sample += 1) {
+    await sleep(runtimeConfig.stableCheckIntervalMs);
+    if (!fs.existsSync(filePath)) {
+      return {
+        ready: false,
+        reason: "missing_during_final_stability",
+      };
+    }
+
+    const nextFingerprint = await getFileFingerprint(filePath);
+    if (nextFingerprint !== stableFingerprint) {
+      const changedAt = Date.now();
+      entry.lastObservedFingerprint = nextFingerprint;
+      entry.lastChangeAt = changedAt;
+      return {
+        ready: false,
+        reason: "changed_during_final_stability",
+        fingerprint: nextFingerprint,
+        changedAt,
+      };
+    }
+
+    stableFingerprint = nextFingerprint;
+  }
+
+  return {
+    ready: true,
+    reason: "quiet_and_stable",
+    fingerprint: stableFingerprint,
+    observedForMs,
+    sampleCount,
+  };
+}
+
+async function reopenFinalIfReplayGrew(filePath, entry, fingerprint) {
+  if (!entry.finalAccepted || fingerprint === entry.lastFinalUploadedFingerprint) {
+    return false;
+  }
+
+  if (entry.lastFinalReplayHash) {
+    try {
+      const contentHash = await getReplayContentHash(filePath);
+      if (contentHash === entry.lastFinalReplayHash) {
+        entry.lastObservedFingerprint = fingerprint;
+        entry.lastFinalUploadedFingerprint = fingerprint;
+        return false;
+      }
+    } catch (error) {
+      log(`Unable to verify changed final replay hash for ${path.basename(filePath)}: ${error.message}`, "warn");
+    }
+  }
+
+  emitRuntimeEvent("final-candidate-reopened", {
+    filePath,
+    fileName: path.basename(filePath),
+    reason: "replay_changed_after_final_acceptance",
+    previousReplayHash: entry.lastFinalReplayHash,
+    previousFinalFingerprint: entry.lastFinalUploadedFingerprint,
+    fingerprint,
+    ...parseFingerprintParts(fingerprint),
+  });
+
+  entry.finalAccepted = false;
+  entry.lastFinalUploadedFingerprint = null;
+  entry.lastFinalReplayHash = null;
+  entry.lastFinalUploadAt = 0;
+  entry.lastFinalCandidateFingerprint = null;
+  return true;
 }
 
 async function monitorReplayFile(filePath, runtimeConfig) {
@@ -1031,6 +1246,7 @@ async function monitorReplayFile(filePath, runtimeConfig) {
   }
 
   entry.monitoring = true;
+  entry.monitorStartedAt = Date.now();
   emitRuntimeEvent("monitor-start", {
     filePath,
     fileName: path.basename(filePath),
@@ -1084,6 +1300,7 @@ async function monitorReplayFile(filePath, runtimeConfig) {
       const changed = fingerprint !== entry.lastObservedFingerprint;
 
       if (changed) {
+        await reopenFinalIfReplayGrew(filePath, entry, fingerprint);
         entry.lastObservedFingerprint = fingerprint;
         entry.lastChangeAt = now;
 
@@ -1119,20 +1336,62 @@ async function monitorReplayFile(filePath, runtimeConfig) {
         entry.lastChangeAt > 0 &&
         now - entry.lastChangeAt >= runtimeConfig.quietPeriodMs
       ) {
-        log(
-          `Quiet period reached for ${path.basename(filePath)} after ${Math.round(
-            runtimeConfig.quietPeriodMs / 1000
-          )}s. Attempting final upload.`
+        const readiness = await getFinalCandidateReadiness(
+          filePath,
+          entry,
+          runtimeConfig,
+          fingerprint,
+          now
         );
 
+        if (!readiness.ready) {
+          if (shouldEmitFinalDeferral(entry, readiness.reason)) {
+            log(
+              `Final upload deferred for ${path.basename(filePath)}: ${readiness.reason}${
+                readiness.waitMs ? ` (${Math.round(readiness.waitMs / 1000)}s remaining)` : ""
+              }.`
+            );
+            emitRuntimeEvent("final-candidate-deferred", {
+              filePath,
+              fileName: path.basename(filePath),
+              reason: readiness.reason,
+              waitMs: readiness.waitMs || null,
+              observedForMs: readiness.observedForMs || null,
+              requiredMs: readiness.requiredMs || null,
+              fingerprint: readiness.fingerprint || fingerprint,
+              ...parseFingerprintParts(readiness.fingerprint || fingerprint),
+            });
+          }
+          await sleep(runtimeConfig.stableCheckIntervalMs);
+          continue;
+        }
+
+        log(
+          `Final candidate ready for ${path.basename(filePath)} after ${Math.round(
+            runtimeConfig.quietPeriodMs / 1000
+          )}s quiet and ${Math.round((readiness.observedForMs || 0) / 1000)}s observed.`
+        );
+
+        emitRuntimeEvent("final-candidate-ready", {
+          filePath,
+          fileName: path.basename(filePath),
+          reason: readiness.reason,
+          observedForMs: readiness.observedForMs,
+          sampleCount: readiness.sampleCount,
+          fingerprint: readiness.fingerprint || fingerprint,
+          ...parseFingerprintParts(readiness.fingerprint || fingerprint),
+        });
+
         const nextIteration = Math.max(1, entry.liveIteration + 1);
+        entry.lastFinalCandidateAt = Date.now();
+        entry.lastFinalCandidateFingerprint = readiness.fingerprint || fingerprint;
         const stored = await uploadReplayWithRetry(filePath, runtimeConfig, entry, {
-          fingerprint,
+          fingerprint: readiness.fingerprint || fingerprint,
           parseIteration: nextIteration,
           isFinal: true,
         });
 
-        if (stored.ok) {
+        if (stored.ok && stored.finalAccepted) {
           continue;
         }
       }
@@ -1551,7 +1810,7 @@ async function importHistoricalReplays(config = {}, options = {}, hooks = {}) {
       fingerprint: stability.fingerprint,
     });
 
-    if (entry.lastFinalUploadedFingerprint === stability.fingerprint) {
+    if (entry.finalAccepted && entry.lastFinalUploadedFingerprint === stability.fingerprint) {
       state.skipped += 1;
       const detail = "Already imported in this app session.";
       pushImportItem(state.skippedItems, createImportItem(candidate.filePath, "skipped", detail));

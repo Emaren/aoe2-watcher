@@ -22,7 +22,13 @@ function buildEntry(overrides = {}) {
     lastFinalUploadedFingerprint: null,
     lastFinalReplayHash: null,
     lastFinalUploadAt: 0,
+    lastFinalCandidateAt: 0,
+    lastFinalCandidateFingerprint: null,
+    lastFinalDeferralReason: null,
+    lastFinalDeferralNoticeAt: 0,
     lastReplayGrowthNoticeAt: 0,
+    monitorStartedAt: 0,
+    finalAccepted: false,
     liveIteration: 0,
     ...overrides,
   };
@@ -46,6 +52,7 @@ test("short-circuits when the replay fingerprint is already settled", async (t) 
     lastObservedFingerprint: fingerprint,
     lastFinalUploadedFingerprint: fingerprint,
     lastFinalUploadAt: Date.now() - 120000,
+    finalAccepted: true,
   });
 
   const result = await resolveFinalReplayShortCircuit(filePath, entry, {
@@ -74,6 +81,7 @@ test("short-circuits when a touched replay still matches the prior final replay 
     lastFinalUploadedFingerprint: originalFingerprint,
     lastFinalReplayHash: replayHash,
     lastFinalUploadAt: Date.now(),
+    finalAccepted: true,
   });
 
   const result = await resolveFinalReplayShortCircuit(filePath, entry, {
@@ -97,6 +105,26 @@ test("does not short-circuit when the replay bytes changed after final upload", 
     lastFinalUploadedFingerprint: originalFingerprint,
     lastFinalReplayHash: replayHash,
     lastFinalUploadAt: Date.now(),
+    finalAccepted: true,
+  });
+
+  const result = await resolveFinalReplayShortCircuit(filePath, entry, {
+    finalSettleWindowMs: 90000,
+  });
+
+  assert.equal(result, null);
+});
+
+test("does not short-circuit an unaccepted final candidate", async (t) => {
+  const filePath = await createTempReplay(t, Buffer.from("candidate replay"));
+  const fingerprint = await getFileFingerprint(filePath);
+  const replayHash = await getReplayContentHash(filePath);
+  const entry = buildEntry({
+    lastObservedFingerprint: fingerprint,
+    lastFinalUploadedFingerprint: fingerprint,
+    lastFinalReplayHash: replayHash,
+    lastFinalUploadAt: Date.now() - 120000,
+    finalAccepted: false,
   });
 
   const result = await resolveFinalReplayShortCircuit(filePath, entry, {
