@@ -1,0 +1,16 @@
+name: Hello Canary
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/hello-canary.yml"
+      - ".hello-trigger"
+
+jobs:
+  hello:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "hello from GitHub Actions"
