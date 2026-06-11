@@ -1,7 +1,13 @@
 name: Azure Signing Canary
 
-"on":
-  workflow_dispatch: {}
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/azure-signing-canary.yml"
+      - ".canary-trigger"
 
 jobs:
   sign-canary:
