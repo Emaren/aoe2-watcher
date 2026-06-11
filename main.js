@@ -54,6 +54,7 @@ const TELEMETRY_HEARTBEAT_MS = Number(process.env.AOE2_TELEMETRY_HEARTBEAT_MS ||
 const TELEMETRY_TIMEOUT_MS = Number(process.env.AOE2_TELEMETRY_TIMEOUT_MS || 5000);
 const RELEASE_CHECK_TIMEOUT_MS = Number(process.env.AOE2_RELEASE_CHECK_TIMEOUT_MS || 5000);
 const AUTO_UPDATE_FEED_URL = process.env.AOE2_UPDATE_FEED_URL || "https://aoe2war.com/downloads";
+const MAC_AUTO_UPDATE_ENABLED = process.env.AOE2_ENABLE_MAC_AUTO_UPDATE === "1";
 const APP_SESSION_ID = createRandomId("session");
 
 let mainWindow = null;
@@ -80,12 +81,76 @@ function createUpdateState(patch = {}) {
     currentVersion: typeof app.getVersion === "function" ? app.getVersion() : null,
     updateVersion: null,
     downloaded: false,
+    manualInstall: false,
+    manualReason: null,
+    manualDownloadUrl: null,
     downloadPercent: 0,
     error: null,
     checkedAt: null,
     updatedAt: null,
     ...patch,
   };
+}
+
+function requiresManualUpdateInstall() {
+  return process.platform === "darwin" && !MAC_AUTO_UPDATE_ENABLED;
+}
+
+function isWatcherUpdateBusy() {
+  return Boolean(watcherHandle || currentImportState?.isRunning);
+}
+
+function getManualUpdateUrl() {
+  return releaseState.updateUrl || releaseState.releaseUrl || `${DEFAULT_RELEASE_BASE_URL}${DOWNLOAD_PAGE_PATH}`;
+}
+
+function isMacSignatureValidationError(error) {
+  const message = String(error?.message || error || "").toLowerCase();
+  return (
+    process.platform === "darwin" &&
+    (message.includes("code signature") ||
+      message.includes("shipit") ||
+      message.includes("did not pass validation"))
+  );
+}
+
+function setManualUpdateState(reason, error = null, info = {}) {
+  const version = info.version || updateState.updateVersion || releaseState.latestVersion || null;
+
+  return setUpdateState(
+    {
+      supported: true,
+      status: "manual_required",
+      message:
+        reason === "mac_signature_validation"
+          ? "Mac update needs a manual replace. Download the new watcher and reopen it."
+          : version
+            ? `Watcher ${version} is ready. Download and replace the app.`
+            : "Watcher update is ready. Download and replace the app.",
+      updateVersion: version,
+      downloaded: false,
+      manualInstall: true,
+      manualReason: reason,
+      manualDownloadUrl: getManualUpdateUrl(),
+      error: error?.message || (error ? String(error) : null),
+    },
+    {
+      logMessage:
+        reason === "mac_signature_validation"
+          ? "Mac updater could not validate this unsigned build. Download the latest watcher and replace the app."
+          : "Mac watcher update is ready. Download the latest watcher and replace the app.",
+      level: reason === "mac_signature_validation" ? "warn" : "info",
+      telemetryEvent: reason === "mac_signature_validation" ? "watcher_update_error" : "watcher_update_available",
+      telemetryPayload: {
+        metadata: {
+          manualInstall: true,
+          manualReason: reason,
+          updateInfo: info,
+          error: error?.message || (error ? String(error) : null),
+        },
+      },
+    }
+  );
 }
 
 function buildRuntimeMetadata(config = loadConfig()) {
@@ -158,8 +223,8 @@ function configureAutoUpdater() {
     });
   }
 
-  autoUpdater.autoDownload = true;
-  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.autoDownload = !requiresManualUpdateInstall();
+  autoUpdater.autoInstallOnAppQuit = !requiresManualUpdateInstall();
 
   try {
     autoUpdater.setFeedURL({
@@ -193,6 +258,11 @@ function configureAutoUpdater() {
   });
 
   autoUpdater.on("update-available", (info = {}) => {
+    if (requiresManualUpdateInstall()) {
+      setManualUpdateState("mac_manual_unsigned", null, info);
+      return;
+    }
+
     setUpdateState(
       {
         supported: true,
@@ -200,6 +270,9 @@ function configureAutoUpdater() {
         message: `Watcher update ${info.version || ""} is available.`.trim(),
         updateVersion: info.version || null,
         downloaded: false,
+        manualInstall: false,
+        manualReason: null,
+        manualDownloadUrl: null,
         downloadPercent: 0,
         error: null,
       },
@@ -219,6 +292,9 @@ function configureAutoUpdater() {
         message: "Watcher is up to date.",
         updateVersion: info.version || null,
         downloaded: false,
+        manualInstall: false,
+        manualReason: null,
+        manualDownloadUrl: null,
         downloadPercent: 0,
         error: null,
       },
@@ -241,25 +317,52 @@ function configureAutoUpdater() {
   });
 
   autoUpdater.on("update-downloaded", (info = {}) => {
+    if (requiresManualUpdateInstall()) {
+      setManualUpdateState("mac_manual_unsigned", null, info);
+      return;
+    }
+
+    const busy = isWatcherUpdateBusy();
     setUpdateState(
       {
         supported: true,
-        status: "downloaded",
-        message: "Watcher update downloaded. It will install when the app closes.",
+        status: busy ? "pending_install" : "downloaded",
+        message: busy
+          ? "Watcher update downloaded. It will install after watching or uploads stop."
+          : "Watcher update downloaded. Installing now.",
         updateVersion: info.version || null,
         downloaded: true,
+        manualInstall: false,
+        manualReason: null,
+        manualDownloadUrl: null,
         downloadPercent: 100,
         error: null,
       },
       {
-        logMessage: "Watcher update downloaded. Close and reopen the watcher to finish updating.",
+        logMessage: busy
+          ? "Watcher update downloaded. It will install after uploads/watching stop."
+          : "Watcher update downloaded. Installing now.",
         telemetryEvent: "watcher_update_downloaded",
         telemetryPayload: { metadata: { updateInfo: info } },
       }
     );
+
+    if (!busy) {
+      setTimeout(() => {
+        void installDownloadedWatcherUpdate(loadConfig(), {
+          automatic: true,
+          reason: "downloaded_idle",
+        });
+      }, 700);
+    }
   });
 
   autoUpdater.on("error", (error) => {
+    if (isMacSignatureValidationError(error)) {
+      setManualUpdateState("mac_signature_validation", error);
+      return;
+    }
+
     setUpdateState(
       {
         supported: true,
@@ -361,8 +464,17 @@ async function checkForWatcherUpdates({ manual = false, config = loadConfig() } 
   }
 }
 
-async function installDownloadedWatcherUpdate(config = loadConfig()) {
+async function installDownloadedWatcherUpdate(config = loadConfig(), options = {}) {
   configureAutoUpdater();
+
+  if (updateState.manualInstall || updateState.status === "manual_required") {
+    return {
+      ok: false,
+      manualRequired: true,
+      updateUrl: getManualUpdateUrl(),
+      update: updateState,
+    };
+  }
 
   if (!autoUpdater || !updateState.downloaded) {
     return {
@@ -379,9 +491,18 @@ async function installDownloadedWatcherUpdate(config = loadConfig()) {
     },
   }, config);
 
-  if (watcherHandle || currentImportState?.isRunning) {
+  if (isWatcherUpdateBusy()) {
     autoUpdater.autoInstallOnAppQuit = true;
-    appendLog("Update is ready. It will install after uploads/watching stop and the app closes.", "warn");
+    setUpdateState(
+      {
+        status: "pending_install",
+        message: "Update ready. It will install after uploads/watching stop.",
+      },
+      {
+        logMessage: "Update is ready. It will install after uploads/watching stop.",
+        level: "warn",
+      }
+    );
     return {
       ok: true,
       deferred: true,
@@ -389,7 +510,22 @@ async function installDownloadedWatcherUpdate(config = loadConfig()) {
     };
   }
 
-  appendLog("Installing watcher update now...");
+  setUpdateState(
+    {
+      status: "installing",
+      message: "Installing watcher update now.",
+    },
+    {
+      logMessage: "Installing watcher update now...",
+      telemetryEvent: "watcher_update_install_started",
+      telemetryPayload: {
+        metadata: {
+          automatic: Boolean(options.automatic),
+          reason: options.reason || null,
+        },
+      },
+    }
+  );
   autoUpdater.quitAndInstall(false, true);
 
   return {
@@ -397,6 +533,17 @@ async function installDownloadedWatcherUpdate(config = loadConfig()) {
     installing: true,
     update: updateState,
   };
+}
+
+function maybeInstallPendingWatcherUpdate(reason) {
+  if (updateState.status !== "pending_install" || !updateState.downloaded || isWatcherUpdateBusy()) {
+    return;
+  }
+
+  void installDownloadedWatcherUpdate(loadConfig(), {
+    automatic: true,
+    reason,
+  });
 }
 
 
@@ -1208,7 +1355,7 @@ function getSetupBlocker(config) {
   return null;
 }
 
-function stopCurrentWatcher({ quiet = false } = {}) {
+function stopCurrentWatcher({ quiet = false, allowPendingInstall = true } = {}) {
   if (!quiet) {
     appendLog("Stopping watcher session...");
   }
@@ -1232,6 +1379,10 @@ function stopCurrentWatcher({ quiet = false } = {}) {
   if (!quiet) {
     appendLog("Watcher is now idle.");
   }
+
+  if (allowPendingInstall) {
+    maybeInstallPendingWatcherUpdate("watcher_stopped");
+  }
 }
 
 function startCurrentWatcher(
@@ -1240,7 +1391,7 @@ function startCurrentWatcher(
 ) {
   watcherSession += 1;
 
-  stopCurrentWatcher({ quiet: true });
+  stopCurrentWatcher({ quiet: true, allowPendingInstall: false });
   if (!preserveLog) {
     clearRendererLog();
   }
@@ -1351,6 +1502,7 @@ async function runHistoricalImport({ source, filePaths = [] }) {
 
     setImportState(finalState, { persist: true });
     appendLog(finalState.summaryText || "Batch upload complete.");
+    maybeInstallPendingWatcherUpdate("import_finished");
 
     return {
       ok: true,
@@ -1368,6 +1520,7 @@ async function runHistoricalImport({ source, filePaths = [] }) {
       summaryText: message,
     };
     setImportState(failedState, { persist: true });
+    maybeInstallPendingWatcherUpdate("import_failed");
 
     return {
       ok: false,

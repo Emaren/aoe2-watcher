@@ -239,10 +239,51 @@ function getReleaseStatus() {
     };
   }
 
+  if (autoUpdate.status === "installing") {
+    return {
+      headline: `${currentVersion} Installing`,
+      detail: "Installing watcher update now.",
+      showUpdate: false,
+      showCheck: false,
+      updateUrl: "",
+      canInstall: false,
+    };
+  }
+
+  if (autoUpdate.status === "manual_required" || autoUpdate.manualInstall) {
+    return {
+      headline: `${currentVersion} Update Ready`,
+      detail: autoUpdate.error
+        ? "Mac update needs a fresh download."
+        : latestVersion || autoUpdate.updateVersion
+          ? `Watcher ${latestVersion || autoUpdate.updateVersion} is ready.`
+          : "A watcher update is ready.",
+      showUpdate: true,
+      showCheck: true,
+      updateUrl:
+        autoUpdate.manualDownloadUrl ||
+        release.updateUrl ||
+        release.releaseUrl ||
+        "https://aoe2war.com/download",
+      canInstall: false,
+    };
+  }
+
+  if (autoUpdate.status === "pending_install") {
+    return {
+      headline: `${currentVersion} Update Ready`,
+      detail: "Update will install after watching or uploads stop.",
+      showUpdate: true,
+      showCheck: false,
+      updateUrl: "",
+      canInstall: true,
+    };
+  }
+
   if (autoUpdate.downloaded) {
     return {
       headline: `${currentVersion} Update Ready`,
-      detail: "Update downloaded. Close and reopen, or install now when safe.",
+      detail: "Update downloaded. Installing when safe.",
       showUpdate: true,
       showCheck: false,
       updateUrl: "",
@@ -525,22 +566,22 @@ function getSetupSummaryText() {
   }
 
   if (!hasWatcherKey() && !isReplayFolderReady()) {
-    return "Pair Profile, Start Watching, or Batch Upload Replays. Simple wins."; 
+    return "Pair profile. Choose folder. Start watching."; 
   }
 
   if (!isReplayFolderReady()) {
-    return "Profile pairing is ready. Choose the AoE2 SaveGame folder next."; 
+    return "Profile paired. Choose the SaveGame folder."; 
   }
 
   if (!hasWatcherKey()) {
-    return "Replay folder is ready. Click Pair Profile to connect your account."; 
+    return "Folder ready. Pair profile."; 
   }
 
   if (importState.isRunning) {
-    return "Batch upload is running. The app stays responsive, and live watching can still stay armed.";
+    return "Import running. Watching can stay armed.";
   }
 
-  return "Everything is ready. Start watching or batch upload saved replays."; 
+  return "Ready. Start watching or import replays."; 
 }
 
 function renderReadiness() {
@@ -562,8 +603,8 @@ function renderReadiness() {
   setReadinessState(els.keyReadyText, keyReady);
   els.keyReadyText.textContent = keyReady ? "Profile paired" : "Not paired";
   els.keyHintText.textContent = keyReady
-    ? "Manual key recovery lives in Advanced."
-    : "Click Pair Profile. Manual key paste is only for recovery."; 
+    ? "Manual recovery in Advanced."
+    : "Pair Profile or paste manually."; 
 
   els.setupSummaryText.textContent = getSetupSummaryText();
 }
@@ -603,8 +644,8 @@ function renderDiagnostics() {
     ? "Browser handoff ready"
     : "Manual key fallback ready";
   els.protocolDetailText.textContent = appInfo?.protocolRegistered
-    ? "Profile Pairing can hand the key to the watcher automatically."
-    : "Manual key paste is available in Advanced if browser pairing fails."; 
+    ? "Profile Pairing can hand off automatically."
+    : "Manual paste is available in Advanced."; 
   els.apiHostText.textContent = readForm().apiBaseUrl || DEFAULT_CONFIG.apiBaseUrl;
   els.replayPathDiagText.textContent = shortenPath(readForm().watchDir, "Not chosen yet");
   els.supportedExtensionsText.textContent =
@@ -907,6 +948,12 @@ async function openWatcherUpdate() {
   try {
     if (releaseStatus.canInstall && window.watcherApi.installUpdate) {
       const result = await window.watcherApi.installUpdate();
+
+      if (result?.manualRequired) {
+        await window.watcherApi.openUpdate(result.updateUrl);
+        setStatus("Opened watcher update download.", "warn");
+        return;
+      }
 
       if (result?.deferred) {
         setStatus("Update is ready. It will install when the watcher closes safely.", "warn");

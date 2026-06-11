@@ -91,16 +91,16 @@
       }
 
       .shell {
-        width: min(1400px, calc(100% - 40px));
+        width: min(1320px, calc(100% - 32px));
         margin: 0 auto;
-        padding: 28px 0 36px;
+        padding: 20px 0 28px;
         display: grid;
-        gap: 22px;
+        gap: 16px;
       }
 
       .card {
         position: relative;
-        border-radius: 30px;
+        border-radius: 24px;
         border: 1px solid var(--line);
         background:
           linear-gradient(180deg, rgba(18, 28, 42, 0.96), rgba(7, 13, 23, 0.94));
@@ -120,9 +120,9 @@
 
       .hero {
         display: grid;
-        grid-template-columns: minmax(0, 1.25fr) minmax(320px, 0.75fr);
-        gap: 24px;
-        padding: 30px;
+        grid-template-columns: minmax(0, 1.05fr) minmax(320px, 0.95fr);
+        gap: 16px;
+        padding: 22px;
       }
 
       .eyebrow {
@@ -140,11 +140,29 @@
       }
 
       h1 {
+        font-size: clamp(2rem, 4vw, 3rem);
+        line-height: 1;
+      }
+
+      .hero-title-row {
         margin-top: 14px;
-        max-width: 800px;
-        font-size: clamp(2.4rem, 5vw, 4.4rem);
-        line-height: 0.97;
-        letter-spacing: -0.04em;
+        display: flex;
+        align-items: center;
+        gap: 14px;
+      }
+
+      .watcher-mark {
+        width: 54px;
+        height: 54px;
+        flex: 0 0 auto;
+        display: grid;
+        place-items: center;
+        border-radius: 16px;
+        border: 1px solid rgba(247, 201, 72, 0.24);
+        background: rgba(247, 201, 72, 0.1);
+        color: #f9df8b;
+        font-size: 22px;
+        font-weight: 900;
       }
 
       .subhead {
@@ -185,28 +203,28 @@
       }
 
       .setup-summary {
-        margin-top: 20px;
-        border-radius: 20px;
+        margin-top: 16px;
+        border-radius: 16px;
         border: 1px solid rgba(125, 211, 252, 0.16);
         background: rgba(8, 15, 27, 0.62);
-        padding: 16px 18px;
+        padding: 12px 14px;
         font-size: 14px;
-        line-height: 1.72;
+        line-height: 1.45;
         color: #dfe9f5;
       }
 
       .hero-actions {
-        margin-top: 22px;
+        margin-top: 16px;
       }
 
       .helper-links {
-        margin-top: 14px;
+        margin-top: 10px;
       }
 
       .button {
         border: 0;
         border-radius: 999px;
-        padding: 12px 18px;
+        padding: 10px 16px;
         font-weight: 700;
         cursor: pointer;
         transition: transform 140ms ease, background 140ms ease, border-color 140ms ease,
@@ -264,27 +282,27 @@
       }
 
       .notice {
-        margin-top: 16px;
-        border-radius: 20px;
+        margin-top: 12px;
+        border-radius: 16px;
         border: 1px solid rgba(247, 201, 72, 0.18);
         background: rgba(247, 201, 72, 0.08);
-        padding: 13px 15px;
+        padding: 10px 12px;
         font-size: 13px;
-        line-height: 1.68;
+        line-height: 1.45;
         color: #f9e5b0;
       }
 
       .status-rail {
         display: grid;
-        gap: 12px;
+        gap: 10px;
       }
 
       .metric-card {
         position: relative;
-        border-radius: 22px;
+        border-radius: 18px;
         border: 1px solid rgba(148, 163, 184, 0.16);
         background: rgba(6, 12, 22, 0.58);
-        padding: 18px;
+        padding: 14px;
       }
 
       .metric-card.highlight {
@@ -301,7 +319,7 @@
       }
 
       .metric-value {
-        margin-top: 10px;
+        margin-top: 7px;
         font-size: 18px;
         font-weight: 700;
       }
@@ -315,9 +333,9 @@
       }
 
       .metric-copy {
-        margin-top: 8px;
+        margin-top: 6px;
         font-size: 13px;
-        line-height: 1.62;
+        line-height: 1.45;
         color: #bfd0e2;
       }
 
@@ -343,16 +361,16 @@
       .content-grid {
         display: grid;
         grid-template-columns: minmax(0, 1.08fr) minmax(360px, 0.72fr);
-        gap: 22px;
+        gap: 16px;
       }
 
       .stack {
         display: grid;
-        gap: 22px;
+        gap: 16px;
       }
 
       .panel {
-        padding: 24px;
+        padding: 18px;
       }
 
       .panel-top {
@@ -363,10 +381,10 @@
       }
 
       .panel-copy {
-        margin-top: 10px;
+        margin-top: 6px;
         max-width: 760px;
         font-size: 14px;
-        line-height: 1.8;
+        line-height: 1.5;
         color: var(--muted);
       }
 
@@ -376,7 +394,7 @@
       .list-grid {
         margin-top: 18px;
         display: grid;
-        gap: 14px;
+        gap: 12px;
       }
 
       .field-shell,
@@ -822,26 +840,14 @@
         <section class="card hero">
           <div>
             <div class="eyebrow">AoE2HDBets / Watcher</div>
-            <h1>Clean live watching. Easy replay history imports.</h1>
-            <p class="subhead">
-              Built to feel like real AoE2HDBets software, not a dev utility. Pair once, point
-              it at your SaveGame folder, and either watch new replays live or scan the whole
-              folder to bring older matches online.
-            </p>
-
-            <div class="chip-row">
-              <div class="chip accent">Windows x64 release</div>
-              <div class="chip">NSIS installer</div>
-              <div class="chip">Portable fallback</div>
-              <div class="chip">Batch uploads</div>
-              <div class="chip">Live replay watching</div>
-              <div class="chip">Stream Match handoff</div>
-              <div class="chip">Manual key fallback</div>
-            </div>
-
-            <div id="setupSummaryText" class="setup-summary">
-              Choose the replay folder, pair your watcher key, then either start live watching
-              or import your saved replays.
+            <div class="hero-title-row">
+              <div class="watcher-mark" aria-hidden="true">W</div>
+              <div>
+                <h1>Watcher</h1>
+                <div id="setupSummaryText" class="setup-summary">
+                  Choose folder. Pair profile. Start watching.
+                </div>
+              </div>
             </div>
 
             <div class="hero-actions">
@@ -879,8 +885,7 @@
             </div>
 
             <div class="notice">
-              Windows builds are Authenticode-signed and timestamped. SmartScreen may still need
-              reputation time, and the portable fallback plus manual watcher-key entry stay ready.
+              Windows installs update in place. Mac builds use download-and-replace until notarized.
             </div>
           </div>
 
@@ -932,12 +937,7 @@
               <div class="panel-top">
                 <div>
                   <div class="eyebrow">Setup</div>
-                  <h2>Make first run obvious</h2>
-                  <p class="panel-copy">
-                    The three important things live here: replay folder, watcher key, and whether
-                    this app is actually ready to work. Browser pairing is preferred, but manual
-                    key paste stays available at all times.
-                  </p>
+                  <h2>Ready state</h2>
                 </div>
               </div>
 
@@ -947,8 +947,7 @@
                     <label for="watchDirInput">Replay folder</label>
                     <input id="watchDirInput" type="text" placeholder="Choose your AoE2 SaveGame folder" />
                     <div class="field-caption">
-                      Point this at the AoE2 SaveGame directory. Batch upload uses the same
-                      replay rules as live watching.
+                      AoE2 SaveGame directory.
                     </div>
                   </div>
 
@@ -973,8 +972,7 @@
                       </button>
                     </div>
                     <div class="field-caption">
-                      Open Profile Pairing for the browser-to-app handoff. If that path is blocked,
-                      click Mint Key Only in your profile, paste the key here, and save once.
+                      Profile pairing fills this automatically. Manual paste is the fallback.
                     </div>
                   </div>
                 </div>
@@ -1020,11 +1018,6 @@
                 <div>
                   <div class="eyebrow">Historical Import</div>
                   <h2>Scan &amp; Import Replays</h2>
-                  <p class="panel-copy">
-                    This scans the configured SaveGame folder, queues supported replay files
-                    oldest-to-newest, leans on the backend’s replay-hash dedupe, and keeps the UI
-                    responsive while it runs.
-                  </p>
                 </div>
               </div>
 
@@ -1102,11 +1095,7 @@
               <div class="panel-top">
                 <div>
                   <div class="eyebrow">Diagnostics</div>
-                  <h2>Support without ugly debug clutter</h2>
-                  <p class="panel-copy">
-                    Enough visibility to help support a real user quickly, without turning the app
-                    into a dev console.
-                  </p>
+                  <h2>Support</h2>
                 </div>
               </div>
 
