@@ -23,6 +23,7 @@ This is the client-side edge of the AoE2HDBets replay loop. It is intentionally 
 - packages a Linux AppImage fallback from the same watcher core
 - emits rich support telemetry for app opens, auth, heartbeat, monitor lifecycle, file growth, final deferrals, upload retries, parse results, and batch import lifecycle
 - checks the public watcher release endpoint and shows either an Update button or a clear Latest Version label in the main window
+- adds a **Stream Match** handoff for watcher-detected games, opening AoE2WAR's browser streamer with the replay session already attached
 - current behavior can emit multiple live iterations before a final settled upload, which is expected during active development
 
 ## Quick Start
@@ -55,6 +56,15 @@ The main window now includes **Scan & Import Replays**.
 - keeps live watching available
 - shows found / queued / skipped / uploaded / failed counts
 - stores failed uploads so they can be retried from the same UI
+
+## Stream Match handoff
+
+When the watcher sees a live replay candidate, the main window enables **Stream Match**. That opens
+`https://aoe2war.com/profile?watcher_stream=1&stream_session=...&stream_title=...`, preserving the
+detected match through Steam login and landing the user in the AoE2WAR browser stream studio.
+
+This is still browser capture: the user picks the AoE2HD window/screen from the browser picker.
+Watcher-native capture/encode can be a later pass without changing the public handoff route.
 
 ## Optional environment variables
 
@@ -136,6 +146,9 @@ npm run dist:release
 
 The Direct ZIP is the legitimate fallback while Apple signing and notarization are offline. It is
 not a reduced feature path.
+
+Windows EXEs should be signed through the `Sign Windows Watcher` GitHub workflow before the web app
+release metadata is advanced to a new public watcher version.
 
 ## Build (Windows x64 from macOS)
 

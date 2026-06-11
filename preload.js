@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld("watcherApi", {
   checkUpdate: () => ipcRenderer.invoke("watcher:check-update"),
   installUpdate: () => ipcRenderer.invoke("watcher:install-update"),
   openUpdate: (updateUrl) => ipcRenderer.invoke("watcher:open-update", updateUrl),
+  openStreamHandoff: (payload) => ipcRenderer.invoke("watcher:open-stream-handoff", payload),
   startImport: () => ipcRenderer.invoke("watcher:start-import"),
   retryImport: () => ipcRenderer.invoke("watcher:retry-import"),
   copyText: (value) => ipcRenderer.invoke("watcher:copy-text", value),
@@ -28,6 +29,9 @@ contextBridge.exposeInMainWorld("watcherApi", {
   },
   onRuntimeEvent: (callback) => {
     ipcRenderer.on("watcher:runtime-event", (_event, payload) => callback(payload));
+  },
+  onStreamHandoff: (callback) => {
+    ipcRenderer.on("watcher:stream-handoff", (_event, payload) => callback(payload));
   },
   onImportState: (callback) => {
     ipcRenderer.on("watcher:import-state", (_event, payload) => callback(payload));

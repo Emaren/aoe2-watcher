@@ -11,6 +11,7 @@ const els = {
   stopWatchingBtn: document.getElementById("stopWatchingBtn"),
   openFolderBtn: document.getElementById("openFolderBtn"),
   scanImportBtn: document.getElementById("scanImportBtn"),
+  streamMatchBtn: document.getElementById("streamMatchBtn"),
   retryFailedBtn: document.getElementById("retryFailedBtn"),
   copySupportBtn: document.getElementById("copySupportBtn"),
   toggleKeyVisibilityBtn: document.getElementById("toggleKeyVisibilityBtn"),
@@ -62,6 +63,21 @@ const DEFAULT_CONFIG = {
   lastImportSummary: null,
 };
 
+const STREAM_HANDOFF_RUNTIME_EVENTS = new Set([
+  "monitor-start",
+  "replay-detected",
+  "waiting-for-minimum-size",
+  "file-size-progress",
+  "upload-start",
+  "upload-success",
+  "final-candidate-reopened",
+]);
+const STREAM_HANDOFF_CLEAR_EVENTS = new Set([
+  "final-candidate-accepted",
+  "monitor-stop",
+  "watching-stopped",
+]);
+
 const EMPTY_IMPORT_STATE = {
   isRunning: false,
   source: "scan",
@@ -104,6 +120,7 @@ let runtimeState = {
   lastUploadError: "",
   activeUpload: null,
 };
+let streamHandoff = null;
 let watchDirStatus = {
   exists: false,
   isDirectory: false,
@@ -341,6 +358,60 @@ function isReplayFolderReady() {
   return Boolean(watchDirStatus.exists && watchDirStatus.isDirectory);
 }
 
+function getStreamCandidate() {
+  return streamHandoff || runtimeState.activeUpload;
+}
+
+function getStreamCandidateLabel() {
+  const candidate = getStreamCandidate();
+  if (!candidate) {
+    return "";
+  }
+
+  return (
+    candidate.title ||
+    candidate.streamTitle ||
+    candidate.matchTitle ||
+    candidate.fileName ||
+    candidate.sessionKey ||
+    candidate.streamSession ||
+    ""
+  );
+}
+
+function hasStreamCandidate() {
+  const candidate = getStreamCandidate();
+  return Boolean(
+    candidate?.sessionKey ||
+      candidate?.streamSession ||
+      candidate?.fileName ||
+      candidate?.filePath
+  );
+}
+
+function syncStreamCandidateFromRuntimeEvent(event) {
+  if (!event || typeof event !== "object") {
+    return;
+  }
+
+  if (STREAM_HANDOFF_CLEAR_EVENTS.has(event.type)) {
+    streamHandoff = null;
+    return;
+  }
+
+  if (!STREAM_HANDOFF_RUNTIME_EVENTS.has(event.type) || event.isFinal === true) {
+    return;
+  }
+
+  if (event.sessionKey || event.streamSession || event.fileName || event.filePath) {
+    streamHandoff = {
+      ...streamHandoff,
+      ...event,
+      updatedAt: new Date().toISOString(),
+    };
+  }
+}
+
 function setReadinessState(el, isReady) {
   el.classList.toggle("ready", isReady);
   el.classList.toggle("missing", !isReady);
@@ -448,6 +519,11 @@ function getPrimaryStatus() {
 }
 
 function getSetupSummaryText() {
+  if (hasStreamCandidate()) {
+    const label = getStreamCandidateLabel();
+    return label ? `Stream Match is ready for ${label}.` : "Stream Match is ready.";
+  }
+
   if (!hasWatcherKey() && !isReplayFolderReady()) {
     return "Pair Profile, Start Watching, or Batch Upload Replays. Simple wins."; 
   }
@@ -666,6 +742,9 @@ function renderButtons() {
   els.scanImportBtn.disabled =
     importState.isRunning || !isReplayFolderReady() || !hasWatcherKey();
   els.openFolderBtn.disabled = !hasReplayFolder();
+  if (els.streamMatchBtn) {
+    els.streamMatchBtn.disabled = !hasStreamCandidate();
+  }
 }
 
 function polishStaticUiCopy() {
@@ -874,12 +953,15 @@ function buildSupportSnapshot() {
     `Protocol registered: ${appInfo?.protocolRegistered ? "yes" : "no"}`,
     `API base: ${config.apiBaseUrl || "(empty)"}`,
     `Fallback API: ${config.apiFallbackBaseUrl || "(empty)"}`,
+    `Stream handoff: ${hasStreamCandidate() ? getStreamCandidateLabel() || "ready" : "none"}`,
     `Batch upload phase: ${importState.phase || "idle"}`,
     `Batch upload summary: ${importState.summaryText || "none"}`,
   ].join("\n");
 }
 
 function consumeRuntimeEvent(event) {
+  syncStreamCandidateFromRuntimeEvent(event);
+
   switch (event.type) {
     case "watching-started":
     case "watcher-ready":
@@ -1017,6 +1099,26 @@ els.heroUpdateWatcherBtn.addEventListener("click", openWatcherUpdate);
 els.diagnosticsUpdateWatcherBtn.addEventListener("click", openWatcherUpdate);
 els.heroCheckVersionBtn.addEventListener("click", () => checkWatcherUpdate());
 els.diagnosticsCheckVersionBtn.addEventListener("click", () => checkWatcherUpdate());
+
+if (els.streamMatchBtn) {
+  els.streamMatchBtn.addEventListener("click", async () => {
+    try {
+      const result = await window.watcherApi.openStreamHandoff(getStreamCandidate() || {});
+      if (!result.ok) {
+        setStatus(result.error || "No watcher match is ready to stream yet.", "warn");
+        return;
+      }
+
+      streamHandoff = result.handoff || streamHandoff;
+      renderAll();
+      setStatus("Opening AoE2WAR stream studio.", "success");
+    } catch (error) {
+      setStatus(`Failed opening stream studio: ${error.message || error}`, "error", {
+        sticky: true,
+      });
+    }
+  });
+}
 
 els.detectFolderBtn.addEventListener("click", async () => {
   try {
@@ -1232,6 +1334,13 @@ window.watcherApi.onState(({ isWatching }) => {
 window.watcherApi.onRuntimeEvent((event) => {
   consumeRuntimeEvent(event);
 });
+
+if (window.watcherApi.onStreamHandoff) {
+  window.watcherApi.onStreamHandoff((handoff) => {
+    streamHandoff = handoff || null;
+    renderAll();
+  });
+}
 
 window.watcherApi.onImportState((state) => {
   importState = {

@@ -835,6 +835,7 @@
               <div class="chip">Portable fallback</div>
               <div class="chip">Batch uploads</div>
               <div class="chip">Live replay watching</div>
+              <div class="chip">Stream Match handoff</div>
               <div class="chip">Manual key fallback</div>
             </div>
 
@@ -845,6 +846,7 @@
 
             <div class="hero-actions">
               <button id="startWatchingBtn" class="button primary">Start Watching</button>
+              <button id="streamMatchBtn" class="button secondary" disabled>Stream Match</button>
               <button id="scanImportBtn" class="button secondary">Scan &amp; Import Replays</button>
               <button id="stopWatchingBtn" class="button danger">Stop Watching</button>
             </div>
@@ -877,9 +879,8 @@
             </div>
 
             <div class="notice">
-              Unsigned builds are expected right now. If Windows SmartScreen gets in the way,
-              the portable fallback is still a first-class path, and manual watcher-key entry
-              keeps pairing from depending on the browser handoff.
+              Windows builds are Authenticode-signed and timestamped. SmartScreen may still need
+              reputation time, and the portable fallback plus manual watcher-key entry stay ready.
             </div>
           </div>
 

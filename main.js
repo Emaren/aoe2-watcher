@@ -22,6 +22,7 @@ const {
   startWatching,
   stopWatching,
 } = require("./watcher");
+const { buildStreamHandoff } = require("./streamHandoff");
 
 const WATCHER_PAIR_PROTOCOL = "aoe2hd-watcher";
 const APP_NAME = "AoE2HDBets Watcher";
@@ -35,6 +36,20 @@ const LEGACY_DOMAIN_MIGRATIONS = [
   ["https://aoe2hdbets.com", "https://aoe2war.com"],
 ];
 const URL_CONFIG_KEYS = ["apiBaseUrl", "apiFallbackBaseUrl", "telemetryBaseUrl"];
+const STREAM_HANDOFF_RUNTIME_EVENTS = new Set([
+  "monitor-start",
+  "replay-detected",
+  "waiting-for-minimum-size",
+  "file-size-progress",
+  "upload-start",
+  "upload-success",
+  "final-candidate-reopened",
+]);
+const STREAM_HANDOFF_CLEAR_EVENTS = new Set([
+  "final-candidate-accepted",
+  "monitor-stop",
+  "watching-stopped",
+]);
 const TELEMETRY_HEARTBEAT_MS = Number(process.env.AOE2_TELEMETRY_HEARTBEAT_MS || 60 * 1000);
 const TELEMETRY_TIMEOUT_MS = Number(process.env.AOE2_TELEMETRY_TIMEOUT_MS || 5000);
 const RELEASE_CHECK_TIMEOUT_MS = Number(process.env.AOE2_RELEASE_CHECK_TIMEOUT_MS || 5000);
@@ -53,6 +68,7 @@ let releaseState = createReleaseState();
 let updateState = createUpdateState();
 let updateCheckInFlight = false;
 let updateEventsConfigured = false;
+let lastStreamHandoff = null;
 
 
 function createUpdateState(patch = {}) {
@@ -998,6 +1014,53 @@ function setWatchingState(isWatching) {
   sendToRenderer("watcher:state", { isWatching });
 }
 
+function getStreamWebBaseUrl(config = loadConfig()) {
+  return config.apiFallbackBaseUrl || DEFAULT_RELEASE_BASE_URL;
+}
+
+function publishStreamHandoff(handoff) {
+  sendToRenderer("watcher:stream-handoff", handoff);
+}
+
+function clearStreamHandoffState() {
+  lastStreamHandoff = null;
+  publishStreamHandoff(null);
+}
+
+function updateStreamHandoffFromRuntimeEvent(event) {
+  if (!event || typeof event !== "object") {
+    return;
+  }
+
+  if (STREAM_HANDOFF_CLEAR_EVENTS.has(event.type)) {
+    clearStreamHandoffState();
+    return;
+  }
+
+  if (!STREAM_HANDOFF_RUNTIME_EVENTS.has(event.type) || event.isFinal === true) {
+    return;
+  }
+
+  const config = loadConfig();
+  const handoff = buildStreamHandoff(event, {
+    webBaseUrl: getStreamWebBaseUrl(config),
+  });
+
+  if (!handoff.ok) {
+    return;
+  }
+
+  lastStreamHandoff = {
+    ...handoff,
+    eventType: event.type,
+    fileName: event.fileName || null,
+    filePath: event.filePath || null,
+    parseIteration: event.parseIteration || null,
+    updatedAt: new Date().toISOString(),
+  };
+  publishStreamHandoff(lastStreamHandoff);
+}
+
 function clearRendererLog() {
   sendToRenderer("watcher:clear-log", {});
 }
@@ -1061,6 +1124,7 @@ function emitTelemetryForRuntimeEvent(event) {
 }
 
 function handleWatcherRuntimeEvent(event) {
+  updateStreamHandoffFromRuntimeEvent(event);
   sendToRenderer("watcher:runtime-event", event);
   emitTelemetryForRuntimeEvent(event);
 }
@@ -1159,6 +1223,7 @@ function stopCurrentWatcher({ quiet = false } = {}) {
 
   watcherHandle = null;
   stopWatching();
+  clearStreamHandoffState();
   setWatchingState(false);
   emitWatcherTelemetry("watcher_stopped", {
     metadata: buildRuntimeMetadata(loadConfig()),
@@ -1459,6 +1524,51 @@ function bootWatcherApp() {
   ipcMain.handle("watcher:stop", async () => {
     stopCurrentWatcher();
     return { ok: true };
+  });
+
+  ipcMain.handle("watcher:open-stream-handoff", async (_event, payload = {}) => {
+    const config = loadConfig();
+    const candidate =
+      payload && typeof payload === "object" && Object.keys(payload).length > 0
+        ? payload
+        : lastStreamHandoff || {};
+    const handoff = buildStreamHandoff(candidate, {
+      webBaseUrl: getStreamWebBaseUrl(config),
+    });
+
+    if (!handoff.ok) {
+      return {
+        ok: false,
+        error: "No watcher match is ready to stream yet.",
+      };
+    }
+
+    const publishedHandoff = {
+      ...lastStreamHandoff,
+      ...handoff,
+      openedAt: new Date().toISOString(),
+    };
+
+    await shell.openExternal(handoff.url);
+    lastStreamHandoff = publishedHandoff;
+    publishStreamHandoff(lastStreamHandoff);
+    emitWatcherTelemetry(
+      "stream_handoff_opened",
+      {
+        sessionKey: handoff.sessionKey,
+        title: handoff.title,
+        metadata: {
+          source: "watcher_app",
+          webBaseUrl: handoff.webBaseUrl,
+        },
+      },
+      config
+    );
+
+    return {
+      ok: true,
+      handoff: lastStreamHandoff,
+    };
   });
 
   ipcMain.handle("watcher:open-folder", async (_event, targetPath) => {
