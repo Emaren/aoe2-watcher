@@ -1,0 +1,77 @@
+name: Azure Signing Canary
+
+on:
+  workflow_dispatch:
+
+jobs:
+  sign-canary:
+    runs-on: windows-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Build tiny canary EXE
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path build | Out-Null
+
+          New-Item -ItemType Directory -Force -Path canary | Out-Null
+          Set-Content -Path canary\Program.cs -Value @'
+          using System;
+          class Program
+          {
+              static void Main()
+              {
+                  Console.WriteLine("AoE2HDBets signing canary");
+              }
+          }
+'@
+
+          dotnet new console -n CanaryApp -o canary-app --force
+          Copy-Item canary\Program.cs canary-app\Program.cs -Force
+
+          dotnet publish canary-app `
+            -c Release `
+            -r win-x64 `
+            --self-contained false `
+            -p:PublishSingleFile=true `
+            -o canary-out
+
+          Copy-Item canary-out\CanaryApp.exe build\AoE2HDBets-Signing-Canary.exe -Force
+
+          Get-ChildItem build -File -Filter *.exe |
+            Select-Object FullName, Length, LastWriteTime |
+            Format-Table -AutoSize
+
+      - name: Upload unsigned canary
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-signing-canary
+          path: build/*.exe
+          if-no-files-found: error
+
+      - name: Sign canary EXE with Azure Artifact Signing
+        uses: azure/artifact-signing-action@v1
+        with:
+          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+          endpoint: https://eus.codesigning.azure.net/
+          signing-account-name: aoe2hdbetssigning
+          certificate-profile-name: aoe2hdbetswindows
+          files-folder: ${{ github.workspace }}\build
+          files-folder-filter: exe
+          files-folder-recurse: true
+          batch-size: 1
+          timeout: 300
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+          description: AoE2HDBets Signing Canary
+          description-url: https://aoe2hdbets.com
+
+      - name: Upload signed canary
+        uses: actions/upload-artifact@v4
+        with:
+          name: signed-signing-canary
+          path: build/*.exe
+          if-no-files-found: error
