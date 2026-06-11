@@ -29,12 +29,12 @@ jobs:
 
           $files = @(
             @{
-              Url = "https://aoe2hdbets.com/downloads/AoE2HDBets%20Watcher%20Setup%201.1.1.exe"
-              Out = "build\\AoE2HDBets Watcher Setup 1.1.1.exe"
+              Url = "https://aoe2hdbets.com/downloads/AoE2HDBets%20Watcher%20Setup%201.1.8.exe"
+              Out = "build\\AoE2HDBets Watcher Setup 1.1.8.exe"
             },
             @{
-              Url = "https://aoe2hdbets.com/downloads/AoE2HDBets%20Watcher%201.1.1.exe"
-              Out = "build\\AoE2HDBets Watcher 1.1.1.exe"
+              Url = "https://aoe2hdbets.com/downloads/AoE2HDBets%20Watcher%201.1.8.exe"
+              Out = "build\\AoE2HDBets Watcher 1.1.8.exe"
             }
           )
 
