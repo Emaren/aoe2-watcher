@@ -12,6 +12,18 @@ const els = {
   openFolderBtn: document.getElementById("openFolderBtn"),
   scanImportBtn: document.getElementById("scanImportBtn"),
   streamMatchBtn: document.getElementById("streamMatchBtn"),
+  openBrowserStreamBtn: document.getElementById("openBrowserStreamBtn"),
+  refreshStreamSourcesBtn: document.getElementById("refreshStreamSourcesBtn"),
+  startNativeStreamBtn: document.getElementById("startNativeStreamBtn"),
+  stopNativeStreamBtn: document.getElementById("stopNativeStreamBtn"),
+  streamSourceSelect: document.getElementById("streamSourceSelect"),
+  streamPreview: document.getElementById("streamPreview"),
+  streamPreviewEmpty: document.getElementById("streamPreviewEmpty"),
+  streamStatePill: document.getElementById("streamStatePill"),
+  streamTitleText: document.getElementById("streamTitleText"),
+  streamReadoutDetails: document.getElementById("streamReadoutDetails"),
+  streamReadoutSummary: document.getElementById("streamReadoutSummary"),
+  streamReadoutDetail: document.getElementById("streamReadoutDetail"),
   retryFailedBtn: document.getElementById("retryFailedBtn"),
   copySupportBtn: document.getElementById("copySupportBtn"),
   toggleKeyVisibilityBtn: document.getElementById("toggleKeyVisibilityBtn"),
@@ -77,6 +89,39 @@ const STREAM_HANDOFF_CLEAR_EVENTS = new Set([
   "monitor-stop",
   "watching-stopped",
 ]);
+const STREAM_CHUNK_TIMESLICE_MS = 2000;
+const STREAM_HEARTBEAT_MS = 8000;
+const STREAM_MODES = [
+  {
+    key: "stable",
+    label: "Stable",
+    detail: "720p / 15 fps",
+    width: 1280,
+    height: 720,
+    frameRate: 15,
+  },
+  {
+    key: "screen",
+    label: "Screen",
+    detail: "540p / 10 fps",
+    width: 960,
+    height: 540,
+    frameRate: 10,
+  },
+  {
+    key: "sharp",
+    label: "Sharp",
+    detail: "720p / 30 fps",
+    width: 1280,
+    height: 720,
+    frameRate: 30,
+  },
+];
+const STREAM_MIME_CANDIDATES = [
+  "video/webm;codecs=vp8,opus",
+  "video/webm;codecs=vp9,opus",
+  "video/webm",
+];
 
 const EMPTY_IMPORT_STATE = {
   isRunning: false,
@@ -121,6 +166,25 @@ let runtimeState = {
   activeUpload: null,
 };
 let streamHandoff = null;
+let nativeStreamState = {
+  status: "idle",
+  mode: "stable",
+  busy: false,
+  sources: [],
+  selectedSourceId: "",
+  sourceName: "",
+  mediaStream: null,
+  recorder: null,
+  stream: null,
+  sequence: 0,
+  chunkCount: 0,
+  mediaMimeType: "video/webm",
+  heartbeatTimer: null,
+  startedAt: 0,
+  manualStop: false,
+  readout: "Idle.",
+  detail: "Pick a source when a watcher match is ready.",
+};
 let watchDirStatus = {
   exists: false,
   isDirectory: false,
@@ -430,6 +494,519 @@ function hasStreamCandidate() {
   );
 }
 
+function normalizeBaseUrl(value) {
+  return String(value || "").trim().replace(/\/$/, "");
+}
+
+function getStreamingBaseUrl() {
+  return normalizeBaseUrl(currentConfig.apiFallbackBaseUrl) || "https://aoe2war.com";
+}
+
+function getNativeStreamMode() {
+  return STREAM_MODES.find((mode) => mode.key === nativeStreamState.mode) || STREAM_MODES[0];
+}
+
+function chooseNativeRecorderMimeType() {
+  if (typeof MediaRecorder === "undefined") {
+    return "video/webm";
+  }
+  return STREAM_MIME_CANDIDATES.find((candidate) => MediaRecorder.isTypeSupported(candidate)) || "video/webm";
+}
+
+function buildNativeSessionKey() {
+  const candidate = getStreamCandidate();
+  const raw =
+    candidate?.sessionKey ||
+    candidate?.streamSession ||
+    candidate?.fileName ||
+    candidate?.filePath ||
+    `watcher:${appInfo?.sessionId || Date.now()}`;
+  return String(raw).trim().slice(0, 255);
+}
+
+function buildNativeStreamTitle() {
+  return getStreamCandidateLabel() || "AoE2WAR watcher stream";
+}
+
+function updateNativeStreamState(patch = {}) {
+  nativeStreamState = {
+    ...nativeStreamState,
+    ...patch,
+  };
+  renderNativeStreamState();
+}
+
+function setNativeReadout(readout, detail = "", options = {}) {
+  updateNativeStreamState({
+    readout,
+    detail,
+  });
+  if (options.open && els.streamReadoutDetails) {
+    els.streamReadoutDetails.open = true;
+  }
+}
+
+function buildDesktopCaptureConstraints(sourceId, mode = getNativeStreamMode()) {
+  return {
+    audio: false,
+    video: {
+      mandatory: {
+        chromeMediaSource: "desktop",
+        chromeMediaSourceId: sourceId,
+        minWidth: mode.width,
+        maxWidth: mode.width,
+        minHeight: mode.height,
+        maxHeight: mode.height,
+        maxFrameRate: mode.frameRate,
+      },
+    },
+  };
+}
+
+function captureNativeThumbnail() {
+  const video = els.streamPreview;
+  if (!video || !video.videoWidth || !video.videoHeight) {
+    return null;
+  }
+
+  const canvas = document.createElement("canvas");
+  canvas.width = 640;
+  canvas.height = Math.max(1, Math.round((video.videoHeight / video.videoWidth) * canvas.width));
+  const context = canvas.getContext("2d");
+  if (!context) {
+    return null;
+  }
+  context.drawImage(video, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL("image/jpeg", 0.58);
+}
+
+async function streamJson(path, body = {}) {
+  const result = await window.watcherApi.streamJson({
+    baseUrl: getStreamingBaseUrl(),
+    path,
+    method: "POST",
+    body,
+  });
+
+  if (!result?.ok) {
+    throw new Error(result?.error || result?.data?.detail || "Streaming request failed.");
+  }
+
+  return result.data || {};
+}
+
+async function sendNativeStreamEvent(eventType, metadata = {}) {
+  try {
+    await streamJson("/api/streams/client-event", {
+      eventType,
+      appVersion: appInfo?.version || "",
+      platform: appInfo?.platform || "watcher",
+      watcherId: appInfo?.watcherId || "",
+      sessionKey: buildNativeSessionKey(),
+      streamId: nativeStreamState.stream?.id
+        ? String(nativeStreamState.stream.id)
+        : metadata.streamId
+          ? String(metadata.streamId)
+          : "",
+      captureMode: nativeStreamState.mode,
+      mediaMimeType: nativeStreamState.mediaMimeType,
+      metadata: {
+        title: buildNativeStreamTitle(),
+        sourceName: nativeStreamState.sourceName,
+        sourceType: "watcher_native",
+        ...metadata,
+      },
+    });
+  } catch {
+    // Streaming telemetry should never block the user's local stream controls.
+  }
+}
+
+async function refreshNativeStreamSources() {
+  if (!window.watcherApi.listStreamSources) {
+    setNativeReadout("Native source scan is unavailable in this build.", "", { open: true });
+    return [];
+  }
+
+  updateNativeStreamState({
+    busy: true,
+    readout: "Scanning capture sources.",
+    detail: "Looking for AoE2, CrossOver, Steam, and full-screen fallbacks.",
+  });
+
+  try {
+    const result = await window.watcherApi.listStreamSources();
+    if (!result?.ok) {
+      throw new Error(result?.error || "Could not list capture sources.");
+    }
+
+    const sources = Array.isArray(result.sources) ? result.sources : [];
+    const stillValid = sources.some((source) => source.id === nativeStreamState.selectedSourceId);
+    const selected = stillValid
+      ? nativeStreamState.selectedSourceId
+      : sources[0]?.id || "";
+    const selectedSource = sources.find((source) => source.id === selected) || null;
+
+    updateNativeStreamState({
+      busy: false,
+      sources,
+      selectedSourceId: selected,
+      sourceName: selectedSource?.name || "",
+      readout: sources.length ? `${sources.length} source${sources.length === 1 ? "" : "s"} ready.` : "No capture sources found.",
+      detail: selectedSource?.name || "Try opening AoE2HD, Steam, or CrossOver first.",
+    });
+
+    void sendNativeStreamEvent("stream_sources_listed", {
+      sourceCount: sources.length,
+      topSourceName: sources[0]?.name || null,
+      selectedSourceName: selectedSource?.name || null,
+    });
+
+    return sources;
+  } catch (error) {
+    updateNativeStreamState({
+      busy: false,
+      readout: "Source scan failed.",
+      detail: error.message || String(error),
+    });
+    void sendNativeStreamEvent("stream_error", {
+      errorMessage: "Source scan failed.",
+      detail: error.message || String(error),
+    });
+    if (els.streamReadoutDetails) {
+      els.streamReadoutDetails.open = true;
+    }
+    return [];
+  }
+}
+
+function stopNativeLocalCapture() {
+  if (nativeStreamState.heartbeatTimer) {
+    window.clearInterval(nativeStreamState.heartbeatTimer);
+  }
+  try {
+    nativeStreamState.recorder?.stop();
+  } catch {
+    // Recorder may already be stopped.
+  }
+  nativeStreamState.mediaStream?.getTracks().forEach((track) => track.stop());
+  if (els.streamPreview) {
+    els.streamPreview.srcObject = null;
+  }
+}
+
+async function endNativeStream(reason = "manual") {
+  const activeStream = nativeStreamState.stream;
+  const preserveIssue = reason !== "manual" && nativeStreamState.status === "error";
+  nativeStreamState.manualStop = true;
+  stopNativeLocalCapture();
+
+  updateNativeStreamState({
+    status: preserveIssue ? "error" : "idle",
+    busy: false,
+    mediaStream: null,
+    recorder: null,
+    stream: null,
+    heartbeatTimer: null,
+    startedAt: 0,
+    readout: preserveIssue
+      ? nativeStreamState.readout
+      : reason === "manual"
+        ? "Stream ended."
+        : "Stream stopped.",
+    detail: preserveIssue ? nativeStreamState.detail : reason,
+  });
+
+  if (activeStream?.id) {
+    try {
+      await streamJson(`/api/streams/${activeStream.id}/end`, {});
+    } catch (error) {
+      setNativeReadout("Stream stopped locally; AoE2WAR end call failed.", error.message || String(error), {
+        open: true,
+      });
+    }
+  }
+
+  void sendNativeStreamEvent("stream_stopped", {
+    reason,
+    streamId: activeStream?.id || null,
+  });
+}
+
+async function uploadNativeChunk(streamId, sequence, blob) {
+  if (!blob?.size) {
+    return;
+  }
+
+  const result = await window.watcherApi.streamChunk({
+    baseUrl: getStreamingBaseUrl(),
+    streamId,
+    sequence,
+    mimeType: blob.type || nativeStreamState.mediaMimeType,
+    bytes: await blob.arrayBuffer(),
+  });
+
+  if (!result?.ok) {
+    throw new Error(result?.error || result?.data?.detail || "Chunk upload failed.");
+  }
+
+  const nextStream = result.data?.stream || nativeStreamState.stream;
+  updateNativeStreamState({
+    stream: nextStream,
+    chunkCount: Math.max(nativeStreamState.chunkCount + 1, nextStream?.chunkCount || 0),
+    readout: `Chunk ${sequence} published (${Math.round(blob.size / 1024)} KB).`,
+    detail: nativeStreamState.sourceName || nativeStreamState.mediaMimeType,
+  });
+
+  if (sequence === 0 || sequence % 10 === 0) {
+    void sendNativeStreamEvent("stream_chunk_uploaded", {
+      streamId,
+      sequence,
+      blobSize: blob.size,
+    });
+  }
+}
+
+async function sendNativeHeartbeat(streamId, status = "live") {
+  const thumbnailUrl = captureNativeThumbnail();
+  const data = await streamJson(`/api/streams/${streamId}/heartbeat`, {
+    status,
+    mediaMimeType: nativeStreamState.mediaMimeType,
+    thumbnailUrl,
+  });
+
+  updateNativeStreamState({
+    stream: data.stream || nativeStreamState.stream,
+    readout: "Heartbeat OK. Stream is visible on AoE2WAR.",
+    detail: nativeStreamState.sourceName || "Watcher-native stream.",
+  });
+
+  void sendNativeStreamEvent("stream_heartbeat", {
+    streamId,
+    status,
+    thumbnailUpdated: Boolean(thumbnailUrl),
+  });
+}
+
+function handleNativeStreamError(message, detail = "", metadata = {}) {
+  updateNativeStreamState({
+    status: "error",
+    busy: false,
+    readout: message,
+    detail,
+  });
+  if (els.streamReadoutDetails) {
+    els.streamReadoutDetails.open = true;
+  }
+  void sendNativeStreamEvent("stream_error", {
+    errorMessage: message,
+    detail,
+    ...metadata,
+  });
+}
+
+async function startNativeStream() {
+  if (nativeStreamState.busy || nativeStreamState.status === "live") {
+    return;
+  }
+
+  const config = readForm();
+  if (!config.uploadApiKey) {
+    handleNativeStreamError("Pair profile before streaming.", "Watcher-native streaming uses your watcher key.");
+    return;
+  }
+
+  if (typeof MediaRecorder === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+    handleNativeStreamError("Native streaming is unavailable in this build.", "MediaRecorder or desktop capture is missing.");
+    return;
+  }
+
+  let sources = nativeStreamState.sources;
+  if (sources.length === 0) {
+    sources = await refreshNativeStreamSources();
+  }
+
+  const selectedSource =
+    sources.find((source) => source.id === nativeStreamState.selectedSourceId) || sources[0] || null;
+  if (!selectedSource) {
+    handleNativeStreamError("No capture source found.", "Open AoE2HD or choose Screen after refreshing sources.");
+    return;
+  }
+
+  const mode = getNativeStreamMode();
+  const mediaMimeType = chooseNativeRecorderMimeType();
+  const streamStartedAt = Date.now();
+
+  updateNativeStreamState({
+    status: "starting",
+    busy: true,
+    sourceName: selectedSource.name,
+    mediaMimeType,
+    readout: `Opening ${selectedSource.name}.`,
+    detail: `${mode.label} ${mode.detail}.`,
+  });
+
+  try {
+    void sendNativeStreamEvent("stream_capture_requested", {
+      sourceId: selectedSource.id,
+      sourceName: selectedSource.name,
+      sourceKind: selectedSource.kind,
+      mode: mode.key,
+    });
+
+    const capture = await navigator.mediaDevices.getUserMedia(
+      buildDesktopCaptureConstraints(selectedSource.id, mode)
+    );
+    nativeStreamState.mediaStream?.getTracks().forEach((track) => track.stop());
+    if (els.streamPreview) {
+      els.streamPreview.srcObject = capture;
+      await els.streamPreview.play().catch(() => undefined);
+    }
+
+    capture.getVideoTracks().forEach((track) => {
+      track.addEventListener("ended", () => {
+        if (nativeStreamState.manualStop) {
+          return;
+        }
+        const elapsedMs = Date.now() - streamStartedAt;
+        handleNativeStreamError(
+          elapsedMs < 12000
+            ? "Capture stopped quickly. Try Screen mode."
+            : "Capture source ended.",
+          track.label || selectedSource.name,
+          {
+            elapsedMs,
+            sourceName: selectedSource.name,
+            mode: mode.key,
+          }
+        );
+        void sendNativeStreamEvent("stream_track_ended", {
+          elapsedMs,
+          sourceName: selectedSource.name,
+          mode: mode.key,
+          trackLabel: track.label || null,
+        });
+        void endNativeStream("track_ended");
+      });
+    });
+
+    updateNativeStreamState({
+      mediaStream: capture,
+      status: "preview",
+      readout: "Preview ready.",
+      detail: selectedSource.name,
+    });
+    void sendNativeStreamEvent("stream_preview_started", {
+      sourceName: selectedSource.name,
+      trackCount: capture.getTracks().length,
+      videoTrackLabels: capture.getVideoTracks().map((track) => track.label).filter(Boolean),
+    });
+    void sendNativeStreamEvent("stream_source_ready", {
+      sourceName: selectedSource.name,
+      sourceKind: selectedSource.kind,
+      mode: mode.key,
+    });
+
+    const streamData = await streamJson("/api/streams/start", {
+      sessionKey: buildNativeSessionKey(),
+      title: buildNativeStreamTitle(),
+      label: "Watcher Stream",
+      playerLabel: "Watcher",
+      sourceType: "watcher_native",
+      mediaMimeType,
+      thumbnailUrl: captureNativeThumbnail(),
+    });
+
+    const stream = streamData.stream;
+    if (!stream?.id) {
+      throw new Error("AoE2WAR did not return a stream id.");
+    }
+
+    nativeStreamState.manualStop = false;
+    nativeStreamState.sequence = 0;
+    nativeStreamState.chunkCount = 0;
+
+    const recorder = new MediaRecorder(capture, { mimeType: mediaMimeType });
+    recorder.ondataavailable = (event) => {
+      const sequence = nativeStreamState.sequence;
+      nativeStreamState.sequence += 1;
+      void uploadNativeChunk(stream.id, sequence, event.data).catch((error) => {
+        void sendNativeStreamEvent("stream_chunk_failed", {
+          streamId: stream.id,
+          sequence,
+          errorMessage: error.message || String(error),
+        });
+        handleNativeStreamError("Chunk upload failed.", error.message || String(error), {
+          streamId: stream.id,
+          sequence,
+        });
+      });
+    };
+    recorder.onerror = (event) => {
+      const mediaError = event.error;
+      void sendNativeStreamEvent("stream_recorder_error", {
+        streamId: stream.id,
+        errorMessage: mediaError?.message || "Recorder error.",
+        errorName: mediaError?.name || "MediaRecorder",
+      });
+      handleNativeStreamError(
+        mediaError?.message || "Recorder error.",
+        mediaError?.name || "MediaRecorder",
+        {
+          streamId: stream.id,
+        }
+      );
+    };
+    recorder.onstop = () => {
+      if (!nativeStreamState.manualStop && Date.now() - streamStartedAt < 12000) {
+        handleNativeStreamError("Recorder stopped quickly. Try Screen mode.", selectedSource.name, {
+          streamId: stream.id,
+          elapsedMs: Date.now() - streamStartedAt,
+        });
+      }
+    };
+    recorder.start(STREAM_CHUNK_TIMESLICE_MS);
+
+    const heartbeatTimer = window.setInterval(() => {
+      void sendNativeHeartbeat(stream.id, "live").catch((error) => {
+        void sendNativeStreamEvent("stream_heartbeat_failed", {
+          streamId: stream.id,
+          errorMessage: error.message || String(error),
+        });
+        handleNativeStreamError("Heartbeat failed.", error.message || String(error), {
+          streamId: stream.id,
+        });
+      });
+    }, STREAM_HEARTBEAT_MS);
+
+    updateNativeStreamState({
+      status: "live",
+      busy: false,
+      recorder,
+      stream,
+      heartbeatTimer,
+      startedAt: streamStartedAt,
+      readout: "Live. First chunks are publishing now.",
+      detail: selectedSource.name,
+    });
+
+    await sendNativeHeartbeat(stream.id, "live");
+    void sendNativeStreamEvent("stream_started", {
+      streamId: stream.id,
+      sourceName: selectedSource.name,
+      sourceKind: selectedSource.kind,
+      mode: mode.key,
+    });
+    setStatus("Watcher stream is live.", "success");
+  } catch (error) {
+    stopNativeLocalCapture();
+    handleNativeStreamError("Could not start watcher stream.", error.message || String(error), {
+      sourceName: selectedSource.name,
+      mode: mode.key,
+    });
+  }
+}
+
 function syncStreamCandidateFromRuntimeEvent(event) {
   if (!event || typeof event !== "object") {
     return;
@@ -562,7 +1139,7 @@ function getPrimaryStatus() {
 function getSetupSummaryText() {
   if (hasStreamCandidate()) {
     const label = getStreamCandidateLabel();
-    return label ? `Stream Match is ready for ${label}.` : "Stream Match is ready.";
+    return label ? `Stream is ready for ${label}.` : "Stream is ready.";
   }
 
   if (!hasWatcherKey() && !isReplayFolderReady()) {
@@ -784,13 +1361,102 @@ function renderButtons() {
     importState.isRunning || !isReplayFolderReady() || !hasWatcherKey();
   els.openFolderBtn.disabled = !hasReplayFolder();
   if (els.streamMatchBtn) {
-    els.streamMatchBtn.disabled = !hasStreamCandidate();
+    els.streamMatchBtn.disabled =
+      nativeStreamState.busy || nativeStreamState.status === "live" || !hasWatcherKey();
   }
+  if (els.openBrowserStreamBtn) {
+    els.openBrowserStreamBtn.disabled = !hasStreamCandidate();
+  }
+  if (els.refreshStreamSourcesBtn) {
+    els.refreshStreamSourcesBtn.disabled = nativeStreamState.busy || nativeStreamState.status === "live";
+  }
+  if (els.startNativeStreamBtn) {
+    els.startNativeStreamBtn.disabled =
+      nativeStreamState.busy || nativeStreamState.status === "live" || !hasWatcherKey();
+  }
+  if (els.stopNativeStreamBtn) {
+    els.stopNativeStreamBtn.disabled = nativeStreamState.status !== "live" && nativeStreamState.status !== "starting";
+  }
+}
+
+function renderNativeStreamState() {
+  const candidateLabel = getStreamCandidateLabel();
+  const isLive = nativeStreamState.status === "live";
+  const isStarting = nativeStreamState.status === "starting" || nativeStreamState.status === "preview";
+  const sourceSelect = els.streamSourceSelect;
+
+  if (els.streamTitleText) {
+    els.streamTitleText.textContent = candidateLabel || "Free watcher stream";
+  }
+
+  if (els.streamStatePill) {
+    els.streamStatePill.textContent = isLive ? "Live" : isStarting ? "Starting" : nativeStreamState.status === "error" ? "Issue" : "Idle";
+    els.streamStatePill.className = `badge ${
+      isLive ? "stream-live" : isStarting ? "stream-warm" : nativeStreamState.status === "error" ? "failed" : "neutral"
+    }`;
+  }
+
+  if (sourceSelect) {
+    const currentValue = sourceSelect.value;
+    sourceSelect.innerHTML = "";
+    for (const source of nativeStreamState.sources) {
+      const option = document.createElement("option");
+      option.value = source.id;
+      option.textContent = `${source.kind === "screen" ? "Screen" : "Window"} - ${source.name}`;
+      sourceSelect.appendChild(option);
+    }
+    const desired = nativeStreamState.selectedSourceId || currentValue;
+    if (desired && nativeStreamState.sources.some((source) => source.id === desired)) {
+      sourceSelect.value = desired;
+    }
+    sourceSelect.disabled = nativeStreamState.busy || isLive || nativeStreamState.sources.length === 0;
+  }
+
+  document.querySelectorAll("[data-stream-mode]").forEach((button) => {
+    const selected = button.getAttribute("data-stream-mode") === nativeStreamState.mode;
+    button.classList.toggle("selected", selected);
+    button.disabled = nativeStreamState.busy || isLive;
+  });
+
+  if (els.streamPreview) {
+    els.streamPreview.hidden = !nativeStreamState.mediaStream;
+    if (nativeStreamState.mediaStream && els.streamPreview.srcObject !== nativeStreamState.mediaStream) {
+      els.streamPreview.srcObject = nativeStreamState.mediaStream;
+    }
+  }
+
+  if (els.streamPreviewEmpty) {
+    els.streamPreviewEmpty.hidden = Boolean(nativeStreamState.mediaStream);
+    els.streamPreviewEmpty.textContent = nativeStreamState.sources.length
+      ? nativeStreamState.sourceName || "Source ready"
+      : "Refresh sources";
+  }
+
+  if (els.streamReadoutSummary) {
+    els.streamReadoutSummary.textContent = nativeStreamState.readout || "Idle.";
+  }
+
+  if (els.streamReadoutDetail) {
+    const mode = getNativeStreamMode();
+    els.streamReadoutDetail.textContent =
+      nativeStreamState.detail ||
+      `${mode.label} ${mode.detail}. ${nativeStreamState.mediaMimeType}.`;
+  }
+
+  renderButtons();
 }
 
 function polishStaticUiCopy() {
   if (els.scanImportBtn) {
     els.scanImportBtn.textContent = "Batch Upload Replays";
+  }
+
+  if (els.streamMatchBtn) {
+    els.streamMatchBtn.textContent = "Start Stream";
+  }
+
+  if (els.openBrowserStreamBtn) {
+    els.openBrowserStreamBtn.textContent = "Browser Stream";
   }
 
   if (els.retryFailedBtn) {
@@ -827,6 +1493,7 @@ function renderAll() {
   renderDiagnostics();
   renderImportState();
   renderButtons();
+  renderNativeStreamState();
 }
 
 async function validateWatchDir(targetPath = readForm().watchDir) {
@@ -1128,6 +1795,9 @@ async function loadInitialData() {
   watchDirStatus = info?.watchDirStatus || watchDirStatus;
   renderAll();
   await validateWatchDir(currentConfig.watchDir);
+  if (window.watcherApi.listStreamSources) {
+    refreshNativeStreamSources().catch(() => {});
+  }
 }
 
 els.saveSettingsBtn.addEventListener("click", async () => {
@@ -1149,6 +1819,12 @@ els.diagnosticsCheckVersionBtn.addEventListener("click", () => checkWatcherUpdat
 
 if (els.streamMatchBtn) {
   els.streamMatchBtn.addEventListener("click", async () => {
+    await startNativeStream();
+  });
+}
+
+if (els.openBrowserStreamBtn) {
+  els.openBrowserStreamBtn.addEventListener("click", async () => {
     try {
       const result = await window.watcherApi.openStreamHandoff(getStreamCandidate() || {});
       if (!result.ok) {
@@ -1166,6 +1842,54 @@ if (els.streamMatchBtn) {
     }
   });
 }
+
+if (els.refreshStreamSourcesBtn) {
+  els.refreshStreamSourcesBtn.addEventListener("click", () => {
+    refreshNativeStreamSources().catch(() => {});
+  });
+}
+
+if (els.startNativeStreamBtn) {
+  els.startNativeStreamBtn.addEventListener("click", () => {
+    startNativeStream().catch((error) => {
+      handleNativeStreamError("Could not start watcher stream.", error.message || String(error));
+    });
+  });
+}
+
+if (els.stopNativeStreamBtn) {
+  els.stopNativeStreamBtn.addEventListener("click", () => {
+    endNativeStream("manual").catch((error) => {
+      handleNativeStreamError("Could not stop watcher stream.", error.message || String(error));
+    });
+  });
+}
+
+if (els.streamSourceSelect) {
+  els.streamSourceSelect.addEventListener("change", () => {
+    const selectedSource = nativeStreamState.sources.find(
+      (source) => source.id === els.streamSourceSelect.value
+    );
+    updateNativeStreamState({
+      selectedSourceId: els.streamSourceSelect.value,
+      sourceName: selectedSource?.name || "",
+      readout: selectedSource ? `Source selected: ${selectedSource.name}.` : "Source selected.",
+      detail: selectedSource?.kind || "",
+    });
+  });
+}
+
+document.querySelectorAll("[data-stream-mode]").forEach((button) => {
+  button.addEventListener("click", () => {
+    const mode = button.getAttribute("data-stream-mode") || "stable";
+    const nextMode = STREAM_MODES.find((entry) => entry.key === mode) || STREAM_MODES[0];
+    updateNativeStreamState({
+      mode,
+      readout: `${nextMode.label} mode selected.`,
+      detail: nextMode.detail,
+    });
+  });
+});
 
 els.detectFolderBtn.addEventListener("click", async () => {
   try {

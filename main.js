@@ -9,6 +9,7 @@ const {
   app,
   BrowserWindow,
   clipboard,
+  desktopCapturer,
   dialog,
   ipcMain,
   shell,
@@ -1165,6 +1166,129 @@ function getStreamWebBaseUrl(config = loadConfig()) {
   return config.apiFallbackBaseUrl || DEFAULT_RELEASE_BASE_URL;
 }
 
+function getSafeStreamApiPath(value) {
+  const apiPath = String(value || "").trim();
+  if (!apiPath.startsWith("/api/streams/")) {
+    throw new Error("Invalid stream API path.");
+  }
+  return apiPath;
+}
+
+function streamRequestHeaders(config, headers = {}) {
+  return {
+    ...headers,
+    ...(config.uploadApiKey ? { "x-api-key": config.uploadApiKey } : {}),
+  };
+}
+
+function formatAxiosError(error) {
+  const responseDetail = error?.response?.data?.detail || error?.response?.data?.message;
+  if (error?.response?.status) {
+    return `${error.response.status} ${responseDetail || error.response.statusText || "request failed"}`.trim();
+  }
+  return error?.message || String(error || "request failed");
+}
+
+async function postStreamJson(payload = {}) {
+  const config = loadConfig();
+  const apiPath = getSafeStreamApiPath(payload.path);
+  const method = String(payload.method || "POST").toUpperCase();
+  const baseUrl = normalizeBaseUrl(payload.baseUrl || getStreamWebBaseUrl(config));
+
+  if (!baseUrl) {
+    throw new Error("Streaming API host is missing.");
+  }
+
+  const response = await axios({
+    method,
+    url: `${baseUrl}${apiPath}`,
+    timeout: TELEMETRY_TIMEOUT_MS,
+    data: payload.body || {},
+    headers: streamRequestHeaders(config, {
+      "content-type": "application/json",
+      accept: "application/json",
+    }),
+  });
+
+  return {
+    ok: true,
+    status: response.status,
+    data: response.data,
+  };
+}
+
+async function postStreamChunk(payload = {}) {
+  const config = loadConfig();
+  const streamId = Number(payload.streamId);
+  const sequence = Number(payload.sequence);
+  if (!Number.isInteger(streamId) || streamId <= 0 || !Number.isInteger(sequence) || sequence < 0) {
+    throw new Error("Invalid stream chunk.");
+  }
+
+  const bytes = payload.bytes;
+  if (!bytes) {
+    throw new Error("Empty stream chunk.");
+  }
+
+  const buffer = Buffer.from(bytes instanceof ArrayBuffer ? new Uint8Array(bytes) : bytes);
+  if (buffer.length <= 0) {
+    return { ok: true, skipped: true };
+  }
+
+  const baseUrl = normalizeBaseUrl(payload.baseUrl || getStreamWebBaseUrl(config));
+  const response = await axios.post(
+    `${baseUrl}/api/streams/${streamId}/chunks?sequence=${sequence}`,
+    buffer,
+    {
+      timeout: 20000,
+      maxBodyLength: Infinity,
+      maxContentLength: Infinity,
+      headers: streamRequestHeaders(config, {
+        "content-type": payload.mimeType || "video/webm",
+        "x-stream-sequence": String(sequence),
+        accept: "application/json",
+      }),
+    }
+  );
+
+  return {
+    ok: true,
+    status: response.status,
+    data: response.data,
+  };
+}
+
+function captureSourceScore(source) {
+  const name = String(source?.name || "").toLowerCase();
+  const id = String(source?.id || "").toLowerCase();
+  let score = id.startsWith("window:") ? 30 : 8;
+  if (name.includes("age of empires") || name.includes("age2hd") || name.includes("aoe2")) score += 120;
+  if (name.includes("crossover")) score += 90;
+  if (name.includes("steam")) score += 70;
+  if (name.includes("wine")) score += 45;
+  if (name.includes("screen") || name.includes("display")) score += 12;
+  return score;
+}
+
+async function listDesktopCaptureSources() {
+  const sources = await desktopCapturer.getSources({
+    types: ["window", "screen"],
+    thumbnailSize: { width: 240, height: 135 },
+    fetchWindowIcons: true,
+  });
+
+  return sources
+    .map((source) => ({
+      id: source.id,
+      name: source.name,
+      displayId: source.display_id || null,
+      kind: String(source.id || "").startsWith("screen:") ? "screen" : "window",
+      score: captureSourceScore(source),
+      thumbnailUrl: source.thumbnail && !source.thumbnail.isEmpty() ? source.thumbnail.toDataURL() : null,
+    }))
+    .sort((left, right) => right.score - left.score || left.name.localeCompare(right.name));
+}
+
 function publishStreamHandoff(handoff) {
   sendToRenderer("watcher:stream-handoff", handoff);
 }
@@ -1722,6 +1846,62 @@ function bootWatcherApp() {
       ok: true,
       handoff: lastStreamHandoff,
     };
+  });
+
+  ipcMain.handle("watcher:list-stream-sources", async () => {
+    try {
+      const sources = await listDesktopCaptureSources();
+      emitWatcherTelemetry("stream_sources_listed", {
+        metadata: {
+          sourceCount: sources.length,
+          topSourceName: sources[0]?.name || null,
+          topSourceKind: sources[0]?.kind || null,
+        },
+      });
+      return {
+        ok: true,
+        sources,
+      };
+    } catch (error) {
+      appendLog(`Stream source scan failed: ${error.message || error}`, "error");
+      emitWatcherTelemetry("stream_error", {
+        metadata: {
+          source: "desktop_capturer",
+          errorMessage: error.message || String(error),
+        },
+      });
+      return {
+        ok: false,
+        error: error.message || "Stream source scan failed.",
+        sources: [],
+      };
+    }
+  });
+
+  ipcMain.handle("watcher:stream-json", async (_event, payload = {}) => {
+    try {
+      return await postStreamJson(payload);
+    } catch (error) {
+      return {
+        ok: false,
+        status: error?.response?.status || 0,
+        error: formatAxiosError(error),
+        data: error?.response?.data || null,
+      };
+    }
+  });
+
+  ipcMain.handle("watcher:stream-chunk", async (_event, payload = {}) => {
+    try {
+      return await postStreamChunk(payload);
+    } catch (error) {
+      return {
+        ok: false,
+        status: error?.response?.status || 0,
+        error: formatAxiosError(error),
+        data: error?.response?.data || null,
+      };
+    }
   });
 
   ipcMain.handle("watcher:open-folder", async (_event, targetPath) => {

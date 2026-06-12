@@ -23,8 +23,9 @@ This is the client-side edge of the AoE2HDBets replay loop. It is intentionally 
 - packages a Linux AppImage fallback from the same watcher core
 - emits rich support telemetry for app opens, auth, heartbeat, monitor lifecycle, file growth, final deferrals, upload retries, parse results, and batch import lifecycle
 - checks the public watcher release endpoint and shows either an Update button or a clear Latest Version label in the main window
-- v1.1.10 uses signed Windows in-place updates when idle; unsigned macOS builds use download-and-replace until Developer ID signing/notarization is available
-- adds a **Stream Match** handoff for watcher-detected games, opening AoE2WAR's browser streamer with the replay session already attached
+- v1.2.0 adds watcher-native streaming, screen/window source selection, local preview, stream telemetry, and compact user-facing stream diagnostics
+- signed Windows builds can update in place when idle; unsigned macOS builds use download-and-replace until Developer ID signing/notarization is worth doing
+- keeps the browser streamer as a fallback for watcher-detected games
 - current behavior can emit multiple live iterations before a final settled upload, which is expected during active development
 
 ## Quick Start
@@ -58,14 +59,17 @@ The main window now includes **Scan & Import Replays**.
 - shows found / queued / skipped / uploaded / failed counts
 - stores failed uploads so they can be retried from the same UI
 
-## Stream Match handoff
+## Watcher-native streaming
 
-When the watcher sees a live replay candidate, the main window enables **Stream Match**. That opens
+When the watcher sees a live replay candidate, the main window enables **Start Stream** and **Go Live**.
+The watcher lists capturable windows/screens, prefers likely AoE2HD/CrossOver/Steam/Wine sources, starts
+a local preview, creates an AoE2WAR stream session with the watcher key, and uploads short WebM chunks to
+the app. The stream readout shows the latest capture/upload/heartbeat status so a user can see whether
+the source stopped, permissions failed, or chunks are flowing.
+
+The **Browser** button remains a fallback. It opens
 `https://aoe2war.com/profile?watcher_stream=1&stream_session=...&stream_title=...`, preserving the
 detected match through Steam login and landing the user in the AoE2WAR browser stream studio.
-
-This is still browser capture: the user picks the AoE2HD window/screen from the browser picker.
-Watcher-native capture/encode can be a later pass without changing the public handoff route.
 
 ## Optional environment variables
 
@@ -81,13 +85,13 @@ Watcher-native capture/encode can be a later pass without changing the public ha
 - `AOE2_UPLOAD_RETRY_ATTEMPTS` (default: `4`)
 - `AOE2_UPLOAD_RETRY_BASE_DELAY_MS` (default: `4000`)
 - `AOE2_UPLOAD_STABLE_CHECK_INTERVAL_MS` (default: `3000`)
-- `AOE2_UPLOAD_QUIET_PERIOD_MS` (default: `120000`)
+- `AOE2_UPLOAD_QUIET_PERIOD_MS` (default: `18000`)
 - `AOE2_INITIAL_LIVE_DELAY_MS` (default: `3000`)
 - `AOE2_INITIAL_LIVE_RETRY_COOLDOWN_MS` (default: `10000`)
-- `AOE2_LIVE_UPLOAD_COOLDOWN_MS` (default: `45000`)
-- `AOE2_FINAL_CANDIDATE_MIN_AGE_MS` (default: `480000`)
-- `AOE2_FINAL_CANDIDATE_COOLDOWN_MS` (default: `180000`)
-- `AOE2_FINAL_CANDIDATE_STABLE_SAMPLES` (default: `3`)
+- `AOE2_LIVE_UPLOAD_COOLDOWN_MS` (default: `30000`)
+- `AOE2_FINAL_CANDIDATE_MIN_AGE_MS` (default: `30000`)
+- `AOE2_FINAL_CANDIDATE_COOLDOWN_MS` (default: `45000`)
+- `AOE2_FINAL_CANDIDATE_STABLE_SAMPLES` (default: `2`)
 - `AOE2_FINAL_SETTLE_WINDOW_MS` (default: `180000`)
 
 Existing watcher installs that saved the retired `aoe2hdbets.com` endpoints migrate those
@@ -101,9 +105,8 @@ version row show **Update** and open the best platform download path. When it is
 same locations show the installed version followed by **Latest Version**.
 
 On Windows, signed releases can download and install in place when the watcher is idle. On macOS,
-the current unsigned builds cannot safely self-replace through Electron's ShipIt updater, so the
-watcher opens the download path and the user replaces the app manually. That can change once the Mac
-build is properly Developer-ID signed and notarized.
+the current unsigned builds use download-and-replace. That can change later if Developer ID signing
+and notarization become worth the account cost.
 
 ## Optional env example
 
@@ -139,7 +142,7 @@ Current watcher logs are intentionally useful while building. Expect to see mess
 
 That noise is acceptable during active development because it makes replay timing issues much easier to understand.
 
-## Build (macOS release)
+## Build release artifacts
 
 ```bash
 npm run dist:release
@@ -148,13 +151,16 @@ npm run dist:release
 `npm run dist:release` builds:
 
 - the unsigned macOS DMG
+- the macOS auto-update ZIP
 - a Direct ZIP that contains the same `AoE2HDBets Watcher.app` bundle as the DMG
+- the Windows installer and portable EXE
+- the Linux AppImage
 
 The Direct ZIP is the legitimate fallback while Apple signing and notarization are offline. It is
 not a reduced feature path.
 
-Windows EXEs should be signed through the `Sign Windows Watcher` GitHub workflow before the web app
-release metadata is advanced to a new public watcher version.
+Do not advance the web app release metadata until the signed Windows artifacts and staged Mac/Linux
+artifacts exist in `dist/` and have been synced with `npm run watcher:sync` from `app-prodn/`.
 
 ## Build (Windows x64 from macOS)
 

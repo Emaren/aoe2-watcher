@@ -9,10 +9,11 @@ const FormData = require("form-data");
 const SUPPORTED_REPLAY_EXTENSIONS = [".aoe2record", ".aoe2mpgame", ".mgz", ".mgx", ".mgl"];
 const IMPORT_STABILITY_CHECK_MS = 1200;
 const IMPORT_ITEM_LIMIT = 75;
-const DEFAULT_FINAL_CANDIDATE_MIN_AGE_MS = 8 * 60 * 1000;
-const DEFAULT_FINAL_CANDIDATE_COOLDOWN_MS = 3 * 60 * 1000;
+const DEFAULT_LIVE_UPLOAD_COOLDOWN_MS = 30 * 1000;
+const DEFAULT_FINAL_CANDIDATE_MIN_AGE_MS = 30 * 1000;
+const DEFAULT_FINAL_CANDIDATE_COOLDOWN_MS = 45 * 1000;
 const DEFAULT_FINAL_SETTLE_WINDOW_MS = 3 * 60 * 1000;
-const DEFAULT_FINAL_QUIET_PERIOD_MS = 2 * 60 * 1000;
+const DEFAULT_FINAL_QUIET_PERIOD_MS = 18 * 1000;
 const LEGACY_DOMAIN_MIGRATIONS = [
   ["https://api-prodn.aoe2hdbets.com", "https://api-prodn.aoe2war.com"],
   ["https://api.aoe2hdbets.com", "https://api-prodn.aoe2war.com"],
@@ -163,14 +164,16 @@ function buildRuntimeConfig(config = {}) {
     initialLiveRetryCooldownMs: Number(
       process.env.AOE2_INITIAL_LIVE_RETRY_COOLDOWN_MS || 10000
     ),
-    liveUploadCooldownMs: Number(process.env.AOE2_LIVE_UPLOAD_COOLDOWN_MS || 45000),
+    liveUploadCooldownMs: Number(
+      process.env.AOE2_LIVE_UPLOAD_COOLDOWN_MS || DEFAULT_LIVE_UPLOAD_COOLDOWN_MS
+    ),
     finalCandidateMinAgeMs: Number(
       process.env.AOE2_FINAL_CANDIDATE_MIN_AGE_MS || DEFAULT_FINAL_CANDIDATE_MIN_AGE_MS
     ),
     finalCandidateCooldownMs: Number(
       process.env.AOE2_FINAL_CANDIDATE_COOLDOWN_MS || DEFAULT_FINAL_CANDIDATE_COOLDOWN_MS
     ),
-    finalCandidateStableSamples: Number(process.env.AOE2_FINAL_CANDIDATE_STABLE_SAMPLES || 3),
+    finalCandidateStableSamples: Number(process.env.AOE2_FINAL_CANDIDATE_STABLE_SAMPLES || 2),
     finalSettleWindowMs: Number(
       process.env.AOE2_FINAL_SETTLE_WINDOW_MS || DEFAULT_FINAL_SETTLE_WINDOW_MS
     ),

@@ -281,17 +281,6 @@
         font-size: 13px;
       }
 
-      .notice {
-        margin-top: 12px;
-        border-radius: 16px;
-        border: 1px solid rgba(247, 201, 72, 0.18);
-        background: rgba(247, 201, 72, 0.08);
-        padding: 10px 12px;
-        font-size: 13px;
-        line-height: 1.45;
-        color: #f9e5b0;
-      }
-
       .status-rail {
         display: grid;
         gap: 10px;
@@ -519,6 +508,134 @@
         border-color: rgba(74, 222, 128, 0.24);
         background: rgba(74, 222, 128, 0.08);
         color: #d7f7de;
+      }
+
+      .stream-panel {
+        margin-top: 14px;
+        border-radius: 20px;
+        border: 1px solid rgba(125, 211, 252, 0.16);
+        background: rgba(3, 8, 16, 0.54);
+        padding: 14px;
+      }
+
+      .stream-top,
+      .stream-actions,
+      .stream-mode-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .stream-top {
+        justify-content: space-between;
+      }
+
+      .stream-title {
+        margin-top: 4px;
+        font-size: 16px;
+        font-weight: 800;
+        color: #f6fbff;
+      }
+
+      .stream-actions {
+        margin-top: 12px;
+        flex-wrap: wrap;
+      }
+
+      .stream-actions select {
+        min-width: min(100%, 280px);
+        flex: 1 1 280px;
+        border-radius: 999px;
+        border: 1px solid rgba(148, 163, 184, 0.18);
+        background: rgba(5, 10, 19, 0.82);
+        color: var(--text);
+        padding: 10px 14px;
+      }
+
+      .stream-mode-row {
+        margin-top: 10px;
+        flex-wrap: wrap;
+      }
+
+      .stream-mode {
+        border: 1px solid rgba(148, 163, 184, 0.16);
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.045);
+        color: #d8e5f1;
+        padding: 8px 12px;
+        font-size: 12px;
+        cursor: pointer;
+      }
+
+      .stream-mode.selected {
+        border-color: rgba(125, 211, 252, 0.3);
+        background: rgba(125, 211, 252, 0.12);
+        color: #e9f8ff;
+      }
+
+      .stream-preview-shell {
+        position: relative;
+        margin-top: 12px;
+        aspect-ratio: 16 / 9;
+        overflow: hidden;
+        border-radius: 18px;
+        border: 1px solid rgba(148, 163, 184, 0.14);
+        background:
+          radial-gradient(circle at 30% 22%, rgba(125, 211, 252, 0.14), transparent 34%),
+          linear-gradient(135deg, #020617, #08111f);
+      }
+
+      .stream-preview {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        background: #000;
+      }
+
+      .stream-empty {
+        position: absolute;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        color: #90a4b8;
+        font-weight: 800;
+      }
+
+      .stream-readout {
+        margin-top: 10px;
+        border-radius: 16px;
+        border: 1px solid rgba(148, 163, 184, 0.14);
+        background: rgba(0, 0, 0, 0.22);
+        padding: 10px 12px;
+        color: #d8e5f1;
+      }
+
+      .stream-readout summary {
+        list-style: none;
+        cursor: pointer;
+        font-size: 13px;
+        line-height: 1.35;
+      }
+
+      .stream-readout summary::-webkit-details-marker {
+        display: none;
+      }
+
+      .stream-readout div {
+        margin-top: 6px;
+        font-size: 12px;
+        line-height: 1.55;
+        color: #a7b9ca;
+      }
+
+      .badge.stream-live {
+        background: rgba(248, 113, 113, 0.14);
+        color: #fecaca;
+      }
+
+      .badge.stream-warm {
+        background: rgba(125, 211, 252, 0.1);
+        color: #d5f3ff;
       }
 
       .progress-wrap {
@@ -852,9 +969,57 @@
 
             <div class="hero-actions">
               <button id="startWatchingBtn" class="button primary">Start Watching</button>
-              <button id="streamMatchBtn" class="button secondary" disabled>Stream Match</button>
+              <button id="streamMatchBtn" class="button secondary" disabled>Start Stream</button>
               <button id="scanImportBtn" class="button secondary">Scan &amp; Import Replays</button>
               <button id="stopWatchingBtn" class="button danger">Stop Watching</button>
+            </div>
+
+            <div class="stream-panel">
+              <div class="stream-top">
+                <div>
+                  <div class="eyebrow">Streamer</div>
+                  <div id="streamTitleText" class="stream-title">Watcher stream</div>
+                </div>
+                <div id="streamStatePill" class="badge neutral">Idle</div>
+              </div>
+
+              <div class="stream-preview-shell">
+                <video id="streamPreview" class="stream-preview" muted autoplay playsinline hidden></video>
+                <div id="streamPreviewEmpty" class="stream-empty">Refresh sources</div>
+              </div>
+
+              <div class="stream-actions">
+                <select id="streamSourceSelect" aria-label="Stream source"></select>
+                <button id="refreshStreamSourcesBtn" class="button secondary slim" type="button">
+                  Sources
+                </button>
+                <button id="startNativeStreamBtn" class="button primary slim" type="button">
+                  Go Live
+                </button>
+                <button id="stopNativeStreamBtn" class="button danger slim" type="button">
+                  Stop
+                </button>
+                <button id="openBrowserStreamBtn" class="button ghost slim" type="button">
+                  Browser
+                </button>
+              </div>
+
+              <div class="stream-mode-row">
+                <button class="stream-mode selected" type="button" data-stream-mode="stable">
+                  Stable 15
+                </button>
+                <button class="stream-mode" type="button" data-stream-mode="screen">
+                  Screen 10
+                </button>
+                <button class="stream-mode" type="button" data-stream-mode="sharp">
+                  Sharp 30
+                </button>
+              </div>
+
+              <details id="streamReadoutDetails" class="stream-readout">
+                <summary id="streamReadoutSummary">Idle.</summary>
+                <div id="streamReadoutDetail">Pick a source when a watcher match is ready.</div>
+              </details>
             </div>
 
             <div class="helper-links">
@@ -884,9 +1049,6 @@
               </a>
             </div>
 
-            <div class="notice">
-              Windows installs update in place. Mac builds use download-and-replace until notarized.
-            </div>
           </div>
 
           <div class="status-rail">
