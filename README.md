@@ -23,6 +23,7 @@ This is the client-side edge of the AoE2HDBets replay loop. It is intentionally 
 - packages a Linux AppImage fallback from the same watcher core
 - emits rich support telemetry for app opens, auth, heartbeat, monitor lifecycle, file growth, final deferrals, upload retries, parse results, and batch import lifecycle
 - checks the public watcher release endpoint and shows either an Update button or a clear Latest Version label in the main window
+- v1.1.10 uses signed Windows in-place updates when idle; unsigned macOS builds use download-and-replace until Developer ID signing/notarization is available
 - adds a **Stream Match** handoff for watcher-detected games, opening AoE2WAR's browser streamer with the replay session already attached
 - current behavior can emit multiple live iterations before a final settled upload, which is expected during active development
 
@@ -98,6 +99,11 @@ The watcher fetches `https://aoe2war.com/api/watcher/release` on launch and afte
 When the installed version is behind the public release metadata, the Build card and Diagnostics
 version row show **Update** and open the best platform download path. When it is current, those
 same locations show the installed version followed by **Latest Version**.
+
+On Windows, signed releases can download and install in place when the watcher is idle. On macOS,
+the current unsigned builds cannot safely self-replace through Electron's ShipIt updater, so the
+watcher opens the download path and the user replaces the app manually. That can change once the Mac
+build is properly Developer-ID signed and notarized.
 
 ## Optional env example
 
