@@ -23,7 +23,7 @@ This is the client-side edge of the AoE2HDBets replay loop. It is intentionally 
 - packages a Linux AppImage fallback from the same watcher core
 - emits rich support telemetry for app opens, auth, heartbeat, monitor lifecycle, file growth, final deferrals, upload retries, parse results, and batch import lifecycle
 - checks the public watcher release endpoint and shows either an Update button or a clear Latest Version label in the main window
-- v1.2.0 adds watcher-native streaming, screen/window source selection, local preview, stream telemetry, and compact user-facing stream diagnostics
+- v1.3.0 hardens watcher-native streaming with Full Screen mode for macOS/CrossOver, live-edge-friendly chunk cadence, bitrate controls, better source scoring, and richer stream telemetry
 - signed Windows builds can update in place when idle; unsigned macOS builds use download-and-replace until Developer ID signing/notarization is worth doing
 - keeps the browser streamer as a fallback for watcher-detected games
 - current behavior can emit multiple live iterations before a final settled upload, which is expected during active development
@@ -66,6 +66,10 @@ The watcher lists capturable windows/screens, prefers likely AoE2HD/CrossOver/St
 a local preview, creates an AoE2WAR stream session with the watcher key, and uploads short WebM chunks to
 the app. The stream readout shows the latest capture/upload/heartbeat status so a user can see whether
 the source stopped, permissions failed, or chunks are flowing.
+
+Use **Full Screen** mode when AoE2HD is running through CrossOver or when the game window disappears from
+macOS capture after entering full screen. Stable and Sharp prefer window capture; Full Screen prefers a
+display source and keeps the same one-button Go Live flow.
 
 The **Browser** button remains a fallback. It opens
 `https://aoe2war.com/profile?watcher_stream=1&stream_session=...&stream_title=...`, preserving the

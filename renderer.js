@@ -89,7 +89,7 @@ const STREAM_HANDOFF_CLEAR_EVENTS = new Set([
   "monitor-stop",
   "watching-stopped",
 ]);
-const STREAM_CHUNK_TIMESLICE_MS = 2000;
+const STREAM_CHUNK_TIMESLICE_MS = 1500;
 const STREAM_HEARTBEAT_MS = 8000;
 const STREAM_MODES = [
   {
@@ -99,14 +99,18 @@ const STREAM_MODES = [
     width: 1280,
     height: 720,
     frameRate: 15,
+    videoBitsPerSecond: 1800000,
+    preferredKind: "window",
   },
   {
     key: "screen",
-    label: "Screen",
-    detail: "540p / 10 fps",
-    width: 960,
-    height: 540,
-    frameRate: 10,
+    label: "Full Screen",
+    detail: "720p / 20 fps",
+    width: 1280,
+    height: 720,
+    frameRate: 20,
+    videoBitsPerSecond: 2400000,
+    preferredKind: "screen",
   },
   {
     key: "sharp",
@@ -115,6 +119,8 @@ const STREAM_MODES = [
     width: 1280,
     height: 720,
     frameRate: 30,
+    videoBitsPerSecond: 3200000,
+    preferredKind: "window",
   },
 ];
 const STREAM_MIME_CANDIDATES = [
@@ -173,11 +179,15 @@ let nativeStreamState = {
   sources: [],
   selectedSourceId: "",
   sourceName: "",
+  sourceKind: "",
   mediaStream: null,
   recorder: null,
   stream: null,
   sequence: 0,
   chunkCount: 0,
+  lastChunkBytes: 0,
+  uploadFailures: 0,
+  lastHeartbeatAt: 0,
   mediaMimeType: "video/webm",
   heartbeatTimer: null,
   startedAt: 0,
@@ -506,6 +516,37 @@ function getNativeStreamMode() {
   return STREAM_MODES.find((mode) => mode.key === nativeStreamState.mode) || STREAM_MODES[0];
 }
 
+function describeNativeMode(mode = getNativeStreamMode()) {
+  const bitrateMbps = mode.videoBitsPerSecond
+    ? `${(mode.videoBitsPerSecond / 1000000).toFixed(1)} Mbps`
+    : "auto bitrate";
+  return `${mode.label} ${mode.detail} · ${bitrateMbps} · ${STREAM_CHUNK_TIMESLICE_MS / 1000}s chunks`;
+}
+
+function countStreamSources(sources = nativeStreamState.sources) {
+  return sources.reduce(
+    (counts, source) => {
+      if (source.kind === "screen") {
+        counts.screens += 1;
+      } else {
+        counts.windows += 1;
+      }
+      return counts;
+    },
+    { windows: 0, screens: 0 }
+  );
+}
+
+function pickNativeStreamSource(sources, selectedSourceId, mode = getNativeStreamMode()) {
+  const selected = sources.find((source) => source.id === selectedSourceId) || null;
+
+  if (mode.preferredKind === "screen" && selected?.kind !== "screen") {
+    return sources.find((source) => source.kind === "screen") || selected || sources[0] || null;
+  }
+
+  return selected || sources[0] || null;
+}
+
 function chooseNativeRecorderMimeType() {
   if (typeof MediaRecorder === "undefined") {
     return "video/webm";
@@ -553,14 +594,29 @@ function buildDesktopCaptureConstraints(sourceId, mode = getNativeStreamMode()) 
       mandatory: {
         chromeMediaSource: "desktop",
         chromeMediaSourceId: sourceId,
-        minWidth: mode.width,
+        minWidth: Math.min(640, mode.width),
         maxWidth: mode.width,
-        minHeight: mode.height,
+        minHeight: Math.min(360, mode.height),
         maxHeight: mode.height,
         maxFrameRate: mode.frameRate,
       },
     },
   };
+}
+
+function describeCaptureStartError(error, source, mode) {
+  const message = error?.message || String(error || "Capture failed.");
+  const name = error?.name || "";
+  if (/permission|denied|notallowed/i.test(`${name} ${message}`)) {
+    return "macOS blocked capture. Allow screen recording for AoE2HDBets Watcher, then reopen it.";
+  }
+  if (source?.kind === "window" && mode.preferredKind !== "screen") {
+    return "That window may disappear in full-screen play. Switch to Full Screen mode and try again.";
+  }
+  if (source?.kind === "screen") {
+    return "Full-screen capture could not open. Refresh Sources and pick the active display.";
+  }
+  return message;
 }
 
 function captureNativeThumbnail() {
@@ -597,6 +653,7 @@ async function streamJson(path, body = {}) {
 
 async function sendNativeStreamEvent(eventType, metadata = {}) {
   try {
+    const mode = getNativeStreamMode();
     await streamJson("/api/streams/client-event", {
       eventType,
       appVersion: appInfo?.version || "",
@@ -613,7 +670,16 @@ async function sendNativeStreamEvent(eventType, metadata = {}) {
       metadata: {
         title: buildNativeStreamTitle(),
         sourceName: nativeStreamState.sourceName,
+        sourceKind: nativeStreamState.sourceKind,
         sourceType: "watcher_native",
+        modeLabel: mode.label,
+        modeDetail: mode.detail,
+        videoBitrate: mode.videoBitsPerSecond || null,
+        frameRate: mode.frameRate,
+        chunkTimesliceMs: STREAM_CHUNK_TIMESLICE_MS,
+        chunkCount: nativeStreamState.chunkCount,
+        lastChunkBytes: nativeStreamState.lastChunkBytes,
+        uploadFailures: nativeStreamState.uploadFailures,
         ...metadata,
       },
     });
@@ -641,25 +707,33 @@ async function refreshNativeStreamSources() {
     }
 
     const sources = Array.isArray(result.sources) ? result.sources : [];
-    const stillValid = sources.some((source) => source.id === nativeStreamState.selectedSourceId);
-    const selected = stillValid
-      ? nativeStreamState.selectedSourceId
-      : sources[0]?.id || "";
-    const selectedSource = sources.find((source) => source.id === selected) || null;
+    const sourceCounts = countStreamSources(sources);
+    const selectedSource = pickNativeStreamSource(
+      sources,
+      nativeStreamState.selectedSourceId,
+      getNativeStreamMode()
+    );
+    const selected = selectedSource?.id || "";
 
     updateNativeStreamState({
       busy: false,
       sources,
       selectedSourceId: selected,
       sourceName: selectedSource?.name || "",
+      sourceKind: selectedSource?.kind || "",
       readout: sources.length ? `${sources.length} source${sources.length === 1 ? "" : "s"} ready.` : "No capture sources found.",
-      detail: selectedSource?.name || "Try opening AoE2HD, Steam, or CrossOver first.",
+      detail: selectedSource
+        ? `${selectedSource.kind === "screen" ? "Display" : "Window"} · ${selectedSource.name}`
+        : "Open AoE2HD, Steam, or CrossOver, then refresh.",
     });
 
     void sendNativeStreamEvent("stream_sources_listed", {
       sourceCount: sources.length,
+      windowCount: sourceCounts.windows,
+      screenCount: sourceCounts.screens,
       topSourceName: sources[0]?.name || null,
       selectedSourceName: selectedSource?.name || null,
+      selectedSourceKind: selectedSource?.kind || null,
     });
 
     return sources;
@@ -709,6 +783,7 @@ async function endNativeStream(reason = "manual") {
     stream: null,
     heartbeatTimer: null,
     startedAt: 0,
+    lastHeartbeatAt: 0,
     readout: preserveIssue
       ? nativeStreamState.readout
       : reason === "manual"
@@ -751,18 +826,21 @@ async function uploadNativeChunk(streamId, sequence, blob) {
   }
 
   const nextStream = result.data?.stream || nativeStreamState.stream;
+  const nextChunkCount = Math.max(nativeStreamState.chunkCount + 1, nextStream?.chunkCount || 0);
   updateNativeStreamState({
     stream: nextStream,
-    chunkCount: Math.max(nativeStreamState.chunkCount + 1, nextStream?.chunkCount || 0),
-    readout: `Chunk ${sequence} published (${Math.round(blob.size / 1024)} KB).`,
-    detail: nativeStreamState.sourceName || nativeStreamState.mediaMimeType,
+    chunkCount: nextChunkCount,
+    lastChunkBytes: blob.size,
+    readout: `Live. Chunk ${sequence} published (${Math.round(blob.size / 1024)} KB).`,
+    detail: `${nativeStreamState.sourceName || "Capture source"} · ${describeNativeMode()}`,
   });
 
-  if (sequence === 0 || sequence % 10 === 0) {
+  if (sequence === 0 || sequence % 8 === 0) {
     void sendNativeStreamEvent("stream_chunk_uploaded", {
       streamId,
       sequence,
       blobSize: blob.size,
+      chunkCount: nextChunkCount,
     });
   }
 }
@@ -777,8 +855,9 @@ async function sendNativeHeartbeat(streamId, status = "live") {
 
   updateNativeStreamState({
     stream: data.stream || nativeStreamState.stream,
+    lastHeartbeatAt: Date.now(),
     readout: "Heartbeat OK. Stream is visible on AoE2WAR.",
-    detail: nativeStreamState.sourceName || "Watcher-native stream.",
+    detail: `${nativeStreamState.sourceName || "Watcher-native stream"} · ${nativeStreamState.chunkCount} chunks`,
   });
 
   void sendNativeStreamEvent("stream_heartbeat", {
@@ -826,24 +905,25 @@ async function startNativeStream() {
     sources = await refreshNativeStreamSources();
   }
 
-  const selectedSource =
-    sources.find((source) => source.id === nativeStreamState.selectedSourceId) || sources[0] || null;
+  const mode = getNativeStreamMode();
+  const selectedSource = pickNativeStreamSource(sources, nativeStreamState.selectedSourceId, mode);
   if (!selectedSource) {
-    handleNativeStreamError("No capture source found.", "Open AoE2HD or choose Screen after refreshing sources.");
+    handleNativeStreamError("No capture source found.", "Open AoE2HD, Steam, or CrossOver, then refresh sources.");
     return;
   }
 
-  const mode = getNativeStreamMode();
   const mediaMimeType = chooseNativeRecorderMimeType();
   const streamStartedAt = Date.now();
 
   updateNativeStreamState({
     status: "starting",
     busy: true,
+    selectedSourceId: selectedSource.id,
     sourceName: selectedSource.name,
+    sourceKind: selectedSource.kind,
     mediaMimeType,
     readout: `Opening ${selectedSource.name}.`,
-    detail: `${mode.label} ${mode.detail}.`,
+    detail: describeNativeMode(mode),
   });
 
   try {
@@ -852,6 +932,10 @@ async function startNativeStream() {
       sourceName: selectedSource.name,
       sourceKind: selectedSource.kind,
       mode: mode.key,
+      modeLabel: mode.label,
+      modeDetail: mode.detail,
+      videoBitrate: mode.videoBitsPerSecond,
+      chunkTimesliceMs: STREAM_CHUNK_TIMESLICE_MS,
     });
 
     const capture = await navigator.mediaDevices.getUserMedia(
@@ -870,19 +954,23 @@ async function startNativeStream() {
         }
         const elapsedMs = Date.now() - streamStartedAt;
         handleNativeStreamError(
-          elapsedMs < 12000
-            ? "Capture stopped quickly. Try Screen mode."
+          elapsedMs < 15000
+            ? "Capture stopped quickly. Try Full Screen."
             : "Capture source ended.",
-          track.label || selectedSource.name,
+          selectedSource.kind === "window"
+            ? `${track.label || selectedSource.name}. Window capture can vanish when AoE2HD enters macOS full screen.`
+            : track.label || selectedSource.name,
           {
             elapsedMs,
             sourceName: selectedSource.name,
+            sourceKind: selectedSource.kind,
             mode: mode.key,
           }
         );
         void sendNativeStreamEvent("stream_track_ended", {
           elapsedMs,
           sourceName: selectedSource.name,
+          sourceKind: selectedSource.kind,
           mode: mode.key,
           trackLabel: track.label || null,
         });
@@ -894,17 +982,25 @@ async function startNativeStream() {
       mediaStream: capture,
       status: "preview",
       readout: "Preview ready.",
-      detail: selectedSource.name,
+      detail: `${selectedSource.kind === "screen" ? "Display" : "Window"} · ${selectedSource.name}`,
     });
+    const trackSettings = capture.getVideoTracks()[0]?.getSettings?.() || {};
     void sendNativeStreamEvent("stream_preview_started", {
       sourceName: selectedSource.name,
+      sourceKind: selectedSource.kind,
       trackCount: capture.getTracks().length,
       videoTrackLabels: capture.getVideoTracks().map((track) => track.label).filter(Boolean),
+      captureWidth: trackSettings.width || null,
+      captureHeight: trackSettings.height || null,
+      captureFrameRate: trackSettings.frameRate || null,
     });
     void sendNativeStreamEvent("stream_source_ready", {
       sourceName: selectedSource.name,
       sourceKind: selectedSource.kind,
       mode: mode.key,
+      captureWidth: trackSettings.width || null,
+      captureHeight: trackSettings.height || null,
+      captureFrameRate: trackSettings.frameRate || null,
     });
 
     const streamData = await streamJson("/api/streams/start", {
@@ -925,15 +1021,24 @@ async function startNativeStream() {
     nativeStreamState.manualStop = false;
     nativeStreamState.sequence = 0;
     nativeStreamState.chunkCount = 0;
+    nativeStreamState.lastChunkBytes = 0;
+    nativeStreamState.uploadFailures = 0;
 
-    const recorder = new MediaRecorder(capture, { mimeType: mediaMimeType });
+    const recorder = new MediaRecorder(capture, {
+      mimeType: mediaMimeType,
+      videoBitsPerSecond: mode.videoBitsPerSecond,
+    });
     recorder.ondataavailable = (event) => {
       const sequence = nativeStreamState.sequence;
       nativeStreamState.sequence += 1;
       void uploadNativeChunk(stream.id, sequence, event.data).catch((error) => {
+        updateNativeStreamState({
+          uploadFailures: nativeStreamState.uploadFailures + 1,
+        });
         void sendNativeStreamEvent("stream_chunk_failed", {
           streamId: stream.id,
           sequence,
+          blobSize: event.data?.size || 0,
           errorMessage: error.message || String(error),
         });
         handleNativeStreamError("Chunk upload failed.", error.message || String(error), {
@@ -958,10 +1063,12 @@ async function startNativeStream() {
       );
     };
     recorder.onstop = () => {
-      if (!nativeStreamState.manualStop && Date.now() - streamStartedAt < 12000) {
-        handleNativeStreamError("Recorder stopped quickly. Try Screen mode.", selectedSource.name, {
+      if (!nativeStreamState.manualStop && Date.now() - streamStartedAt < 15000) {
+        handleNativeStreamError("Recorder stopped quickly. Try Full Screen.", selectedSource.name, {
           streamId: stream.id,
           elapsedMs: Date.now() - streamStartedAt,
+          sourceKind: selectedSource.kind,
+          mode: mode.key,
         });
       }
     };
@@ -972,6 +1079,7 @@ async function startNativeStream() {
         void sendNativeStreamEvent("stream_heartbeat_failed", {
           streamId: stream.id,
           errorMessage: error.message || String(error),
+          chunkCount: nativeStreamState.chunkCount,
         });
         handleNativeStreamError("Heartbeat failed.", error.message || String(error), {
           streamId: stream.id,
@@ -987,7 +1095,7 @@ async function startNativeStream() {
       heartbeatTimer,
       startedAt: streamStartedAt,
       readout: "Live. First chunks are publishing now.",
-      detail: selectedSource.name,
+      detail: `${selectedSource.name} · ${describeNativeMode(mode)}`,
     });
 
     await sendNativeHeartbeat(stream.id, "live");
@@ -996,13 +1104,18 @@ async function startNativeStream() {
       sourceName: selectedSource.name,
       sourceKind: selectedSource.kind,
       mode: mode.key,
+      modeLabel: mode.label,
+      videoBitrate: mode.videoBitsPerSecond,
+      chunkTimesliceMs: STREAM_CHUNK_TIMESLICE_MS,
     });
     setStatus("Watcher stream is live.", "success");
   } catch (error) {
     stopNativeLocalCapture();
-    handleNativeStreamError("Could not start watcher stream.", error.message || String(error), {
+    handleNativeStreamError("Could not start watcher stream.", describeCaptureStartError(error, selectedSource, mode), {
       sourceName: selectedSource.name,
+      sourceKind: selectedSource.kind,
       mode: mode.key,
+      rawError: error.message || String(error),
     });
   }
 }
@@ -1873,8 +1986,11 @@ if (els.streamSourceSelect) {
     updateNativeStreamState({
       selectedSourceId: els.streamSourceSelect.value,
       sourceName: selectedSource?.name || "",
+      sourceKind: selectedSource?.kind || "",
       readout: selectedSource ? `Source selected: ${selectedSource.name}.` : "Source selected.",
-      detail: selectedSource?.kind || "",
+      detail: selectedSource
+        ? `${selectedSource.kind === "screen" ? "Display" : "Window"} · ${selectedSource.name}`
+        : "",
     });
   });
 }
@@ -1883,10 +1999,20 @@ document.querySelectorAll("[data-stream-mode]").forEach((button) => {
   button.addEventListener("click", () => {
     const mode = button.getAttribute("data-stream-mode") || "stable";
     const nextMode = STREAM_MODES.find((entry) => entry.key === mode) || STREAM_MODES[0];
+    const preferredSource = pickNativeStreamSource(
+      nativeStreamState.sources,
+      nativeStreamState.selectedSourceId,
+      nextMode
+    );
     updateNativeStreamState({
       mode,
+      selectedSourceId: preferredSource?.id || nativeStreamState.selectedSourceId,
+      sourceName: preferredSource?.name || nativeStreamState.sourceName,
+      sourceKind: preferredSource?.kind || nativeStreamState.sourceKind,
       readout: `${nextMode.label} mode selected.`,
-      detail: nextMode.detail,
+      detail: preferredSource
+        ? `${describeNativeMode(nextMode)} · ${preferredSource.kind === "screen" ? "Display" : "Window"}`
+        : describeNativeMode(nextMode),
     });
   });
 });

@@ -1263,6 +1263,7 @@ function captureSourceScore(source) {
   const id = String(source?.id || "").toLowerCase();
   let score = id.startsWith("window:") ? 30 : 8;
   if (name.includes("age of empires") || name.includes("age2hd") || name.includes("aoe2")) score += 120;
+  if (name.includes("aok hd") || name.includes("aok hd.exe") || name.includes("age of kings")) score += 115;
   if (name.includes("crossover")) score += 90;
   if (name.includes("steam")) score += 70;
   if (name.includes("wine")) score += 45;
