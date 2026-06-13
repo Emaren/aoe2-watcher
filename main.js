@@ -438,6 +438,66 @@ async function checkForWatcherUpdates({ manual = false, config = loadConfig() } 
     }
   );
 
+  if (requiresManualUpdateInstall()) {
+    try {
+      const latestRelease = await refreshWatcherRelease(config);
+      if (latestRelease.updateAvailable) {
+        setManualUpdateState("mac_manual_unsigned", null, {
+          version: latestRelease.latestVersion,
+          releaseName: latestRelease.label,
+          updateUrl: latestRelease.updateUrl,
+        });
+        return updateState;
+      }
+
+      return setUpdateState(
+        {
+          supported: true,
+          status: "current",
+          message: "Watcher is up to date.",
+          updateVersion: latestRelease.latestVersion,
+          downloaded: false,
+          manualInstall: false,
+          manualReason: null,
+          manualDownloadUrl: null,
+          downloadPercent: 0,
+          error: null,
+        },
+        {
+          telemetryEvent: "watcher_update_not_available",
+          telemetryPayload: {
+            metadata: {
+              manual,
+              source: "release_api",
+            },
+          },
+        }
+      );
+    } catch (error) {
+      return setUpdateState(
+        {
+          supported: true,
+          status: "error",
+          message: "Watcher update check failed.",
+          error: error?.message || String(error),
+        },
+        {
+          logMessage: `Watcher update check failed: ${error?.message || error}`,
+          level: "warn",
+          telemetryEvent: "watcher_update_error",
+          telemetryPayload: {
+            metadata: {
+              manual,
+              source: "release_api",
+            },
+          },
+        }
+      );
+    } finally {
+      updateCheckInFlight = false;
+    }
+  }
+
   try {
     await autoUpdater.checkForUpdates();
     return updateState;

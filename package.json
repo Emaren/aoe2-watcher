@@ -1,6 +1,6 @@
 {
   "name": "aoe2-watcher",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "AoE2HDBets Replay Watcher",
   "author": "AoE2HDBets",
   "license": "ISC",
@@ -10,7 +10,7 @@
     "start": "electron main.js",
     "build": "electron-builder",
     "pack": "electron-builder --dir",
-    "dist:mac": "electron-builder --mac dmg zip --arm64",
+    "dist:mac": "electron-builder --mac dmg --arm64",
     "dist:win": "electron-builder --win nsis portable --x64",
     "dist:linux": "electron-builder --linux AppImage --x64",
     "dist:manual-zip": "node scripts/build-manual-zip.mjs",
@@ -45,8 +45,7 @@
     "mac": {
       "category": "public.app-category.utilities",
       "target": [
-        "dmg",
-        "zip"
+        "dmg"
       ],
       "icon": "build/icon.icns",
       "minimumSystemVersion": "10.13",

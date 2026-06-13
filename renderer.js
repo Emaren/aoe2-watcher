@@ -545,6 +545,36 @@ function countStreamSources(sources = nativeStreamState.sources) {
   );
 }
 
+function isMacPlatform() {
+  return appInfo?.platform === "darwin";
+}
+
+function sourceKindLabel(source) {
+  return source?.kind === "screen" ? "Display" : "Window";
+}
+
+function sourceOptionLabel(source) {
+  return `${sourceKindLabel(source)} - ${source.name}`;
+}
+
+function describeSourceDetail(source, mode = getNativeStreamMode()) {
+  if (!source) {
+    return "Open AoE2HD, Steam, or CrossOver, then refresh.";
+  }
+
+  const base = `${sourceKindLabel(source)} · ${source.name}`;
+  if (source.kind === "screen" && isMacPlatform()) {
+    return `${base}. Go Live, then switch to AoE2 full-screen.`;
+  }
+  if (source.kind === "screen") {
+    return `${base}. Use this when the game window is full-screen.`;
+  }
+  if (mode.preferredKind === "screen") {
+    return `${base}. Full Screen mode works best with a Display source.`;
+  }
+  return base;
+}
+
 function pickNativeStreamSource(sources, selectedSourceId, mode = getNativeStreamMode()) {
   const selected = sources.find((source) => source.id === selectedSourceId) || null;
 
@@ -630,7 +660,7 @@ function describeCaptureStartError(error, source, mode) {
     return "That window may disappear in full-screen play. Switch to Full Screen mode and try again.";
   }
   if (source?.kind === "screen") {
-    return "Full-screen capture could not open. Refresh Sources and pick the active display.";
+    return "Display capture could not open. Check macOS Screen Recording permission, then refresh sources.";
   }
   return message;
 }
@@ -718,7 +748,7 @@ async function refreshNativeStreamSources() {
   updateNativeStreamState({
     busy: true,
     readout: "Scanning capture sources.",
-    detail: "Looking for AoE2, CrossOver, Steam, and full-screen fallbacks.",
+    detail: "Looking for AoE2, CrossOver, Steam, and display capture.",
   });
 
   try {
@@ -742,10 +772,12 @@ async function refreshNativeStreamSources() {
       selectedSourceId: selected,
       sourceName: selectedSource?.name || "",
       sourceKind: selectedSource?.kind || "",
-      readout: sources.length ? `${sources.length} source${sources.length === 1 ? "" : "s"} ready.` : "No capture sources found.",
-      detail: selectedSource
-        ? `${selectedSource.kind === "screen" ? "Display" : "Window"} · ${selectedSource.name}`
-        : "Open AoE2HD, Steam, or CrossOver, then refresh.",
+      readout: sources.length
+        ? selectedSource?.kind === "screen" && isMacPlatform()
+          ? "Display capture ready for full-screen AoE2."
+          : `${sources.length} source${sources.length === 1 ? "" : "s"} ready.`
+        : "No capture sources found.",
+      detail: describeSourceDetail(selectedSource),
     });
 
     void sendNativeStreamEvent("stream_sources_listed", {
@@ -755,6 +787,7 @@ async function refreshNativeStreamSources() {
       topSourceName: sources[0]?.name || null,
       selectedSourceName: selectedSource?.name || null,
       selectedSourceKind: selectedSource?.kind || null,
+      selectedSourceDetail: describeSourceDetail(selectedSource),
     });
 
     return sources;
@@ -1021,8 +1054,14 @@ async function startNativeStream() {
     sourceName: selectedSource.name,
     sourceKind: selectedSource.kind,
     mediaMimeType,
-    readout: `Opening ${selectedSource.name}.`,
-    detail: describeNativeMode(mode),
+    readout:
+      selectedSource.kind === "screen"
+        ? "Opening display capture."
+        : `Opening ${selectedSource.name}.`,
+    detail:
+      selectedSource.kind === "screen" && isMacPlatform()
+        ? `${describeNativeMode(mode)}. Switch to AoE2 after the preview appears.`
+        : describeNativeMode(mode),
   });
 
   try {
@@ -1054,11 +1093,13 @@ async function startNativeStream() {
         const elapsedMs = Date.now() - streamStartedAt;
         handleNativeStreamError(
           elapsedMs < 15000
-            ? "Capture stopped quickly. Try Full Screen."
+            ? selectedSource.kind === "screen"
+              ? "Display capture stopped quickly."
+              : "Capture stopped quickly. Try Full Screen."
             : "Capture source ended.",
           selectedSource.kind === "window"
             ? `${track.label || selectedSource.name}. Window capture can vanish when AoE2HD enters macOS full screen.`
-            : track.label || selectedSource.name,
+            : `${track.label || selectedSource.name}. Check Screen Recording permission if this keeps happening.`,
           {
             elapsedMs,
             sourceName: selectedSource.name,
@@ -1080,8 +1121,11 @@ async function startNativeStream() {
     updateNativeStreamState({
       mediaStream: capture,
       status: "preview",
-      readout: "Preview ready.",
-      detail: `${selectedSource.kind === "screen" ? "Display" : "Window"} · ${selectedSource.name}`,
+      readout:
+        selectedSource.kind === "screen" && isMacPlatform()
+          ? "Display preview ready. Switch to AoE2."
+          : "Preview ready.",
+      detail: describeSourceDetail(selectedSource, mode),
     });
     const trackSettings = capture.getVideoTracks()[0]?.getSettings?.() || {};
     void sendNativeStreamEvent("stream_preview_started", {
@@ -1152,12 +1196,18 @@ async function startNativeStream() {
     };
     recorder.onstop = () => {
       if (!nativeStreamState.manualStop && Date.now() - streamStartedAt < 15000) {
-        handleNativeStreamError("Recorder stopped quickly. Try Full Screen.", selectedSource.name, {
-          streamId: stream.id,
-          elapsedMs: Date.now() - streamStartedAt,
-          sourceKind: selectedSource.kind,
-          mode: mode.key,
-        });
+        handleNativeStreamError(
+          selectedSource.kind === "screen"
+            ? "Recorder stopped quickly on display capture."
+            : "Recorder stopped quickly. Try Full Screen.",
+          describeSourceDetail(selectedSource, mode),
+          {
+            streamId: stream.id,
+            elapsedMs: Date.now() - streamStartedAt,
+            sourceKind: selectedSource.kind,
+            mode: mode.key,
+          }
+        );
       }
     };
     recorder.start(STREAM_CHUNK_TIMESLICE_MS);
@@ -1186,8 +1236,11 @@ async function startNativeStream() {
       stream,
       heartbeatTimer,
       startedAt: streamStartedAt,
-      readout: "Live. First chunks are publishing now.",
-      detail: `${selectedSource.name} · ${describeNativeMode(mode)}`,
+      readout:
+        selectedSource.kind === "screen" && isMacPlatform()
+          ? "Live. Switch to AoE2 full-screen."
+          : "Live. First chunks are publishing now.",
+      detail: `${describeSourceDetail(selectedSource, mode)} · ${describeNativeMode(mode)}`,
     });
 
     await sendNativeHeartbeat(stream.id, "live");
@@ -1199,6 +1252,7 @@ async function startNativeStream() {
       modeLabel: mode.label,
       videoBitrate: mode.videoBitsPerSecond,
       chunkTimesliceMs: STREAM_CHUNK_TIMESLICE_MS,
+      captureGuidance: describeSourceDetail(selectedSource, mode),
     });
     setStatus("Watcher stream is live.", "success");
   } catch (error) {
@@ -1607,7 +1661,7 @@ function renderNativeStreamState() {
     for (const source of nativeStreamState.sources) {
       const option = document.createElement("option");
       option.value = source.id;
-      option.textContent = `${source.kind === "screen" ? "Screen" : "Window"} - ${source.name}`;
+      option.textContent = sourceOptionLabel(source);
       sourceSelect.appendChild(option);
     }
     const desired = nativeStreamState.selectedSourceId || currentValue;
@@ -1633,7 +1687,9 @@ function renderNativeStreamState() {
   if (els.streamPreviewEmpty) {
     els.streamPreviewEmpty.hidden = Boolean(nativeStreamState.mediaStream);
     els.streamPreviewEmpty.textContent = nativeStreamState.sources.length
-      ? nativeStreamState.sourceName || "Source ready"
+      ? nativeStreamState.sourceKind === "screen"
+        ? "Display ready"
+        : nativeStreamState.sourceName || "Source ready"
       : "Refresh sources";
   }
 
@@ -2079,10 +2135,12 @@ if (els.streamSourceSelect) {
       selectedSourceId: els.streamSourceSelect.value,
       sourceName: selectedSource?.name || "",
       sourceKind: selectedSource?.kind || "",
-      readout: selectedSource ? `Source selected: ${selectedSource.name}.` : "Source selected.",
-      detail: selectedSource
-        ? `${selectedSource.kind === "screen" ? "Display" : "Window"} · ${selectedSource.name}`
-        : "",
+      readout: selectedSource
+        ? selectedSource.kind === "screen" && isMacPlatform()
+          ? "Display selected for full-screen AoE2."
+          : `Source selected: ${selectedSource.name}.`
+        : "Source selected.",
+      detail: describeSourceDetail(selectedSource),
     });
   });
 }
@@ -2103,7 +2161,7 @@ document.querySelectorAll("[data-stream-mode]").forEach((button) => {
       sourceKind: preferredSource?.kind || nativeStreamState.sourceKind,
       readout: `${nextMode.label} mode selected.`,
       detail: preferredSource
-        ? `${describeNativeMode(nextMode)} · ${preferredSource.kind === "screen" ? "Display" : "Window"}`
+        ? `${describeNativeMode(nextMode)} · ${describeSourceDetail(preferredSource, nextMode)}`
         : describeNativeMode(nextMode),
     });
   });
@@ -2317,7 +2375,7 @@ window.watcherApi.onAppInfo((info) => {
     updateNativeStreamState({
       mode: "screen",
       readout: "Full Screen mode ready for macOS.",
-      detail: "Best for CrossOver or AoE2HD full-screen play.",
+      detail: "Use Display capture, go live, then switch to AoE2.",
     });
   }
   renderAll();

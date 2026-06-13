@@ -23,7 +23,7 @@ This is the client-side edge of the AoE2HDBets replay loop. It is intentionally 
 - packages a Linux AppImage fallback from the same watcher core
 - emits rich support telemetry for app opens, auth, heartbeat, monitor lifecycle, file growth, final deferrals, upload retries, parse results, and batch import lifecycle
 - checks the public watcher release endpoint and shows either an Update button or a clear Latest Version label in the main window
-- v1.4.0 hardens watcher-native streaming with one-second chunks, explicit keyframe cadence, upload backpressure, Mac-first Full Screen defaults, better stale-live handling, and richer stream telemetry
+- v1.5.0 hardens watcher-native streaming with display-first macOS full-screen guidance, one-second chunks, explicit keyframe cadence, upload backpressure, rolling AoE2WAR playback, better stale-live handling, and richer stream telemetry
 - signed Windows builds can update in place when idle; unsigned macOS builds use download-and-replace until Developer ID signing/notarization is worth doing
 - keeps the browser streamer as a fallback for watcher-detected games
 - current behavior can emit multiple live iterations before a final settled upload, which is expected during active development
@@ -64,14 +64,16 @@ The main window now includes **Scan & Import Replays**.
 When the watcher sees a live replay candidate, the main window enables **Start Stream** and **Go Live**.
 The watcher lists capturable windows/screens, prefers likely AoE2HD/CrossOver/Steam/Wine sources, starts
 a local preview, creates an AoE2WAR stream session with the watcher key, and uploads short WebM chunks to
-the app. v1.4.0 uses one-second chunks, asks Chromium for frequent keyframes, and applies upload
-backpressure so slow networks skip stale slices instead of dragging the live rail behind the match. The
-stream readout shows the latest capture/upload/heartbeat status so a user can see whether the source
-stopped, permissions failed, the network is catching up, or chunks are flowing.
+the app. v1.5.0 uses one-second chunks, asks Chromium for frequent keyframes, applies upload
+backpressure so slow networks skip stale slices instead of dragging the live rail behind the match, and
+feeds AoE2WAR's rolling WebM playback route so viewers recover from missing chunk gaps instead of
+stalling at the live edge. The stream readout shows the latest capture/upload/heartbeat status so a user
+can see whether the source stopped, permissions failed, the network is catching up, or chunks are flowing.
 
 Use **Full Screen** mode when AoE2HD is running through CrossOver or when the game window disappears from
-macOS capture after entering full screen. macOS defaults to Full Screen mode; Stable and Sharp still
-prefer window capture when a windowed game is the better source.
+macOS capture after entering full screen. macOS defaults to Full Screen mode and labels screen sources as
+Display capture; go live, then switch to AoE2 full-screen. Stable and Sharp still prefer window capture
+when a windowed game is the better source.
 
 The **Browser** button remains a fallback. It opens
 `https://aoe2war.com/profile?watcher_stream=1&stream_session=...&stream_title=...`, preserving the
@@ -157,12 +159,11 @@ npm run dist:release
 `npm run dist:release` builds:
 
 - the unsigned macOS DMG
-- the macOS auto-update ZIP
-- a Direct ZIP that contains the same `AoE2HDBets Watcher.app` bundle as the DMG
+- a direct ZIP that contains the same `AoE2HDBets Watcher.app` bundle as the DMG
 - the Windows installer and portable EXE
 - the Linux AppImage
 
-The Direct ZIP is the legitimate fallback while Apple signing and notarization are offline. It is
+The direct ZIP is the legitimate fallback while Apple signing and notarization are offline. It is
 not a reduced feature path.
 
 Do not advance the web app release metadata until the signed Windows artifacts and staged Mac/Linux
