@@ -89,8 +89,10 @@ const STREAM_HANDOFF_CLEAR_EVENTS = new Set([
   "monitor-stop",
   "watching-stopped",
 ]);
-const STREAM_CHUNK_TIMESLICE_MS = 1500;
-const STREAM_HEARTBEAT_MS = 8000;
+const STREAM_CHUNK_TIMESLICE_MS = 1000;
+const STREAM_HEARTBEAT_MS = 5000;
+const STREAM_KEYFRAME_INTERVAL_MS = 1000;
+const STREAM_MAX_UPLOAD_QUEUE = 6;
 const STREAM_MODES = [
   {
     key: "stable",
@@ -99,27 +101,27 @@ const STREAM_MODES = [
     width: 1280,
     height: 720,
     frameRate: 15,
-    videoBitsPerSecond: 1800000,
+    videoBitsPerSecond: 1400000,
     preferredKind: "window",
   },
   {
     key: "screen",
     label: "Full Screen",
-    detail: "720p / 20 fps",
+    detail: "720p / 18 fps",
     width: 1280,
     height: 720,
-    frameRate: 20,
-    videoBitsPerSecond: 2400000,
+    frameRate: 18,
+    videoBitsPerSecond: 1800000,
     preferredKind: "screen",
   },
   {
     key: "sharp",
     label: "Sharp",
-    detail: "720p / 30 fps",
+    detail: "720p / 24 fps",
     width: 1280,
     height: 720,
-    frameRate: 30,
-    videoBitsPerSecond: 3200000,
+    frameRate: 24,
+    videoBitsPerSecond: 2600000,
     preferredKind: "window",
   },
 ];
@@ -187,6 +189,11 @@ let nativeStreamState = {
   chunkCount: 0,
   lastChunkBytes: 0,
   uploadFailures: 0,
+  consecutiveUploadFailures: 0,
+  heartbeatFailures: 0,
+  uploadQueueLength: 0,
+  lastUploadLatencyMs: 0,
+  droppedChunks: 0,
   lastHeartbeatAt: 0,
   mediaMimeType: "video/webm",
   heartbeatTimer: null,
@@ -195,6 +202,7 @@ let nativeStreamState = {
   readout: "Idle.",
   detail: "Pick a source when a watcher match is ready.",
 };
+let nativeUploadChain = Promise.resolve();
 let watchDirStatus = {
   exists: false,
   isDirectory: false,
@@ -554,6 +562,14 @@ function chooseNativeRecorderMimeType() {
   return STREAM_MIME_CANDIDATES.find((candidate) => MediaRecorder.isTypeSupported(candidate)) || "video/webm";
 }
 
+function buildNativeRecorderOptions(mode = getNativeStreamMode(), mediaMimeType = chooseNativeRecorderMimeType()) {
+  return {
+    mimeType: mediaMimeType,
+    videoBitsPerSecond: mode.videoBitsPerSecond,
+    videoKeyFrameIntervalDuration: STREAM_KEYFRAME_INTERVAL_MS,
+  };
+}
+
 function buildNativeSessionKey() {
   const candidate = getStreamCandidate();
   const raw =
@@ -680,6 +696,11 @@ async function sendNativeStreamEvent(eventType, metadata = {}) {
         chunkCount: nativeStreamState.chunkCount,
         lastChunkBytes: nativeStreamState.lastChunkBytes,
         uploadFailures: nativeStreamState.uploadFailures,
+        consecutiveUploadFailures: nativeStreamState.consecutiveUploadFailures,
+        heartbeatFailures: nativeStreamState.heartbeatFailures,
+        uploadQueueLength: nativeStreamState.uploadQueueLength,
+        lastUploadLatencyMs: nativeStreamState.lastUploadLatencyMs,
+        droppedChunks: nativeStreamState.droppedChunks,
         ...metadata,
       },
     });
@@ -784,6 +805,9 @@ async function endNativeStream(reason = "manual") {
     heartbeatTimer: null,
     startedAt: 0,
     lastHeartbeatAt: 0,
+    uploadQueueLength: 0,
+    consecutiveUploadFailures: 0,
+    heartbeatFailures: 0,
     readout: preserveIssue
       ? nativeStreamState.readout
       : reason === "manual"
@@ -813,6 +837,7 @@ async function uploadNativeChunk(streamId, sequence, blob) {
     return;
   }
 
+  const uploadStartedAt = Date.now();
   const result = await window.watcherApi.streamChunk({
     baseUrl: getStreamingBaseUrl(),
     streamId,
@@ -825,14 +850,17 @@ async function uploadNativeChunk(streamId, sequence, blob) {
     throw new Error(result?.error || result?.data?.detail || "Chunk upload failed.");
   }
 
+  const uploadLatencyMs = Date.now() - uploadStartedAt;
   const nextStream = result.data?.stream || nativeStreamState.stream;
   const nextChunkCount = Math.max(nativeStreamState.chunkCount + 1, nextStream?.chunkCount || 0);
   updateNativeStreamState({
     stream: nextStream,
     chunkCount: nextChunkCount,
     lastChunkBytes: blob.size,
+    consecutiveUploadFailures: 0,
+    lastUploadLatencyMs: uploadLatencyMs,
     readout: `Live. Chunk ${sequence} published (${Math.round(blob.size / 1024)} KB).`,
-    detail: `${nativeStreamState.sourceName || "Capture source"} · ${describeNativeMode()}`,
+    detail: `${nativeStreamState.sourceName || "Capture source"} · ${uploadLatencyMs} ms upload · queue ${nativeStreamState.uploadQueueLength}`,
   });
 
   if (sequence === 0 || sequence % 8 === 0) {
@@ -841,8 +869,77 @@ async function uploadNativeChunk(streamId, sequence, blob) {
       sequence,
       blobSize: blob.size,
       chunkCount: nextChunkCount,
+      uploadLatencyMs,
     });
   }
+}
+
+function queueNativeChunkUpload(streamId, sequence, blob) {
+  if (!blob?.size) {
+    return;
+  }
+
+  if (nativeStreamState.uploadQueueLength >= STREAM_MAX_UPLOAD_QUEUE) {
+    updateNativeStreamState({
+      droppedChunks: nativeStreamState.droppedChunks + 1,
+      readout: "Network catching up. Skipping stale video slice.",
+      detail: `${nativeStreamState.sourceName || "Capture source"} · queue ${nativeStreamState.uploadQueueLength}`,
+    });
+    void sendNativeStreamEvent("stream_chunk_dropped", {
+      streamId,
+      sequence,
+      blobSize: blob.size,
+      uploadQueueLength: nativeStreamState.uploadQueueLength,
+      reason: "upload_queue_backpressure",
+    });
+    return;
+  }
+
+  updateNativeStreamState({
+    uploadQueueLength: nativeStreamState.uploadQueueLength + 1,
+  });
+
+  nativeUploadChain = nativeUploadChain
+    .catch(() => undefined)
+    .then(async () => {
+      if (
+        nativeStreamState.manualStop ||
+        nativeStreamState.status === "idle" ||
+        nativeStreamState.stream?.id !== streamId
+      ) {
+        return;
+      }
+
+      try {
+        await uploadNativeChunk(streamId, sequence, blob);
+      } catch (error) {
+        const failures = nativeStreamState.consecutiveUploadFailures + 1;
+        updateNativeStreamState({
+          uploadFailures: nativeStreamState.uploadFailures + 1,
+          consecutiveUploadFailures: failures,
+          readout: "Upload missed; retrying with the next slice.",
+          detail: error.message || String(error),
+        });
+        void sendNativeStreamEvent("stream_chunk_failed", {
+          streamId,
+          sequence,
+          blobSize: blob.size,
+          consecutiveUploadFailures: failures,
+          errorMessage: error.message || String(error),
+        });
+        if (failures >= 5) {
+          handleNativeStreamError("Stream upload keeps failing.", error.message || String(error), {
+            streamId,
+            sequence,
+            consecutiveUploadFailures: failures,
+          });
+        }
+      } finally {
+        updateNativeStreamState({
+          uploadQueueLength: Math.max(0, nativeStreamState.uploadQueueLength - 1),
+        });
+      }
+    });
 }
 
 async function sendNativeHeartbeat(streamId, status = "live") {
@@ -856,14 +953,16 @@ async function sendNativeHeartbeat(streamId, status = "live") {
   updateNativeStreamState({
     stream: data.stream || nativeStreamState.stream,
     lastHeartbeatAt: Date.now(),
+    heartbeatFailures: 0,
     readout: "Heartbeat OK. Stream is visible on AoE2WAR.",
-    detail: `${nativeStreamState.sourceName || "Watcher-native stream"} · ${nativeStreamState.chunkCount} chunks`,
+    detail: `${nativeStreamState.sourceName || "Watcher-native stream"} · ${nativeStreamState.chunkCount} chunks · queue ${nativeStreamState.uploadQueueLength}`,
   });
 
   void sendNativeStreamEvent("stream_heartbeat", {
     streamId,
     status,
     thumbnailUpdated: Boolean(thumbnailUrl),
+    uploadQueueLength: nativeStreamState.uploadQueueLength,
   });
 }
 
@@ -1023,29 +1122,18 @@ async function startNativeStream() {
     nativeStreamState.chunkCount = 0;
     nativeStreamState.lastChunkBytes = 0;
     nativeStreamState.uploadFailures = 0;
+    nativeStreamState.consecutiveUploadFailures = 0;
+    nativeStreamState.heartbeatFailures = 0;
+    nativeStreamState.uploadQueueLength = 0;
+    nativeStreamState.lastUploadLatencyMs = 0;
+    nativeStreamState.droppedChunks = 0;
+    nativeUploadChain = Promise.resolve();
 
-    const recorder = new MediaRecorder(capture, {
-      mimeType: mediaMimeType,
-      videoBitsPerSecond: mode.videoBitsPerSecond,
-    });
+    const recorder = new MediaRecorder(capture, buildNativeRecorderOptions(mode, mediaMimeType));
     recorder.ondataavailable = (event) => {
       const sequence = nativeStreamState.sequence;
       nativeStreamState.sequence += 1;
-      void uploadNativeChunk(stream.id, sequence, event.data).catch((error) => {
-        updateNativeStreamState({
-          uploadFailures: nativeStreamState.uploadFailures + 1,
-        });
-        void sendNativeStreamEvent("stream_chunk_failed", {
-          streamId: stream.id,
-          sequence,
-          blobSize: event.data?.size || 0,
-          errorMessage: error.message || String(error),
-        });
-        handleNativeStreamError("Chunk upload failed.", error.message || String(error), {
-          streamId: stream.id,
-          sequence,
-        });
-      });
+      queueNativeChunkUpload(stream.id, sequence, event.data);
     };
     recorder.onerror = (event) => {
       const mediaError = event.error;
@@ -1076,13 +1164,17 @@ async function startNativeStream() {
 
     const heartbeatTimer = window.setInterval(() => {
       void sendNativeHeartbeat(stream.id, "live").catch((error) => {
+        const failures = nativeStreamState.heartbeatFailures + 1;
+        updateNativeStreamState({
+          heartbeatFailures: failures,
+          readout: failures >= 3 ? "Heartbeat retrying. Stream chunks may still be live." : "Heartbeat retrying.",
+          detail: error.message || String(error),
+        });
         void sendNativeStreamEvent("stream_heartbeat_failed", {
           streamId: stream.id,
           errorMessage: error.message || String(error),
           chunkCount: nativeStreamState.chunkCount,
-        });
-        handleNativeStreamError("Heartbeat failed.", error.message || String(error), {
-          streamId: stream.id,
+          heartbeatFailures: failures,
         });
       });
     }, STREAM_HEARTBEAT_MS);
@@ -2216,6 +2308,17 @@ window.watcherApi.onAppInfo((info) => {
   appInfo = info;
   if (info?.watchDirStatus) {
     watchDirStatus = info.watchDirStatus;
+  }
+  if (
+    info?.platform === "darwin" &&
+    nativeStreamState.status === "idle" &&
+    nativeStreamState.mode === "stable"
+  ) {
+    updateNativeStreamState({
+      mode: "screen",
+      readout: "Full Screen mode ready for macOS.",
+      detail: "Best for CrossOver or AoE2HD full-screen play.",
+    });
   }
   renderAll();
 });
