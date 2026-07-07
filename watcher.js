@@ -9,6 +9,10 @@ const FormData = require("form-data");
 const SUPPORTED_REPLAY_EXTENSIONS = [".aoe2record", ".aoe2mpgame", ".mgz", ".mgx", ".mgl"];
 const IMPORT_STABILITY_CHECK_MS = 1200;
 const IMPORT_ITEM_LIMIT = 75;
+const IMPORT_SCAN_MAX_DEPTH = Math.max(
+  0,
+  Number.parseInt(process.env.AOE2_IMPORT_SCAN_DEPTH || "2", 10) || 0
+);
 const DEFAULT_LIVE_UPLOAD_COOLDOWN_MS = 30 * 1000;
 const DEFAULT_FINAL_CANDIDATE_MIN_AGE_MS = 30 * 1000;
 const DEFAULT_FINAL_CANDIDATE_COOLDOWN_MS = 45 * 1000;
@@ -1519,6 +1523,30 @@ async function listImportCandidates(runtimeConfig, filePaths = null) {
   const skippedAtScan = [];
   let unsupported = 0;
 
+  const scanStats = {
+    scanPath: runtimeConfig.watchDir || "",
+    maxScanDepth: IMPORT_SCAN_MAX_DEPTH,
+    entriesSeen: 0,
+    fileEntriesSeen: 0,
+    folderEntriesSeen: 0,
+    supportedCount: 0,
+    unsupportedCount: 0,
+    sampleEntries: [],
+  };
+
+  function rememberEntry(filePath, entry, depth) {
+    if (scanStats.sampleEntries.length >= 20) {
+      return;
+    }
+
+    scanStats.sampleEntries.push({
+      name: entry?.name || path.basename(filePath),
+      kind: entry?.isDirectory?.() ? "dir" : entry?.isFile?.() ? "file" : "other",
+      depth,
+      relativePath: path.relative(runtimeConfig.watchDir, filePath),
+    });
+  }
+
   if (Array.isArray(filePaths)) {
     const seen = new Set();
 
@@ -1528,6 +1556,8 @@ async function listImportCandidates(runtimeConfig, filePaths = null) {
         continue;
       }
       seen.add(filePath);
+
+      scanStats.entriesSeen += 1;
 
       if (!fs.existsSync(filePath)) {
         skippedAtScan.push(createImportItem(filePath, "skipped", "File is no longer on disk."));
@@ -1540,7 +1570,11 @@ async function listImportCandidates(runtimeConfig, filePaths = null) {
         continue;
       }
 
+      scanStats.fileEntriesSeen += 1;
+
       if (!shouldHandle(filePath, runtimeConfig)) {
+        unsupported += 1;
+        scanStats.unsupportedCount = unsupported;
         skippedAtScan.push(
           createImportItem(filePath, "skipped", "Not a supported replay extension for this watcher.")
         );
@@ -1554,35 +1588,58 @@ async function listImportCandidates(runtimeConfig, filePaths = null) {
       });
     }
 
+    scanStats.supportedCount = supportedFiles.length;
+
     return {
       supportedFiles,
       unsupported,
       skippedAtScan,
+      scanStats,
     };
   }
 
-  const entries = await fs.promises.readdir(runtimeConfig.watchDir, {
-    withFileTypes: true,
-  });
-
-  for (const entry of entries) {
-    if (!entry.isFile()) {
-      continue;
-    }
-
-    const filePath = path.join(runtimeConfig.watchDir, entry.name);
-    if (!shouldHandle(filePath, runtimeConfig)) {
-      unsupported += 1;
-      continue;
-    }
-
-    const stats = await fs.promises.stat(filePath);
-    supportedFiles.push({
-      filePath,
-      fileName: entry.name,
-      mtimeMs: stats.mtimeMs,
+  async function scanDirectory(directoryPath, depth = 0) {
+    const entries = await fs.promises.readdir(directoryPath, {
+      withFileTypes: true,
     });
+
+    for (const entry of entries) {
+      const filePath = path.join(directoryPath, entry.name);
+      scanStats.entriesSeen += 1;
+      rememberEntry(filePath, entry, depth);
+
+      if (entry.isDirectory()) {
+        scanStats.folderEntriesSeen += 1;
+
+        if (depth < IMPORT_SCAN_MAX_DEPTH && !entry.name.startsWith(".")) {
+          await scanDirectory(filePath, depth + 1);
+        }
+
+        continue;
+      }
+
+      if (!entry.isFile()) {
+        continue;
+      }
+
+      scanStats.fileEntriesSeen += 1;
+
+      if (!shouldHandle(filePath, runtimeConfig)) {
+        unsupported += 1;
+        scanStats.unsupportedCount = unsupported;
+        continue;
+      }
+
+      const stats = await fs.promises.stat(filePath);
+      supportedFiles.push({
+        filePath,
+        fileName: path.relative(runtimeConfig.watchDir, filePath),
+        mtimeMs: stats.mtimeMs,
+      });
+    }
   }
+
+  await scanDirectory(runtimeConfig.watchDir, 0);
 
   supportedFiles.sort((left, right) => {
     if (left.mtimeMs !== right.mtimeMs) {
@@ -1591,10 +1648,14 @@ async function listImportCandidates(runtimeConfig, filePaths = null) {
     return left.fileName.localeCompare(right.fileName);
   });
 
+  scanStats.supportedCount = supportedFiles.length;
+  scanStats.unsupportedCount = unsupported;
+
   return {
     supportedFiles,
     unsupported,
     skippedAtScan,
+    scanStats,
   };
 }
 
@@ -1641,6 +1702,12 @@ function buildBatchTelemetryPayload(state, patch = {}) {
     startedAt: state.startedAt,
     completedAt: state.completedAt,
     summaryText: state.summaryText,
+    scanPath: state.scanPath,
+    maxScanDepth: state.maxScanDepth,
+    entriesSeen: state.entriesSeen,
+    fileEntriesSeen: state.fileEntriesSeen,
+    folderEntriesSeen: state.folderEntriesSeen,
+    sampleEntries: state.sampleEntries,
     ...patch,
   };
 }
@@ -1687,22 +1754,41 @@ async function importHistoricalReplays(config = {}, options = {}, hooks = {}) {
     skippedItems: [],
     recentItems: [],
     summaryText: "",
+    scanPath: runtimeConfig.watchDir,
+    maxScanDepth: IMPORT_SCAN_MAX_DEPTH,
+    entriesSeen: 0,
+    fileEntriesSeen: 0,
+    folderEntriesSeen: 0,
+    sampleEntries: [],
   };
 
   emitRuntimeEvent("batch-upload-started", buildBatchTelemetryPayload(state, {
     watchDir: runtimeConfig.watchDir,
+    scanPath: runtimeConfig.watchDir,
     explicitFileCount: Array.isArray(options.filePaths) ? options.filePaths.length : null,
   }));
 
   emitImportProgress(state, hooks);
 
-  const { supportedFiles, unsupported, skippedAtScan } = await listImportCandidates(
+  const { supportedFiles, unsupported, skippedAtScan, scanStats } = await listImportCandidates(
     runtimeConfig,
     options.filePaths || null
   );
 
   state.found = supportedFiles.length;
   state.unsupported = unsupported;
+  state.scanPath = scanStats?.scanPath || runtimeConfig.watchDir;
+  state.maxScanDepth = Number.isFinite(scanStats?.maxScanDepth)
+    ? scanStats.maxScanDepth
+    : IMPORT_SCAN_MAX_DEPTH;
+  state.entriesSeen = Number.isFinite(scanStats?.entriesSeen) ? scanStats.entriesSeen : 0;
+  state.fileEntriesSeen = Number.isFinite(scanStats?.fileEntriesSeen)
+    ? scanStats.fileEntriesSeen
+    : 0;
+  state.folderEntriesSeen = Number.isFinite(scanStats?.folderEntriesSeen)
+    ? scanStats.folderEntriesSeen
+    : 0;
+  state.sampleEntries = Array.isArray(scanStats?.sampleEntries) ? scanStats.sampleEntries : [];
 
   emitRuntimeEvent("batch-upload-scanned", buildBatchTelemetryPayload(state, {
     supportedCount: supportedFiles.length,

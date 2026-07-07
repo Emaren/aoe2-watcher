@@ -952,7 +952,31 @@ function buildTelemetryPayload(eventType, payload = {}, config = loadConfig()) {
     source: payload.source || undefined,
     summaryText: payload.summaryText || undefined,
     errorMessage: payload.errorMessage ? String(payload.errorMessage).slice(0, 300) : undefined,
-    watchDirBasename: payload.watchDir ? path.basename(String(payload.watchDir)) : undefined,
+    watchDir: payload.watchDir ? String(payload.watchDir).slice(0, 500) : undefined,
+    scanPath: payload.scanPath ? String(payload.scanPath).slice(0, 500) : undefined,
+    watchDirBasename: payload.watchDir
+      ? path.basename(String(payload.watchDir))
+      : payload.scanPath
+        ? path.basename(String(payload.scanPath))
+        : undefined,
+    maxScanDepth: Number.isFinite(payload.maxScanDepth) ? payload.maxScanDepth : undefined,
+    entriesSeen: Number.isFinite(payload.entriesSeen) ? payload.entriesSeen : undefined,
+    fileEntriesSeen: Number.isFinite(payload.fileEntriesSeen) ? payload.fileEntriesSeen : undefined,
+    folderEntriesSeen: Number.isFinite(payload.folderEntriesSeen)
+      ? payload.folderEntriesSeen
+      : undefined,
+    supportedCount: Number.isFinite(payload.supportedCount) ? payload.supportedCount : undefined,
+    skippedAtScanCount: Number.isFinite(payload.skippedAtScanCount)
+      ? payload.skippedAtScanCount
+      : undefined,
+    sampleEntries: Array.isArray(payload.sampleEntries)
+      ? payload.sampleEntries.slice(0, 20).map((entry) => ({
+          name: String(entry?.name || "").slice(0, 160),
+          kind: String(entry?.kind || "").slice(0, 20),
+          depth: Number.isFinite(entry?.depth) ? entry.depth : null,
+          relativePath: String(entry?.relativePath || "").slice(0, 260),
+        }))
+      : undefined,
     ...buildRuntimeMetadata(config),
   };
 
