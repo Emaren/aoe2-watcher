@@ -1547,7 +1547,7 @@ async function listImportCandidates(runtimeConfig, filePaths = null) {
     });
   }
 
-  if (Array.isArray(filePaths)) {
+  if (Array.isArray(filePaths) && filePaths.length > 0) {
     const seen = new Set();
 
     for (const rawPath of filePaths) {
