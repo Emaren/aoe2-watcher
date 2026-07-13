@@ -12,13 +12,17 @@ const {
   desktopCapturer,
   dialog,
   ipcMain,
+  powerMonitor,
   shell,
 } = require("electron");
 const { autoUpdater } = require("electron-updater");
 
 const {
+  detectReplayFolder,
   getDefaultReplayDir,
+  getRuntimeStatus,
   getSupportedReplayExtensions,
+  inspectReplayFolder,
   importHistoricalReplays,
   startWatching,
   stopWatching,
@@ -71,6 +75,14 @@ let updateState = createUpdateState();
 let updateCheckInFlight = false;
 let updateEventsConfigured = false;
 let lastStreamHandoff = null;
+let monitorWatchdogTimer = null;
+let monitorReattachAttempts = 0;
+let monitorLastReattachAt = 0;
+const MONITOR_WATCHDOG_MS = Number(process.env.AOE2_MONITOR_WATCHDOG_MS || 30 * 1000);
+const MONITOR_REATTACH_LIMIT = Number(process.env.AOE2_MONITOR_REATTACH_LIMIT || 3);
+const MONITOR_REATTACH_COOLDOWN_MS = Number(
+  process.env.AOE2_MONITOR_REATTACH_COOLDOWN_MS || 60 * 1000
+);
 
 
 function createUpdateState(patch = {}) {
@@ -155,6 +167,8 @@ function setManualUpdateState(reason, error = null, info = {}) {
 }
 
 function buildRuntimeMetadata(config = loadConfig()) {
+  const watcherRuntime = getRuntimeStatus();
+  const folder = inspectReplayFolder(config?.watchDir);
   return {
     appVersion: typeof app.getVersion === "function" ? app.getVersion() : null,
     platform: process.platform,
@@ -166,6 +180,23 @@ function buildRuntimeMetadata(config = loadConfig()) {
     watcherId: config?.watcherId || null,
     sessionId: APP_SESSION_ID,
     isWatching: Boolean(watcherHandle),
+    monitorAttached: Boolean(watcherHandle && watcherRuntime.monitorAttached),
+    folderValid: folder.valid,
+    folderKind: folder.kind,
+    folderLabel: folder.label,
+    lastFolderActivityAt: watcherRuntime.lastFolderActivityAt || folder.latestReplayModifiedAt,
+    lastReplayDetectedAt: watcherRuntime.lastReplayDetectedAt,
+    lastReplayUploadAt: watcherRuntime.lastReplayUploadAt,
+    lastReplayUploadStatus: watcherRuntime.lastReplayUploadStatus,
+    activeReplay: watcherRuntime.activeReplay,
+    activeReplayBasename: watcherRuntime.activeReplayBasename,
+    activeReplaySizeBytes: watcherRuntime.activeReplaySizeBytes,
+    activeReplayLastChangedAt: watcherRuntime.activeReplayLastChangedAt,
+    uploadQueueLength: watcherRuntime.uploadQueueLength,
+    repeatedUploadErrors: watcherRuntime.repeatedUploadErrors,
+    batchUploadActive: Boolean(currentImportState?.isRunning),
+    streamActive: Boolean(lastStreamHandoff?.streamId && !lastStreamHandoff?.endedAt),
+    watcherVersion: typeof app.getVersion === "function" ? app.getVersion() : null,
     importRunning: Boolean(currentImportState?.isRunning),
     appPackaged: Boolean(app.isPackaged),
     updateFeedUrl: AUTO_UPDATE_FEED_URL,
@@ -952,8 +983,8 @@ function buildTelemetryPayload(eventType, payload = {}, config = loadConfig()) {
     source: payload.source || undefined,
     summaryText: payload.summaryText || undefined,
     errorMessage: payload.errorMessage ? String(payload.errorMessage).slice(0, 300) : undefined,
-    watchDir: payload.watchDir ? String(payload.watchDir).slice(0, 500) : undefined,
-    scanPath: payload.scanPath ? String(payload.scanPath).slice(0, 500) : undefined,
+    folderKind: payload.folderKind || undefined,
+    folderLabel: payload.folderLabel || undefined,
     watchDirBasename: payload.watchDir
       ? path.basename(String(payload.watchDir))
       : payload.scanPath
@@ -1074,9 +1105,7 @@ function startTelemetryHeartbeat() {
 
   heartbeatTimer = setInterval(() => {
     emitWatcherTelemetry("heartbeat", {
-      metadata: {
-        isWatching: Boolean(watcherHandle),
-      },
+      metadata: buildRuntimeMetadata(loadConfig()),
     });
   }, TELEMETRY_HEARTBEAT_MS);
 }
@@ -1086,6 +1115,57 @@ function stopTelemetryHeartbeat() {
     clearInterval(heartbeatTimer);
     heartbeatTimer = null;
   }
+}
+
+function stopMonitorWatchdog() {
+  if (monitorWatchdogTimer) clearInterval(monitorWatchdogTimer);
+  monitorWatchdogTimer = null;
+}
+
+function safelyReattachMonitor(reason) {
+  const config = loadConfig();
+  const folder = inspectReplayFolder(config.watchDir);
+  if (!config.autoStartWatching || !config.uploadApiKey || !folder.valid) return false;
+  const now = Date.now();
+  if (monitorReattachAttempts >= MONITOR_REATTACH_LIMIT || now - monitorLastReattachAt < MONITOR_REATTACH_COOLDOWN_MS) {
+    emitWatcherTelemetry("monitor_watchdog_blocked", {
+      reason,
+      metadata: { attempts: monitorReattachAttempts, ...buildRuntimeMetadata(config) },
+    }, config);
+    return false;
+  }
+  monitorReattachAttempts += 1;
+  monitorLastReattachAt = now;
+  emitWatcherTelemetry("monitor_watchdog_reattach", {
+    reason,
+    metadata: { attempt: monitorReattachAttempts, ...buildRuntimeMetadata(config) },
+  }, config);
+  return startCurrentWatcher(config, {
+    preserveLog: true,
+    startMessage: `Monitor watchdog is reattaching after ${reason}.`,
+  });
+}
+
+function startMonitorWatchdog() {
+  stopMonitorWatchdog();
+  monitorWatchdogTimer = setInterval(() => {
+    const config = loadConfig();
+    const folder = inspectReplayFolder(config.watchDir);
+    const runtime = getRuntimeStatus();
+    if (!folder.valid) {
+      emitWatcherTelemetry("monitor_watchdog_folder_unavailable", {
+        folderKind: folder.kind,
+        folderLabel: folder.label,
+        reason: folder.error || "folder_invalid",
+      }, config);
+      return;
+    }
+    if (watcherHandle && runtime.monitorAttached) {
+      monitorReattachAttempts = 0;
+      return;
+    }
+    if (config.autoStartWatching) safelyReattachMonitor("monitor_handle_absent");
+  }, MONITOR_WATCHDOG_MS);
 }
 
 function createImportStateFromSummary(summary = null) {
@@ -1165,33 +1245,7 @@ function setImportState(nextState, { persist = false } = {}) {
 }
 
 function getWatchDirStatus(targetPath) {
-  const normalizedPath = String(targetPath || "").trim();
-
-  if (!normalizedPath) {
-    return {
-      exists: false,
-      isDirectory: false,
-      path: "",
-      error: null,
-    };
-  }
-
-  try {
-    const stats = fs.statSync(normalizedPath);
-    return {
-      exists: stats.isDirectory(),
-      isDirectory: stats.isDirectory(),
-      path: normalizedPath,
-      error: null,
-    };
-  } catch (error) {
-    return {
-      exists: false,
-      isDirectory: false,
-      path: normalizedPath,
-      error: error.message || "Folder not found.",
-    };
-  }
+  return inspectReplayFolder(targetPath);
 }
 
 function getAppInfo(config = loadConfig()) {
@@ -2038,7 +2092,7 @@ function bootWatcherApp() {
   });
 
   ipcMain.handle("watcher:get-default-replay-dir", async () => {
-    return getDefaultReplayDir() || "";
+    return detectReplayFolder()?.path || getDefaultReplayDir() || "";
   });
 
   ipcMain.handle("watcher:check-release", async () => {
@@ -2119,6 +2173,7 @@ function bootWatcherApp() {
     void refreshWatcherRelease(config);
     void checkForWatcherUpdates({ config });
     startTelemetryHeartbeat();
+    startMonitorWatchdog();
 
     const pairedFromUrl = processPendingPairingUrl();
     if (pairedFromUrl) {
@@ -2149,6 +2204,7 @@ function bootWatcherApp() {
 app.on("window-all-closed", () => {
   rendererReady = false;
   stopTelemetryHeartbeat();
+  stopMonitorWatchdog();
   stopCurrentWatcher({ quiet: true });
   app.quit();
 });
@@ -2160,6 +2216,10 @@ if (!gotSingleInstanceLock) {
 } else {
   app.whenReady().then(() => {
     bootWatcherApp();
+    powerMonitor.on("resume", () => {
+      emitWatcherTelemetry("system_resumed", { metadata: buildRuntimeMetadata(loadConfig()) });
+      setTimeout(() => safelyReattachMonitor("system_resume"), 1500);
+    });
   });
 
   app.on("second-instance", (_event, argv) => {

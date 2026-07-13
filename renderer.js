@@ -206,6 +206,7 @@ let nativeUploadChain = Promise.resolve();
 let watchDirStatus = {
   exists: false,
   isDirectory: false,
+  valid: false,
   path: "",
   error: null,
 };
@@ -478,7 +479,7 @@ function hasReplayFolder() {
 }
 
 function isReplayFolderReady() {
-  return Boolean(watchDirStatus.exists && watchDirStatus.isDirectory);
+  return Boolean(watchDirStatus.valid);
 }
 
 function getStreamCandidate() {
@@ -1764,6 +1765,7 @@ async function validateWatchDir(targetPath = readForm().watchDir) {
     watchDirStatus = {
       exists: false,
       isDirectory: false,
+      valid: false,
       path: "",
       error: null,
     };
@@ -1941,8 +1943,14 @@ function consumeRuntimeEvent(event) {
     case "watching-started":
     case "watcher-ready":
       runtimeState.phase = "watching";
-      runtimeState.detail = "Watching for new replay files in the configured SaveGame folder.";
+      runtimeState.detail = event.latestReplayBasename
+        ? `Connected · Watching. Latest replay: ${event.latestReplayBasename}.`
+        : "Connected · Watching. Folder valid · No replay changes observed.";
       runtimeState.activeUpload = null;
+      break;
+    case "midgame-replay-recovered":
+      runtimeState.phase = "watching";
+      runtimeState.detail = `Current game detected after monitor attach: ${event.fileName}.`;
       break;
     case "monitor-start":
       runtimeState.phase = "watching";
@@ -2207,9 +2215,11 @@ els.startWatchingBtn.addEventListener("click", async () => {
     const saved = await saveCurrentForm({ silent: true });
     const folderStatus = await validateWatchDir(saved.watchDir);
 
-    if (!folderStatus.exists) {
+    if (!folderStatus.valid) {
       setStatus(
-        "Replay folder is missing. Choose the real SaveGame folder before starting.",
+        folderStatus.kind === "de"
+          ? "That is an AoE2 DE folder. Choose the AoE2 HD SaveGame folder."
+          : "Replay folder is missing, unreadable, or not an AoE2 HD SaveGame folder.",
         "error",
         { sticky: true }
       );

@@ -18,6 +18,12 @@ const DEFAULT_FINAL_CANDIDATE_MIN_AGE_MS = 30 * 1000;
 const DEFAULT_FINAL_CANDIDATE_COOLDOWN_MS = 45 * 1000;
 const DEFAULT_FINAL_SETTLE_WINDOW_MS = 3 * 60 * 1000;
 const DEFAULT_FINAL_QUIET_PERIOD_MS = 18 * 1000;
+const RECENT_LIVE_CANDIDATE_MS = Number(
+  process.env.AOE2_RECENT_LIVE_CANDIDATE_MS || 10 * 60 * 1000
+);
+const LIVE_CANDIDATE_GROWTH_CHECK_MS = Number(
+  process.env.AOE2_LIVE_CANDIDATE_GROWTH_CHECK_MS || 1500
+);
 const LEGACY_DOMAIN_MIGRATIONS = [
   ["https://api-prodn.aoe2hdbets.com", "https://api-prodn.aoe2war.com"],
   ["https://api.aoe2hdbets.com", "https://api-prodn.aoe2war.com"],
@@ -30,6 +36,27 @@ let activeUploadState = new Map();
 let activePreferredUploadTargetBaseUrl = null;
 let activeLogger = defaultLogger;
 let activeEventHook = () => {};
+let activeRuntimeStatus = createRuntimeStatus();
+
+function createRuntimeStatus() {
+  return {
+    monitorAttached: false,
+    monitorStartedAt: null,
+    folderValid: false,
+    folderKind: "unknown",
+    folderLabel: null,
+    lastFolderActivityAt: null,
+    lastReplayDetectedAt: null,
+    lastReplayUploadAt: null,
+    lastReplayUploadStatus: null,
+    activeReplay: false,
+    activeReplayBasename: null,
+    activeReplaySizeBytes: null,
+    activeReplayLastChangedAt: null,
+    uploadQueueLength: 0,
+    repeatedUploadErrors: 0,
+  };
+}
 
 function defaultLogger(message, level = "info") {
   const method = level === "error" ? "error" : level === "warn" ? "warn" : "log";
@@ -51,10 +78,46 @@ function log(message, level = "info") {
 }
 
 function emitRuntimeEvent(type, payload = {}) {
+  const occurredAt = new Date().toISOString();
+  if (type === "watching-started") {
+    activeRuntimeStatus.monitorStartedAt = occurredAt;
+  } else if (type === "watcher-ready") {
+    activeRuntimeStatus.monitorAttached = true;
+  } else if (type === "watching-stopped" || type === "watcher-error") {
+    activeRuntimeStatus.monitorAttached = false;
+  } else if (type === "replay-detected") {
+    activeRuntimeStatus.lastFolderActivityAt = occurredAt;
+    activeRuntimeStatus.lastReplayDetectedAt = occurredAt;
+    activeRuntimeStatus.activeReplay = true;
+    activeRuntimeStatus.activeReplayBasename = payload.fileName || null;
+  } else if (type === "file-size-progress") {
+    activeRuntimeStatus.lastFolderActivityAt = occurredAt;
+    activeRuntimeStatus.activeReplay = true;
+    activeRuntimeStatus.activeReplayBasename = payload.fileName || null;
+    activeRuntimeStatus.activeReplaySizeBytes = payload.fileSizeBytes ?? null;
+    activeRuntimeStatus.activeReplayLastChangedAt = payload.mtimeMs
+      ? new Date(payload.mtimeMs).toISOString()
+      : occurredAt;
+  } else if (type === "upload-start") {
+    activeRuntimeStatus.uploadQueueLength += 1;
+    activeRuntimeStatus.lastReplayUploadStatus = "uploading";
+  } else if (type === "upload-success" || type === "upload-failure") {
+    activeRuntimeStatus.uploadQueueLength = Math.max(
+      0,
+      activeRuntimeStatus.uploadQueueLength - 1
+    );
+    activeRuntimeStatus.lastReplayUploadAt = occurredAt;
+    activeRuntimeStatus.lastReplayUploadStatus = type === "upload-success" ? "succeeded" : "failed";
+    activeRuntimeStatus.repeatedUploadErrors =
+      type === "upload-success" ? 0 : activeRuntimeStatus.repeatedUploadErrors + 1;
+  } else if (type === "final-candidate-accepted" || type === "monitor-stop") {
+    activeRuntimeStatus.activeReplay = false;
+  }
+
   try {
     activeEventHook({
       type,
-      occurredAt: new Date().toISOString(),
+      occurredAt,
       ...payload,
     });
   } catch (error) {
@@ -71,12 +134,36 @@ function firstExistingPath(paths) {
   return paths[0] || null;
 }
 
-function getDefaultReplayDir() {
+function getWindowsDocumentRoots(home = os.homedir()) {
+  return Array.from(
+    new Set(
+      [
+        process.env.USERPROFILE && path.join(process.env.USERPROFILE, "Documents"),
+        process.env.OneDrive && path.join(process.env.OneDrive, "Documents"),
+        process.env.OneDriveCommercial && path.join(process.env.OneDriveCommercial, "Documents"),
+        process.env.OneDriveConsumer && path.join(process.env.OneDriveConsumer, "Documents"),
+        path.join(home, "Documents"),
+      ].filter(Boolean)
+    )
+  );
+}
+
+function replayFolderCandidates() {
   const home = os.homedir();
   const platform = os.platform();
+  const hdSuffixes = [
+    ["My Games", "Age of Empires 2 HD", "SaveGame"],
+    ["My Games", "Age of Empires II HD", "SaveGame"],
+  ];
+
+  if (platform === "win32") {
+    return getWindowsDocumentRoots(home).flatMap((root) =>
+      hdSuffixes.map((suffix) => path.join(root, ...suffix))
+    );
+  }
 
   if (platform === "darwin") {
-    return firstExistingPath([
+    return [
       path.join(
         home,
         "Library/Application Support/CrossOver/Bottles/Steam/drive_c/Program Files (x86)/Steam/steamapps/common/Age2HD/SaveGame"
@@ -85,19 +172,11 @@ function getDefaultReplayDir() {
         home,
         "Library/Application Support/CrossOver/Bottles/Steam/drive_c/users/crossover/My Documents/My Games/Age of Empires 2 HD/SaveGame"
       ),
-      path.join(home, "Documents", "My Games", "Age of Empires 2 HD", "SaveGame"),
-      path.join(home, "Documents", "My Games", "Age of Empires 2 DE", "SaveGame"),
-    ]);
+      ...hdSuffixes.map((suffix) => path.join(home, "Documents", ...suffix)),
+    ];
   }
 
-  if (platform === "win32") {
-    return firstExistingPath([
-      path.join(home, "Documents", "My Games", "Age of Empires 2 HD", "SaveGame"),
-      path.join(home, "Documents", "My Games", "Age of Empires 2 DE", "SaveGame"),
-    ]);
-  }
-
-  return firstExistingPath([
+  return [
     path.join(
       home,
       ".wine/drive_c/Program Files (x86)/Microsoft Games/Age of Empires II HD/SaveGame"
@@ -108,8 +187,74 @@ function getDefaultReplayDir() {
       os.userInfo().username,
       "My Documents/My Games/Age of Empires 2 HD/SaveGame"
     ),
-    path.join(home, "Documents", "My Games", "Age of Empires 2 HD", "SaveGame"),
-  ]);
+    ...hdSuffixes.map((suffix) => path.join(home, "Documents", ...suffix)),
+  ];
+}
+
+function inspectReplayFolder(targetPath) {
+  const normalizedPath = String(targetPath || "").trim();
+  const label = normalizedPath ? path.basename(normalizedPath) : null;
+  const normalizedLower = normalizedPath.toLowerCase();
+  const appearsDe = /age of empires (ii|2) de/.test(normalizedLower);
+  const appearsHd = /age of empires (ii|2) hd|age2hd/.test(normalizedLower);
+  const result = {
+    path: normalizedPath,
+    exists: false,
+    isDirectory: false,
+    readable: false,
+    valid: false,
+    kind: appearsDe ? "de" : appearsHd ? "hd" : "manual",
+    label,
+    score: appearsHd ? 30 : appearsDe ? -100 : 0,
+    supportedReplayCount: 0,
+    latestReplayBasename: null,
+    latestReplayModifiedAt: null,
+    error: null,
+  };
+
+  if (!normalizedPath) return result;
+  try {
+    const stats = fs.statSync(normalizedPath);
+    result.exists = stats.isDirectory();
+    result.isDirectory = stats.isDirectory();
+    if (!stats.isDirectory()) return result;
+    fs.accessSync(normalizedPath, fs.constants.R_OK);
+    result.readable = true;
+    const entries = fs.readdirSync(normalizedPath, { withFileTypes: true });
+    for (const entry of entries) {
+      if (!entry.isFile() || !SUPPORTED_REPLAY_EXTENSIONS.includes(path.extname(entry.name).toLowerCase())) {
+        continue;
+      }
+      result.supportedReplayCount += 1;
+      const fileStats = fs.statSync(path.join(normalizedPath, entry.name));
+      if (!result.latestReplayModifiedAt || fileStats.mtimeMs > Date.parse(result.latestReplayModifiedAt)) {
+        result.latestReplayBasename = entry.name;
+        result.latestReplayModifiedAt = fileStats.mtime.toISOString();
+      }
+    }
+    result.score += Math.min(40, result.supportedReplayCount * 4);
+    if (result.latestReplayModifiedAt) {
+      const ageMs = Date.now() - Date.parse(result.latestReplayModifiedAt);
+      if (ageMs <= 24 * 60 * 60 * 1000) result.score += 20;
+      else if (ageMs <= 30 * 24 * 60 * 60 * 1000) result.score += 10;
+    }
+    result.valid = result.readable && !appearsDe && (appearsHd || result.supportedReplayCount > 0);
+    return result;
+  } catch (error) {
+    result.error = error.message || "Folder is inaccessible.";
+    return result;
+  }
+}
+
+function detectReplayFolder() {
+  const inspected = replayFolderCandidates().map(inspectReplayFolder);
+  return inspected
+    .filter((candidate) => candidate.valid)
+    .sort((left, right) => right.score - left.score)[0] || null;
+}
+
+function getDefaultReplayDir() {
+  return detectReplayFolder()?.path || firstExistingPath(replayFolderCandidates());
 }
 
 function normalizeBaseUrl(value) {
@@ -200,8 +345,19 @@ function buildRuntimeConfig(config = {}) {
 }
 
 function getRuntimeValidationError(runtimeConfig) {
-  if (!runtimeConfig.watchDir || !fs.existsSync(runtimeConfig.watchDir)) {
+  const folder = inspectReplayFolder(runtimeConfig.watchDir);
+  if (!folder.exists || !folder.isDirectory) {
     return `Replay directory does not exist: ${runtimeConfig.watchDir || "(empty)"}`;
+  }
+
+  if (!folder.readable) {
+    return `Replay directory is not readable: ${path.basename(runtimeConfig.watchDir)}`;
+  }
+
+  if (!folder.valid) {
+    return folder.kind === "de"
+      ? "This is an AoE2 DE folder. Choose the AoE2 HD SaveGame folder."
+      : "Folder does not look like an AoE2 HD SaveGame folder yet.";
   }
 
   if (!runtimeConfig.uploadApiKey) {
@@ -1478,6 +1634,55 @@ async function onFileDetected(eventType, filePath, runtimeConfig) {
   });
 }
 
+async function scanRecentGrowingReplay(runtimeConfig) {
+  let entries;
+  try {
+    entries = await fs.promises.readdir(runtimeConfig.watchDir, { withFileTypes: true });
+  } catch (error) {
+    emitRuntimeEvent("watcher-error", { detail: `Initial replay scan failed: ${error.message}` });
+    return false;
+  }
+
+  const cutoff = Date.now() - RECENT_LIVE_CANDIDATE_MS;
+  const candidates = [];
+  for (const entry of entries) {
+    if (!entry.isFile()) continue;
+    const filePath = path.join(runtimeConfig.watchDir, entry.name);
+    if (!shouldHandle(filePath, runtimeConfig)) continue;
+    try {
+      const stats = await fs.promises.stat(filePath);
+      if (stats.mtimeMs >= cutoff) candidates.push({ filePath, size: stats.size, mtimeMs: stats.mtimeMs });
+    } catch {
+      // A game may replace the file between directory scan and stat.
+    }
+  }
+
+  candidates.sort((left, right) => right.mtimeMs - left.mtimeMs);
+  for (const candidate of candidates.slice(0, 3)) {
+    await sleep(LIVE_CANDIDATE_GROWTH_CHECK_MS);
+    try {
+      const next = await fs.promises.stat(candidate.filePath);
+      if (next.size > candidate.size || next.mtimeMs > candidate.mtimeMs) {
+        emitRuntimeEvent("midgame-replay-recovered", {
+          fileName: path.basename(candidate.filePath),
+          reason: "recent_replay_growing_on_attach",
+          fileSizeBytes: next.size,
+          mtimeMs: Math.floor(next.mtimeMs),
+        });
+        await onFileDetected("initial-scan", candidate.filePath, runtimeConfig);
+        return true;
+      }
+    } catch {
+      // Continue to the next conservative candidate.
+    }
+  }
+  emitRuntimeEvent("initial-replay-scan-complete", {
+    reason: candidates.length > 0 ? "recent_files_not_growing" : "no_recent_replays",
+    found: candidates.length,
+  });
+  return false;
+}
+
 function createImportItem(filePath, status, detail) {
   return {
     filePath,
@@ -2016,6 +2221,7 @@ function stopWatching() {
   }
 
   activeWatcher = null;
+  activeRuntimeStatus.monitorAttached = false;
   activeUploadState = new Map();
   activePreferredUploadTargetBaseUrl = null;
   emitRuntimeEvent("watching-stopped", {});
@@ -2026,6 +2232,14 @@ function startWatching(config = {}, hooks = {}) {
   setRuntimeHooks(hooks);
 
   const runtimeConfig = buildRuntimeConfig(config);
+  const folder = inspectReplayFolder(runtimeConfig.watchDir);
+  activeRuntimeStatus = {
+    ...createRuntimeStatus(),
+    folderValid: folder.valid,
+    folderKind: folder.kind,
+    folderLabel: folder.label,
+    lastFolderActivityAt: folder.latestReplayModifiedAt,
+  };
   const validationError = getRuntimeValidationError(runtimeConfig);
   activePreferredUploadTargetBaseUrl = runtimeConfig.uploadTargets[0]?.baseUrl || null;
 
@@ -2063,8 +2277,17 @@ function startWatching(config = {}, hooks = {}) {
   activeWatcher.on("ready", () => {
     log("Chokidar watcher is ready and listening for replay events.");
     emitRuntimeEvent("watcher-ready", {
-      watchDir: runtimeConfig.watchDir,
+      folderKind: folder.kind,
+      folderLabel: folder.label,
+      latestReplayBasename: folder.latestReplayBasename,
+      latestReplayModifiedAt: folder.latestReplayModifiedAt,
     });
+    void scanRecentGrowingReplay(runtimeConfig);
+    setTimeout(() => {
+      if (activeWatcher && !activeRuntimeStatus.activeReplay) {
+        void scanRecentGrowingReplay(runtimeConfig);
+      }
+    }, 10000);
   });
 
   activeWatcher.on("add", (filePath) => onFileDetected("add", filePath, runtimeConfig));
@@ -2083,6 +2306,9 @@ module.exports = {
   buildRuntimeConfig,
   classifyUploadResult,
   getDefaultReplayDir,
+  detectReplayFolder,
+  inspectReplayFolder,
+  getRuntimeStatus: () => ({ ...activeRuntimeStatus }),
   getFileFingerprint,
   getRetryDelayMs: (attempt, config = {}) =>
     getRetryDelayMsFactory(buildRuntimeConfig(config), attempt),
