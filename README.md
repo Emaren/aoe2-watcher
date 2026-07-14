@@ -1,14 +1,14 @@
 # aoe2-watcher
 
-## v1.5.3 reliability contract
+## v1.5.4 reliability contract
 
-Connection and replay monitoring are independent states. A heartbeat proves connection only. v1.5.3 heartbeats additionally report monitor attachment, HD-folder validity/classification, recent folder activity, current replay basename/size/change time, replay detection/upload state, queue depth, batch state, stream state, version, platform, watcher ID, and session ID. Full filesystem paths and replay contents are not sent as telemetry.
+Connection and replay monitoring are independent states. A heartbeat proves connection only. v1.5.4 heartbeats additionally report monitor attachment, HD-folder validity/classification, recent folder activity, current replay basename/size/change time, replay detection/upload state, queue depth, batch state, stream state, version, platform, watcher ID, and session ID. Full filesystem paths and replay contents are not sent as telemetry.
 
 On launch, saved identity, folder, and auto-start preference are restored. The app verifies that the folder is readable and resembles an AoE2 HD SaveGame directory, attaches Chokidar, emits explicit start/ready events, and scans recent files twice for growth evidence. This recovers a game already underway without treating an old archive as live. Windows detection checks normal, OneDrive consumer/commercial, and profile Documents roots and never silently selects AoE2 DE.
 
 The 30-second watchdog handles absent monitors, inaccessible folders, and sleep/wake with three bounded reattach attempts and a one-minute cooldown. File stability creates only a final candidate; monitoring suppresses future uploads only after trusted server acceptance. Deferred/unparsed final proof remains visible, and later file growth reopens monitoring.
 
-Batch import uploads supported HD replay files oldest-to-newest, hashes/deduplicates, persists summary/failures, and supports retry. Streaming, batch work, and live monitoring remain separate rails.
+Batch import uploads supported HD replay files oldest-to-newest, hashes/deduplicates, persists summary/failures, and supports retry. Its counters deliberately separate upload receipt, confirmed archive storage, completed parsing, result-ready acceptance, and private review routing. A 2xx receipt alone never marks a final result ready. Streaming, batch work, and live monitoring remain separate rails.
 
 Release exactly five artifacts: Windows Installer, Windows Portable, macOS DMG, macOS Direct ZIP, and Linux AppImage. Before publishing, run `npm run lint`, `npm test`, and `npm run dist:release`; record SHA-256 hashes, verify updater YAML and embedded version, verify Windows Authenticode/timestamping, and follow the configured macOS signing/notarization policy. Public metadata advances only after all five artifacts are present.
 
@@ -70,7 +70,7 @@ The main window now includes **Scan & Import Replays**.
 - scans the configured replay folder with the same replay extension rules the watcher trusts
 - processes files oldest-to-newest
 - keeps live watching available
-- shows found / queued / skipped / uploaded / failed counts
+- shows uploaded / archived / parsed / result ready / private review routed as separate milestones, alongside queue, skip, and failure counts
 - stores failed uploads so they can be retried from the same UI
 
 ## Watcher-native streaming

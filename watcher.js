@@ -428,6 +428,7 @@ function getStateEntry(filePath) {
       lastReplayGrowthNoticeAt: 0,
       monitorStartedAt: 0,
       finalAccepted: false,
+      finalStored: false,
       liveIteration: 0,
     };
     activeUploadState.set(filePath, entry);
@@ -537,16 +538,34 @@ function safeShortText(value, maxLength = 600) {
 }
 
 function summarizeUploadResponse(data = {}) {
-  return {
+  const finalityStatus = data?.finality_status || data?.finalityStatus || null;
+  const pendingParse = isTruthyResponseFlag(data?.pending_parse ?? data?.pendingParse);
+  const unparsedFinal = isTruthyResponseFlag(data?.unparsed_final ?? data?.unparsedFinal);
+  const explicitParseCompleted = data?.parse_completed ?? data?.parseCompleted;
+  const parseCompleted =
+    explicitParseCompleted === undefined || explicitParseCompleted === null
+      ? !pendingParse &&
+        !unparsedFinal &&
+        Boolean(finalityStatus) &&
+        !["live_pending_parse", "final_unparsed_proof"].includes(String(finalityStatus || ""))
+      : isTruthyResponseFlag(explicitParseCompleted);
+
+  const summary = {
     resultType: classifyUploadResult(formatResponseBody(data)),
     replayHash: data?.replay_hash || data?.replayHash || data?.hash || null,
     gameId: data?.game_id || data?.gameId || data?.id || null,
-    finalityStatus: data?.finality_status || data?.finalityStatus || null,
+    finalityStatus,
     shouldSettle: isTruthyResponseFlag(data?.should_settle ?? data?.shouldSettle),
-    pendingParse: isTruthyResponseFlag(data?.pending_parse ?? data?.pendingParse),
-    unparsedFinal: isTruthyResponseFlag(data?.unparsed_final ?? data?.unparsedFinal),
+    finalAccepted: isTruthyResponseFlag(data?.final_accepted ?? data?.finalAccepted),
+    pendingParse,
+    unparsedFinal,
+    archived: isTruthyResponseFlag(data?.raw_replay_archived ?? data?.rawReplayArchived),
+    parseCompleted,
     summary: safeShortText(data, 800),
   };
+
+  summary.resultReady = summary.finalAccepted || isTrustedFinalResponse(summary);
+  return summary;
 }
 
 function isTrustedFinalResponse(responseSummary = {}) {
@@ -561,6 +580,39 @@ function isTrustedFinalResponse(responseSummary = {}) {
     "reviewed_match_duplicate",
     "reviewed_match_refreshed",
   ].includes(String(responseSummary.finalityStatus || ""));
+}
+
+function classifyReplayAcceptance(responseSummary = {}, { isFinal = true } = {}) {
+  const resultReady = Boolean(isFinal && responseSummary.resultReady);
+
+  return {
+    archived: Boolean(responseSummary.archived),
+    parsed: Boolean(responseSummary.parseCompleted),
+    resultReady,
+    reviewRouted: Boolean(isFinal && !resultReady),
+  };
+}
+
+function buildReplayReceiptDetail(fileName, acceptance = {}, { isFinal = true } = {}) {
+  const replayName = path.basename(String(fileName || "Replay"));
+
+  if (!isFinal) {
+    return `${replayName} live replay stream received.`;
+  }
+
+  if (acceptance.resultReady) {
+    return `${replayName} result ready and filed.`;
+  }
+
+  if (acceptance.parsed) {
+    return `${replayName} parsed and routed through result review.`;
+  }
+
+  if (acceptance.archived) {
+    return `${replayName} secured and routed through result review.`;
+  }
+
+  return `${replayName} received and routed through result review.`;
 }
 
 function isUnknownishValue(value) {
@@ -842,7 +894,7 @@ function shouldLogReplayGrowthNotice(entry, runtimeConfig, isFinal) {
 
 function hasSettledReplayFingerprint(entry, fingerprint, runtimeConfig, now = Date.now()) {
   return Boolean(
-    entry.finalAccepted &&
+    (entry.finalAccepted || entry.finalStored) &&
       fingerprint &&
       fingerprint === entry.lastFinalUploadedFingerprint &&
       fingerprint === entry.lastObservedFingerprint &&
@@ -857,7 +909,10 @@ async function resolveFinalReplayShortCircuit(
   runtimeConfig,
   { fingerprint = null, now = Date.now() } = {}
 ) {
-  if (!entry.finalAccepted || (!entry.lastFinalUploadedFingerprint && !entry.lastFinalReplayHash)) {
+  if (
+    (!entry.finalAccepted && !entry.finalStored) ||
+    (!entry.lastFinalUploadedFingerprint && !entry.lastFinalReplayHash)
+  ) {
     return null;
   }
 
@@ -1045,8 +1100,10 @@ async function uploadReplayWithRetry(
         const detail = formatResponseBody(res.data);
         const resultType = classifyUploadResult(detail);
         const responseSummary = summarizeUploadResponse(res.data);
+        const acceptance = classifyReplayAcceptance(responseSummary, { isFinal });
         const unknownParseFields = detectUnknownParseFields(res.data);
-        const finalAccepted = isFinal ? isTrustedFinalResponse(responseSummary) : false;
+        const finalAccepted = acceptance.resultReady;
+        const finalStored = Boolean(isFinal && (acceptance.archived || finalAccepted));
 
         if (unknownParseFields.length > 0) {
           emitRuntimeEvent("parse-result-unknown-fields", {
@@ -1074,10 +1131,11 @@ async function uploadReplayWithRetry(
 
         rememberWorkingUploadTarget(target);
 
-        if (isFinal && finalAccepted) {
+        if (finalStored) {
           entry.lastFinalUploadedFingerprint = attemptFingerprint;
           entry.lastFinalUploadAt = Date.now();
-          entry.finalAccepted = true;
+          entry.finalStored = true;
+          entry.finalAccepted = finalAccepted;
           if (replayHash) {
             entry.lastFinalReplayHash = replayHash;
           }
@@ -1111,7 +1169,12 @@ async function uploadReplayWithRetry(
           shouldSettle: responseSummary.shouldSettle,
           pendingParse: responseSummary.pendingParse,
           unparsedFinal: responseSummary.unparsedFinal,
+          archived: acceptance.archived,
+          parseCompleted: acceptance.parsed,
+          resultReady: acceptance.resultReady,
+          reviewRouted: acceptance.reviewRouted,
           finalAccepted,
+          finalStored,
           responseStatus: res.status,
           detail,
           ...fingerprintParts,
@@ -1131,6 +1194,10 @@ async function uploadReplayWithRetry(
             shouldSettle: responseSummary.shouldSettle,
             pendingParse: responseSummary.pendingParse,
             unparsedFinal: responseSummary.unparsedFinal,
+            archived: acceptance.archived,
+            parseCompleted: acceptance.parsed,
+            resultReady: acceptance.resultReady,
+            reviewRouted: acceptance.reviewRouted,
             detail,
             ...fingerprintParts,
           });
@@ -1152,8 +1219,13 @@ async function uploadReplayWithRetry(
           responseData: res.data,
           responseStatus: res.status,
           finalAccepted,
+          finalStored,
           finalityStatus: responseSummary.finalityStatus,
           shouldSettle: responseSummary.shouldSettle,
+          archived: acceptance.archived,
+          parsed: acceptance.parsed,
+          resultReady: acceptance.resultReady,
+          reviewRouted: acceptance.reviewRouted,
           replayHash,
         };
       } catch (err) {
@@ -1317,7 +1389,10 @@ async function getFinalCandidateReadiness(filePath, entry, runtimeConfig, finger
 }
 
 async function reopenFinalIfReplayGrew(filePath, entry, fingerprint) {
-  if (!entry.finalAccepted || fingerprint === entry.lastFinalUploadedFingerprint) {
+  if (
+    (!entry.finalAccepted && !entry.finalStored) ||
+    fingerprint === entry.lastFinalUploadedFingerprint
+  ) {
     return false;
   }
 
@@ -1345,6 +1420,7 @@ async function reopenFinalIfReplayGrew(filePath, entry, fingerprint) {
   });
 
   entry.finalAccepted = false;
+  entry.finalStored = false;
   entry.lastFinalUploadedFingerprint = null;
   entry.lastFinalReplayHash = null;
   entry.lastFinalUploadAt = 0;
@@ -1554,8 +1630,8 @@ async function monitorReplayFile(filePath, runtimeConfig) {
           isFinal: true,
         });
 
-        if (stored.ok && stored.finalAccepted) {
-          continue;
+        if (stored.ok && stored.finalStored && !stored.changedDuringUpload) {
+          return;
         }
       }
 
@@ -1720,7 +1796,15 @@ function updateImportPercent(state) {
 }
 
 function buildImportSummaryText(state) {
-  return `Imported ${state.uploaded}, skipped ${state.skipped}, failed ${state.failed}.`;
+  return [
+    `Uploaded ${state.uploaded}`,
+    `archived ${state.archived}`,
+    `parsed ${state.parsed}`,
+    `result ready ${state.resultReady}`,
+    `review routed ${state.reviewRouted}`,
+    `skipped ${state.skipped}`,
+    `failed ${state.failed}`,
+  ].join(", ") + ".";
 }
 
 async function listImportCandidates(runtimeConfig, filePaths = null) {
@@ -1899,6 +1983,10 @@ function buildBatchTelemetryPayload(state, patch = {}) {
     totalFiles: state.queued,
     unsupportedCount: state.unsupported,
     uploadedCount: state.uploaded,
+    archivedCount: state.archived,
+    parsedCount: state.parsed,
+    resultReadyCount: state.resultReady,
+    reviewRoutedCount: state.reviewRouted,
     skippedCount: state.skipped,
     failedCount: state.failed,
     currentIndex: state.currentIndex,
@@ -1951,6 +2039,10 @@ async function importHistoricalReplays(config = {}, options = {}, hooks = {}) {
     queued: 0,
     skipped: 0,
     uploaded: 0,
+    archived: 0,
+    parsed: 0,
+    resultReady: 0,
+    reviewRouted: 0,
     failed: 0,
     unsupported: 0,
     currentFile: "",
@@ -2104,7 +2196,10 @@ async function importHistoricalReplays(config = {}, options = {}, hooks = {}) {
       fingerprint: stability.fingerprint,
     });
 
-    if (entry.finalAccepted && entry.lastFinalUploadedFingerprint === stability.fingerprint) {
+    if (
+      (entry.finalAccepted || entry.finalStored) &&
+      entry.lastFinalUploadedFingerprint === stability.fingerprint
+    ) {
       state.skipped += 1;
       const detail = "Already imported in this app session.";
       pushImportItem(state.skippedItems, createImportItem(candidate.filePath, "skipped", detail));
@@ -2144,36 +2239,55 @@ async function importHistoricalReplays(config = {}, options = {}, hooks = {}) {
           resultType: result.resultType || null,
           responseStatus: result.responseStatus || null,
         });
-      } else if (result.resultType === "duplicate") {
-        state.skipped += 1;
-        const detail = result.detail || "Replay already exists on AoE2HDBets.";
-
-        pushImportItem(state.skippedItems, createImportItem(candidate.filePath, "skipped", detail));
-        pushImportItem(state.recentItems, createImportItem(candidate.filePath, "skipped", detail));
-
-        await emitBatchFileEvent("batch-upload-file-skipped", state, candidate.filePath, {
-          reason: "duplicate",
-          detail,
-          fingerprint: stability.fingerprint,
-          resultType: result.resultType,
-          replayHash: result.replayHash || null,
-        });
       } else {
-        state.uploaded += 1;
-        const detail =
-          result.resultType === "refreshed"
-            ? result.detail || "Replay refreshed with better final data."
-            : result.detail || "Replay imported successfully.";
+        if (result.archived) state.archived += 1;
+        if (result.parsed) state.parsed += 1;
+        if (result.resultReady) state.resultReady += 1;
+        if (result.reviewRouted) state.reviewRouted += 1;
 
-        pushImportItem(state.recentItems, createImportItem(candidate.filePath, "uploaded", detail));
-
-        await emitBatchFileEvent("batch-upload-file-succeeded", state, candidate.filePath, {
-          reason: "uploaded",
-          detail,
-          fingerprint: stability.fingerprint,
-          resultType: result.resultType || "uploaded",
-          replayHash: result.replayHash || null,
+        const receiptDetail = buildReplayReceiptDetail(candidate.fileName, result, {
+          isFinal: true,
         });
+
+        if (result.resultType === "duplicate") {
+          state.skipped += 1;
+          const detail = result.resultReady
+            ? `${candidate.fileName} result already filed.`
+            : receiptDetail;
+
+          pushImportItem(state.skippedItems, createImportItem(candidate.filePath, "skipped", detail));
+          pushImportItem(state.recentItems, createImportItem(candidate.filePath, "skipped", detail));
+
+          await emitBatchFileEvent("batch-upload-file-skipped", state, candidate.filePath, {
+            reason: "duplicate",
+            detail,
+            fingerprint: stability.fingerprint,
+            resultType: result.resultType,
+            replayHash: result.replayHash || null,
+            archived: Boolean(result.archived),
+            parsed: Boolean(result.parsed),
+            resultReady: Boolean(result.resultReady),
+            reviewRouted: Boolean(result.reviewRouted),
+          });
+        } else {
+          state.uploaded += 1;
+          const detail = receiptDetail;
+          const itemStatus = result.resultReady ? "result_ready" : "review_routed";
+
+          pushImportItem(state.recentItems, createImportItem(candidate.filePath, itemStatus, detail));
+
+          await emitBatchFileEvent("batch-upload-file-succeeded", state, candidate.filePath, {
+            reason: result.resultReady ? "result_ready" : "review_routed",
+            detail,
+            fingerprint: stability.fingerprint,
+            resultType: result.resultType || "uploaded",
+            replayHash: result.replayHash || null,
+            archived: Boolean(result.archived),
+            parsed: Boolean(result.parsed),
+            resultReady: Boolean(result.resultReady),
+            reviewRouted: Boolean(result.reviewRouted),
+          });
+        }
       }
     } catch (error) {
       state.failed += 1;
@@ -2304,7 +2418,9 @@ function startWatching(config = {}, hooks = {}) {
 
 module.exports = {
   buildRuntimeConfig,
+  buildReplayReceiptDetail,
   classifyUploadResult,
+  classifyReplayAcceptance,
   getDefaultReplayDir,
   detectReplayFolder,
   inspectReplayFolder,
@@ -2320,6 +2436,7 @@ module.exports = {
   monitorReplayFile,
   resolveFinalReplayShortCircuit,
   shouldHandle,
+  summarizeUploadResponse,
   startWatching,
   stopWatching,
 };

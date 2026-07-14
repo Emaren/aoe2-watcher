@@ -756,6 +756,14 @@
         border-color: rgba(74, 222, 128, 0.18);
       }
 
+      .list-row.result_ready {
+        border-color: rgba(74, 222, 128, 0.24);
+      }
+
+      .list-row.review_routed {
+        border-color: rgba(125, 211, 252, 0.24);
+      }
+
       .list-row.failed {
         border-color: rgba(251, 113, 133, 0.18);
       }
@@ -1216,6 +1224,22 @@
                 <div class="stat-card">
                   <div class="stat-label">Uploaded</div>
                   <div id="importUploadedCount" class="stat-value">0</div>
+                </div>
+                <div class="stat-card">
+                  <div class="stat-label">Archived</div>
+                  <div id="importArchivedCount" class="stat-value">0</div>
+                </div>
+                <div class="stat-card">
+                  <div class="stat-label">Parsed</div>
+                  <div id="importParsedCount" class="stat-value">0</div>
+                </div>
+                <div class="stat-card">
+                  <div class="stat-label">Result Ready</div>
+                  <div id="importResultReadyCount" class="stat-value">0</div>
+                </div>
+                <div class="stat-card">
+                  <div class="stat-label">Review Routed</div>
+                  <div id="importReviewRoutedCount" class="stat-value">0</div>
                 </div>
                 <div class="stat-card">
                   <div class="stat-label">Failed</div>

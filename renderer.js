@@ -59,6 +59,10 @@ const els = {
   importQueuedCount: document.getElementById("importQueuedCount"),
   importSkippedCount: document.getElementById("importSkippedCount"),
   importUploadedCount: document.getElementById("importUploadedCount"),
+  importArchivedCount: document.getElementById("importArchivedCount"),
+  importParsedCount: document.getElementById("importParsedCount"),
+  importResultReadyCount: document.getElementById("importResultReadyCount"),
+  importReviewRoutedCount: document.getElementById("importReviewRoutedCount"),
   importFailedCount: document.getElementById("importFailedCount"),
   importUnsupportedCount: document.getElementById("importUnsupportedCount"),
   importRecentList: document.getElementById("importRecentList"),
@@ -142,6 +146,10 @@ const EMPTY_IMPORT_STATE = {
   queued: 0,
   skipped: 0,
   uploaded: 0,
+  archived: 0,
+  parsed: 0,
+  resultReady: 0,
+  reviewRouted: 0,
   failed: 0,
   unsupported: 0,
   currentFile: "",
@@ -1564,11 +1572,15 @@ function renderImportList(container, items, emptyMessage) {
     const badge = document.createElement("div");
     badge.className = `badge ${item.status || "neutral"}`;
     badge.textContent =
-      item.status === "uploaded"
-        ? "Uploaded"
-        : item.status === "failed"
-          ? "Failed"
-          : "Skipped";
+      item.status === "result_ready"
+        ? "Result ready"
+        : item.status === "review_routed"
+          ? "Review routed"
+          : item.status === "uploaded"
+            ? "Uploaded"
+            : item.status === "failed"
+              ? "Failed"
+              : "Skipped";
     top.appendChild(badge);
 
     const detail = document.createElement("div");
@@ -1597,6 +1609,10 @@ function renderImportState() {
   els.importQueuedCount.textContent = String(importState.queued || 0);
   els.importSkippedCount.textContent = String(importState.skipped || 0);
   els.importUploadedCount.textContent = String(importState.uploaded || 0);
+  els.importArchivedCount.textContent = String(importState.archived || 0);
+  els.importParsedCount.textContent = String(importState.parsed || 0);
+  els.importResultReadyCount.textContent = String(importState.resultReady || 0);
+  els.importReviewRoutedCount.textContent = String(importState.reviewRouted || 0);
   els.importFailedCount.textContent = String(importState.failed || 0);
   els.importUnsupportedCount.textContent = String(importState.unsupported || 0);
 
@@ -1978,15 +1994,17 @@ function consumeRuntimeEvent(event) {
     case "final-candidate-deferred":
       runtimeState.phase = "watching";
       runtimeState.activeUpload = event;
-      runtimeState.detail = `Holding ${event.fileName} open until the replay is safer to finalize${
-        event.waitMs ? ` (${Math.max(1, Math.round(event.waitMs / 1000))}s)` : ""
-      }.`;
+      runtimeState.detail = event.reviewRouted
+        ? `${event.fileName} is secured and routed through result review while richer final bytes are monitored.`
+        : `Holding ${event.fileName} open for the final replay pass${
+            event.waitMs ? ` (${Math.max(1, Math.round(event.waitMs / 1000))}s)` : ""
+          }.`;
       break;
     case "final-candidate-accepted":
       runtimeState.phase = "watching";
       runtimeState.activeUpload = null;
-      runtimeState.lastUploadSuccess = `${event.fileName} accepted as final.`;
-      runtimeState.detail = `${event.fileName} is final and settlement-safe.`;
+      runtimeState.lastUploadSuccess = `${event.fileName} result ready and filed.`;
+      runtimeState.detail = runtimeState.lastUploadSuccess;
       break;
     case "final-candidate-reopened":
       runtimeState.phase = "watching";
@@ -2013,8 +2031,13 @@ function consumeRuntimeEvent(event) {
       runtimeState.phase = watcherState.isWatching ? "watching" : "idle";
       runtimeState.activeUpload = null;
       runtimeState.lastUploadSuccess =
-        event.detail ||
-        `${event.fileName} ${event.resultType === "refreshed" ? "refreshed" : "uploaded"}.`;
+        event.isFinal && event.resultReady
+          ? `${event.fileName} result ready and filed.`
+          : event.isFinal && event.parseCompleted
+            ? `${event.fileName} parsed and routed through result review.`
+            : event.isFinal
+              ? `${event.fileName} secured and routed through result review.`
+              : `${event.fileName} live replay stream received.`;
       runtimeState.detail = watcherState.isWatching
         ? `Watching for new replays. Last result: ${runtimeState.lastUploadSuccess}`
         : runtimeState.lastUploadSuccess;
