@@ -963,6 +963,13 @@ function buildTelemetryPayload(eventType, payload = {}, config = loadConfig()) {
     pendingParse: typeof payload.pendingParse === "boolean" ? payload.pendingParse : undefined,
     unparsedFinal:
       typeof payload.unparsedFinal === "boolean" ? payload.unparsedFinal : undefined,
+    archived: typeof payload.archived === "boolean" ? payload.archived : undefined,
+    parseCompleted:
+      typeof payload.parseCompleted === "boolean" ? payload.parseCompleted : undefined,
+    parsed: typeof payload.parsed === "boolean" ? payload.parsed : undefined,
+    resultReady: typeof payload.resultReady === "boolean" ? payload.resultReady : undefined,
+    reviewRouted:
+      typeof payload.reviewRouted === "boolean" ? payload.reviewRouted : undefined,
     finalAccepted:
       typeof payload.finalAccepted === "boolean" ? payload.finalAccepted : undefined,
     fingerprint: payload.fingerprint || undefined,
@@ -975,6 +982,14 @@ function buildTelemetryPayload(eventType, payload = {}, config = loadConfig()) {
       ? payload.unsupportedCount
       : undefined,
     uploadedCount: Number.isFinite(payload.uploadedCount) ? payload.uploadedCount : undefined,
+    archivedCount: Number.isFinite(payload.archivedCount) ? payload.archivedCount : undefined,
+    parsedCount: Number.isFinite(payload.parsedCount) ? payload.parsedCount : undefined,
+    resultReadyCount: Number.isFinite(payload.resultReadyCount)
+      ? payload.resultReadyCount
+      : undefined,
+    reviewRoutedCount: Number.isFinite(payload.reviewRoutedCount)
+      ? payload.reviewRoutedCount
+      : undefined,
     skippedCount: Number.isFinite(payload.skippedCount) ? payload.skippedCount : undefined,
     failedCount: Number.isFinite(payload.failedCount) ? payload.failedCount : undefined,
     currentIndex: Number.isFinite(payload.currentIndex) ? payload.currentIndex : undefined,
@@ -1180,6 +1195,10 @@ function createImportStateFromSummary(summary = null) {
     queued: 0,
     skipped: 0,
     uploaded: 0,
+    archived: 0,
+    parsed: 0,
+    resultReady: 0,
+    reviewRouted: 0,
     failed: 0,
     unsupported: 0,
     currentFile: "",
@@ -1220,6 +1239,10 @@ function summarizeImportState(state) {
     queued: state.queued || 0,
     skipped: state.skipped || 0,
     uploaded: state.uploaded || 0,
+    archived: state.archived || 0,
+    parsed: state.parsed || 0,
+    resultReady: state.resultReady || 0,
+    reviewRouted: state.reviewRouted || 0,
     failed: state.failed || 0,
     unsupported: state.unsupported || 0,
     failedItems: Array.isArray(state.failedItems) ? state.failedItems : [],
@@ -1510,12 +1533,15 @@ function emitTelemetryForRuntimeEvent(event) {
 
   if (event.type === "upload-success") {
     emitWatcherTelemetry("upload_succeeded", basePayload);
-    emitWatcherTelemetry(
-      event.pendingParse || (event.isFinal && event.finalAccepted === false)
-        ? "parse_pending"
-        : "parse_succeeded",
-      basePayload
-    );
+    if (event.archived) {
+      emitWatcherTelemetry("replay_archived", basePayload);
+    }
+    emitWatcherTelemetry(event.parseCompleted ? "parse_succeeded" : "parse_pending", basePayload);
+    if (event.resultReady) {
+      emitWatcherTelemetry("result_ready", basePayload);
+    } else if (event.reviewRouted) {
+      emitWatcherTelemetry("result_review_routed", basePayload);
+    }
     return;
   }
 
@@ -1729,6 +1755,10 @@ async function runHistoricalImport({ source, filePaths = [] }) {
       queued: 0,
       skipped: 0,
       uploaded: 0,
+      archived: 0,
+      parsed: 0,
+      resultReady: 0,
+      reviewRouted: 0,
       failed: 0,
       unsupported: 0,
       currentFile: "",
