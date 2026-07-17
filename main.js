@@ -671,6 +671,7 @@ function getDefaultConfig() {
     uploadApiKey: process.env.AOE2_UPLOAD_API_KEY || "",
     watcherId: process.env.AOE2_WATCHER_ID || "",
     autoStartWatching: true,
+    autoStartStreaming: true,
     lastImportSummary: null,
   };
 }
@@ -1419,16 +1420,57 @@ async function postStreamChunk(payload = {}) {
   };
 }
 
+function isBrowserOrAoE2WarCaptureName(value) {
+  const name = String(value || "").toLowerCase();
+
+  return (
+    name.includes("aoe2hdbets") ||
+    name.includes("aoe2war") ||
+    name.includes("microsoft edge") ||
+    name.includes("google chrome") ||
+    name.includes("firefox") ||
+    name.includes("brave") ||
+    name.includes("opera") ||
+    name.includes("safari")
+  );
+}
+
+function isLikelyAoE2GameCaptureName(value) {
+  const name = String(value || "").toLowerCase();
+
+  if (isBrowserOrAoE2WarCaptureName(name)) {
+    return false;
+  }
+
+  return (
+    /age of empires\s*(ii|2)/i.test(name) ||
+    name.includes("age2hd") ||
+    name.includes("aok hd") ||
+    name.includes("aok hd.exe") ||
+    name.includes("age of kings") ||
+    /\baoe2(?:\s*hd)?\b/i.test(name)
+  );
+}
+
 function captureSourceScore(source) {
   const name = String(source?.name || "").toLowerCase();
   const id = String(source?.id || "").toLowerCase();
+
   let score = id.startsWith("window:") ? 30 : 8;
-  if (name.includes("age of empires") || name.includes("age2hd") || name.includes("aoe2")) score += 120;
-  if (name.includes("aok hd") || name.includes("aok hd.exe") || name.includes("age of kings")) score += 115;
-  if (name.includes("crossover")) score += 90;
-  if (name.includes("steam")) score += 70;
-  if (name.includes("wine")) score += 45;
+
+  if (isBrowserOrAoE2WarCaptureName(name)) {
+    score -= 500;
+  }
+
+  if (isLikelyAoE2GameCaptureName(name)) {
+    score += 250;
+  }
+
+  if (name.includes("crossover")) score += 35;
+  if (name.includes("steam")) score += 20;
+  if (name.includes("wine")) score += 20;
   if (name.includes("screen") || name.includes("display")) score += 12;
+
   return score;
 }
 

@@ -4,6 +4,7 @@ const els = {
   apiFallbackBaseUrlInput: document.getElementById("apiFallbackBaseUrlInput"),
   uploadApiKeyInput: document.getElementById("uploadApiKeyInput"),
   autoStartWatchingInput: document.getElementById("autoStartWatchingInput"),
+  autoStartStreamingInput: document.getElementById("autoStartStreamingInput"),
   saveSettingsBtn: document.getElementById("saveSettingsBtn"),
   detectFolderBtn: document.getElementById("detectFolderBtn"),
   chooseFolderBtn: document.getElementById("chooseFolderBtn"),
@@ -76,6 +77,7 @@ const DEFAULT_CONFIG = {
   apiFallbackBaseUrl: "https://aoe2war.com",
   uploadApiKey: "",
   autoStartWatching: true,
+  autoStartStreaming: true,
   lastImportSummary: null,
 };
 
@@ -210,6 +212,7 @@ let nativeStreamState = {
   readout: "Idle.",
   detail: "Pick a source when a watcher match is ready.",
 };
+let autoStreamStartInFlight = false;
 let nativeUploadChain = Promise.resolve();
 let watchDirStatus = {
   exists: false,
@@ -281,6 +284,7 @@ function readForm() {
     apiFallbackBaseUrl: els.apiFallbackBaseUrlInput.value.trim(),
     uploadApiKey: els.uploadApiKeyInput.value.trim(),
     autoStartWatching: Boolean(els.autoStartWatchingInput.checked),
+    autoStartStreaming: Boolean(els.autoStartStreamingInput?.checked),
   };
 }
 
@@ -290,6 +294,9 @@ function writeForm(config) {
   els.apiFallbackBaseUrlInput.value = config.apiFallbackBaseUrl || "";
   els.uploadApiKeyInput.value = config.uploadApiKey || "";
   els.autoStartWatchingInput.checked = config.autoStartWatching !== false;
+  if (els.autoStartStreamingInput) {
+    els.autoStartStreamingInput.checked = config.autoStartStreaming !== false;
+  }
 }
 
 function formatPlatform(value) {
@@ -519,6 +526,114 @@ function hasStreamCandidate() {
       candidate?.fileName ||
       candidate?.filePath
   );
+}
+
+const AUTO_STREAM_RUNTIME_EVENTS = new Set([
+  "midgame-replay-recovered",
+  "monitor-start",
+  "replay-detected",
+  "final-candidate-reopened",
+]);
+
+function isBrowserOrAoE2WarStreamSource(source) {
+  const name = String(source?.name || "").toLowerCase();
+
+  return (
+    name.includes("aoe2hdbets") ||
+    name.includes("aoe2war") ||
+    name.includes("microsoft edge") ||
+    name.includes("google chrome") ||
+    name.includes("firefox") ||
+    name.includes("brave") ||
+    name.includes("opera") ||
+    name.includes("safari")
+  );
+}
+
+function isSafeAutomaticAoE2StreamSource(source) {
+  if (!source || source.kind !== "window") {
+    return false;
+  }
+
+  const name = String(source.name || "").toLowerCase();
+
+  if (isBrowserOrAoE2WarStreamSource(source)) {
+    return false;
+  }
+
+  return (
+    /age of empires\s*(ii|2)/i.test(name) ||
+    name.includes("age2hd") ||
+    name.includes("aok hd") ||
+    name.includes("aok hd.exe") ||
+    name.includes("age of kings") ||
+    /\baoe2(?:\s*hd)?\b/i.test(name)
+  );
+}
+
+async function maybeAutoStartNativeStream(event) {
+  if (!AUTO_STREAM_RUNTIME_EVENTS.has(event?.type)) {
+    return;
+  }
+
+  if (event?.isFinal === true) {
+    return;
+  }
+
+  const config = readForm();
+
+  if (!config.autoStartStreaming) {
+    return;
+  }
+
+  if (!hasWatcherKey() || !hasStreamCandidate()) {
+    return;
+  }
+
+  if (
+    autoStreamStartInFlight ||
+    nativeStreamState.busy ||
+    ["starting", "preview", "live"].includes(nativeStreamState.status)
+  ) {
+    return;
+  }
+
+  autoStreamStartInFlight = true;
+
+  try {
+    let sources = nativeStreamState.sources;
+
+    if (!sources.length) {
+      sources = await refreshNativeStreamSources();
+    }
+
+    const safeSource = sources.find(isSafeAutomaticAoE2StreamSource);
+
+    if (!safeSource) {
+      updateNativeStreamState({
+        readout: "Game detected. Waiting for a safe AoE2 capture window.",
+        detail:
+          "Automatic streaming never captures browsers or an entire display. Use Go Live manually for Full Screen capture.",
+      });
+      return;
+    }
+
+    updateNativeStreamState({
+      selectedSourceId: safeSource.id,
+      sourceName: safeSource.name,
+      sourceKind: safeSource.kind,
+      readout: `AoE2 detected. Starting ${safeSource.name}.`,
+      detail: "Safe automatic game-window capture.",
+    });
+
+    if (els.streamSourceSelect) {
+      els.streamSourceSelect.value = safeSource.id;
+    }
+
+    await startNativeStream();
+  } finally {
+    autoStreamStartInFlight = false;
+  }
 }
 
 function normalizeBaseUrl(value) {
@@ -1955,6 +2070,20 @@ function buildSupportSnapshot() {
 function consumeRuntimeEvent(event) {
   syncStreamCandidateFromRuntimeEvent(event);
 
+  void maybeAutoStartNativeStream(event);
+
+  if (
+    (event.type === "final-candidate-accepted" ||
+      event.type === "watching-stopped") &&
+    ["starting", "preview", "live"].includes(nativeStreamState.status)
+  ) {
+    void endNativeStream(
+      event.type === "final-candidate-accepted"
+        ? "final_candidate"
+        : "watcher_stopped"
+    );
+  }
+
   switch (event.type) {
     case "watching-started":
     case "watcher-ready":
@@ -2384,6 +2513,12 @@ els.apiFallbackBaseUrlInput.addEventListener("input", () => {
 els.autoStartWatchingInput.addEventListener("change", () => {
   renderAll();
 });
+
+if (els.autoStartStreamingInput) {
+  els.autoStartStreamingInput.addEventListener("change", () => {
+    renderAll();
+  });
+}
 
 window.watcherApi.onConfig((config) => {
   currentConfig = {
