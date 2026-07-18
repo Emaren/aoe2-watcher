@@ -16,6 +16,7 @@ const {
   shell,
 } = require("electron");
 const { autoUpdater } = require("electron-updater");
+const { version: WATCHER_VERSION } = require("./package.json");
 
 const {
   detectReplayFolder,
@@ -91,7 +92,7 @@ function createUpdateState(patch = {}) {
     status: "idle",
     message: "Updates idle.",
     feedUrl: AUTO_UPDATE_FEED_URL,
-    currentVersion: typeof app.getVersion === "function" ? app.getVersion() : null,
+    currentVersion: WATCHER_VERSION,
     updateVersion: null,
     downloaded: false,
     manualInstall: false,
@@ -170,7 +171,7 @@ function buildRuntimeMetadata(config = loadConfig()) {
   const watcherRuntime = getRuntimeStatus();
   const folder = inspectReplayFolder(config?.watchDir);
   return {
-    appVersion: typeof app.getVersion === "function" ? app.getVersion() : null,
+    appVersion: WATCHER_VERSION,
     platform: process.platform,
     arch: process.arch,
     osPlatform: os.platform(),
@@ -196,7 +197,7 @@ function buildRuntimeMetadata(config = loadConfig()) {
     repeatedUploadErrors: watcherRuntime.repeatedUploadErrors,
     batchUploadActive: Boolean(currentImportState?.isRunning),
     streamActive: Boolean(lastStreamHandoff?.streamId && !lastStreamHandoff?.endedAt),
-    watcherVersion: typeof app.getVersion === "function" ? app.getVersion() : null,
+    watcherVersion: WATCHER_VERSION,
     importRunning: Boolean(currentImportState?.isRunning),
     appPackaged: Boolean(app.isPackaged),
     updateFeedUrl: AUTO_UPDATE_FEED_URL,
@@ -670,8 +671,8 @@ function getDefaultConfig() {
       "https://aoe2war.com",
     uploadApiKey: process.env.AOE2_UPLOAD_API_KEY || "",
     watcherId: process.env.AOE2_WATCHER_ID || "",
+    launchAtLogin: true,
     autoStartWatching: true,
-    autoStartStreaming: true,
     lastImportSummary: null,
   };
 }
@@ -737,6 +738,55 @@ function saveConfig(config) {
   fs.writeFileSync(configPath, JSON.stringify(merged, null, 2), "utf8");
 
   return merged;
+}
+
+function applyLaunchAtLogin(config = loadConfig()) {
+  const requested = config.launchAtLogin !== false;
+
+  if (!["darwin", "win32"].includes(process.platform)) {
+    return {
+      supported: false,
+      requested,
+      openAtLogin: false,
+      reason: "unsupported_platform",
+    };
+  }
+
+  if (!app.isPackaged) {
+    return {
+      supported: true,
+      requested,
+      openAtLogin: false,
+      reason: "development_build",
+    };
+  }
+
+  try {
+    app.setLoginItemSettings({
+      openAtLogin: requested,
+    });
+
+    const current = app.getLoginItemSettings();
+
+    return {
+      supported: true,
+      requested,
+      openAtLogin: Boolean(current.openAtLogin),
+      reason: null,
+    };
+  } catch (error) {
+    console.warn(
+      "Failed applying launch-at-login setting:",
+      error?.message || error
+    );
+
+    return {
+      supported: true,
+      requested,
+      openAtLogin: false,
+      reason: error?.message || String(error),
+    };
+  }
 }
 
 function normalizeBaseUrl(value) {
@@ -846,7 +896,7 @@ function pickReleaseArtifact(payload) {
 }
 
 function buildReleaseStateFromPayload(payload, baseUrl) {
-  const currentVersion = app.getVersion();
+  const currentVersion = WATCHER_VERSION;
   const latestVersion = String(payload?.version || "").trim();
   const artifact = pickReleaseArtifact(payload);
   const comparison = latestVersion ? compareVersions(currentVersion, latestVersion) : 0;
@@ -901,7 +951,7 @@ async function refreshWatcherRelease(config = loadConfig()) {
   releaseState = createReleaseState({
     ...releaseState,
     phase: "checking",
-    currentVersion: app.getVersion(),
+    currentVersion: WATCHER_VERSION,
     error: null,
   });
   sendToRenderer("watcher:app-info", getAppInfo(config));
@@ -913,7 +963,7 @@ async function refreshWatcherRelease(config = loadConfig()) {
     releaseState = createReleaseState({
       ...releaseState,
       phase: "error",
-      currentVersion: app.getVersion(),
+      currentVersion: WATCHER_VERSION,
       checkedAt: new Date().toISOString(),
       error: error?.response?.status
         ? `Release check failed with HTTP ${error.response.status}.`
@@ -1029,7 +1079,7 @@ function buildTelemetryPayload(eventType, payload = {}, config = loadConfig()) {
 
   return {
     event_type: eventType,
-    app_version: app.getVersion(),
+    app_version: WATCHER_VERSION,
     platform: process.platform,
     artifact: app.isPackaged ? "electron-packaged" : "electron-dev",
     watcher_id: config.watcherId,
@@ -1164,23 +1214,40 @@ function safelyReattachMonitor(reason) {
 
 function startMonitorWatchdog() {
   stopMonitorWatchdog();
+
   monitorWatchdogTimer = setInterval(() => {
-    const config = loadConfig();
-    const folder = inspectReplayFolder(config.watchDir);
     const runtime = getRuntimeStatus();
-    if (!folder.valid) {
-      emitWatcherTelemetry("monitor_watchdog_folder_unavailable", {
-        folderKind: folder.kind,
-        folderLabel: folder.label,
-        reason: folder.error || "folder_invalid",
-      }, config);
-      return;
-    }
+
+    // Normal operation is event-driven. When the Chokidar monitor is
+    // healthy there is no reason to touch the replay directory merely
+    // to prove that the already-attached watcher still exists.
     if (watcherHandle && runtime.monitorAttached) {
       monitorReattachAttempts = 0;
       return;
     }
-    if (config.autoStartWatching) safelyReattachMonitor("monitor_handle_absent");
+
+    const config = loadConfig();
+
+    if (!config.autoStartWatching) {
+      return;
+    }
+
+    const folder = inspectReplayFolder(config.watchDir);
+
+    if (!folder.valid) {
+      emitWatcherTelemetry(
+        "monitor_watchdog_folder_unavailable",
+        {
+          folderKind: folder.kind,
+          folderLabel: folder.label,
+          reason: folder.error || "folder_invalid",
+        },
+        config
+      );
+      return;
+    }
+
+    safelyReattachMonitor("monitor_handle_absent");
   }, MONITOR_WATCHDOG_MS);
 }
 
@@ -1274,7 +1341,7 @@ function getWatchDirStatus(targetPath) {
 
 function getAppInfo(config = loadConfig()) {
   return {
-    version: app.getVersion(),
+    version: WATCHER_VERSION,
     productName: APP_NAME,
     platform: process.platform,
     isPackaged: app.isPackaged,
@@ -1477,8 +1544,8 @@ function captureSourceScore(source) {
 async function listDesktopCaptureSources() {
   const sources = await desktopCapturer.getSources({
     types: ["window", "screen"],
-    thumbnailSize: { width: 240, height: 135 },
-    fetchWindowIcons: true,
+    thumbnailSize: { width: 0, height: 0 },
+    fetchWindowIcons: false,
   });
 
   return sources
@@ -1488,9 +1555,13 @@ async function listDesktopCaptureSources() {
       displayId: source.display_id || null,
       kind: String(source.id || "").startsWith("screen:") ? "screen" : "window",
       score: captureSourceScore(source),
-      thumbnailUrl: source.thumbnail && !source.thumbnail.isEmpty() ? source.thumbnail.toDataURL() : null,
+      thumbnailUrl: null,
     }))
-    .sort((left, right) => right.score - left.score || left.name.localeCompare(right.name));
+    .sort(
+      (left, right) =>
+        right.score - left.score ||
+        left.name.localeCompare(right.name)
+    );
 }
 
 function publishStreamHandoff(handoff) {
@@ -1562,6 +1633,16 @@ function emitTelemetryForRuntimeEvent(event) {
     ...event,
     runtimeEventType: event.type,
   };
+
+  // Internal recovery diagnostics are useful to the local Watcher UI,
+  // but are not part of the current remote telemetry event contract.
+  // Keep them local instead of generating HTTP 400 noise.
+  if (
+    event.type === "initial-replay-scan-complete" ||
+    event.type === "midgame-replay-recovered"
+  ) {
+    return;
+  }
 
   if (event.type === "replay-detected") {
     emitWatcherTelemetry("replay_detected", basePayload);
@@ -1689,14 +1770,6 @@ function getSetupBlocker(config) {
 function stopCurrentWatcher({ quiet = false, allowPendingInstall = true } = {}) {
   if (!quiet) {
     appendLog("Stopping watcher session...");
-  }
-
-  if (watcherHandle && typeof watcherHandle.close === "function") {
-    try {
-      watcherHandle.close();
-    } catch (error) {
-      appendLog(`Failed closing watcher handle: ${error.message}`, "error");
-    }
   }
 
   watcherHandle = null;
@@ -1977,7 +2050,21 @@ function bootWatcherApp() {
   ipcMain.handle("watcher:save-config", async (_event, config) => {
     const previous = loadConfig();
     const saved = saveConfig(config);
+    const launchState = applyLaunchAtLogin(saved);
+
     appendLog("Settings saved locally.");
+
+    if (
+      launchState.supported &&
+      launchState.reason !== "development_build"
+    ) {
+      appendLog(
+        launchState.openAtLogin
+          ? "Start at sign-in is enabled."
+          : "Start at sign-in is disabled."
+      );
+    }
+
     broadcastConfig(saved);
     if ((config?.watchDir || "") && config.watchDir !== previous.watchDir) {
       emitWatcherTelemetry(
@@ -2216,6 +2303,8 @@ function bootWatcherApp() {
   });
 
   const config = saveConfig(loadConfig());
+  const launchState = applyLaunchAtLogin(config);
+
   currentImportState = createImportStateFromSummary(config.lastImportSummary);
 
   mainWindow.webContents.once("did-finish-load", () => {
@@ -2230,6 +2319,7 @@ function bootWatcherApp() {
     );
     emitWatcherTelemetry("app_open", {
       metadata: {
+        launchAtLogin: Boolean(config.launchAtLogin),
         autoStartWatching: Boolean(config.autoStartWatching),
         hasWatcherKey: Boolean(config.uploadApiKey),
         hasWatchDir: Boolean(config.watchDir),

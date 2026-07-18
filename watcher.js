@@ -1,4 +1,3 @@
-const chokidar = require("chokidar");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
@@ -2328,7 +2327,7 @@ function stopWatching() {
   if (activeWatcher) {
     try {
       activeWatcher.close();
-      log("Closed chokidar watcher handle.");
+      log("Closed replay directory watcher handle.");
     } catch (error) {
       log(`Failed closing watcher: ${error.message}`, "error");
     }
@@ -2375,43 +2374,101 @@ function startWatching(config = {}, hooks = {}) {
       .join(" -> ")}`
   );
   log(`Watcher UID: ${runtimeConfig.watcherUid}`);
-  log(`Chokidar extensions: ${Array.from(runtimeConfig.watchExtensions).join(", ")}`);
+  log(`Replay extensions: ${Array.from(runtimeConfig.watchExtensions).join(", ")}`);
 
   emitRuntimeEvent("watching-started", {
     watchDir: runtimeConfig.watchDir,
     uploadTargets: runtimeConfig.uploadTargets.map((target) => target.uploadUrl),
   });
 
-  activeWatcher = chokidar.watch(runtimeConfig.watchDir, {
-    persistent: true,
-    ignoreInitial: true,
-    depth: 0,
-  });
+  try {
+    activeWatcher = fs.watch(
+      runtimeConfig.watchDir,
+      {
+        persistent: true,
+      },
+      (eventType, rawFileName) => {
+        if (!activeWatcher) {
+          return;
+        }
 
-  activeWatcher.on("ready", () => {
-    log("Chokidar watcher is ready and listening for replay events.");
-    emitRuntimeEvent("watcher-ready", {
-      folderKind: folder.kind,
-      folderLabel: folder.label,
-      latestReplayBasename: folder.latestReplayBasename,
-      latestReplayModifiedAt: folder.latestReplayModifiedAt,
-    });
-    void scanRecentGrowingReplay(runtimeConfig);
-    setTimeout(() => {
-      if (activeWatcher && !activeRuntimeStatus.activeReplay) {
-        void scanRecentGrowingReplay(runtimeConfig);
+        // Some platforms may report a directory-level event without a
+        // filename. The conservative recovery scan handles that case
+        // without retaining watchers on every historical replay.
+        if (!rawFileName) {
+          if (!activeRuntimeStatus.activeReplay) {
+            void scanRecentGrowingReplay(runtimeConfig);
+          }
+          return;
+        }
+
+        const fileName = Buffer.isBuffer(rawFileName)
+          ? rawFileName.toString("utf8")
+          : String(rawFileName);
+
+        const filePath = path.join(runtimeConfig.watchDir, fileName);
+
+        if (!shouldHandle(filePath, runtimeConfig)) {
+          return;
+        }
+
+        // A rename event is also emitted when a file disappears.
+        // Deleted replay files are not upload candidates.
+        if (eventType === "rename" && !fs.existsSync(filePath)) {
+          return;
+        }
+
+        const replayEventType = eventType === "rename" ? "add" : "change";
+
+        void onFileDetected(
+          replayEventType,
+          filePath,
+          runtimeConfig
+        ).catch((error) => {
+          log(
+            `Replay directory event failed for ${fileName}: ${error.message || error}`,
+            "error"
+          );
+          emitRuntimeEvent("watcher-error", {
+            filePath,
+            fileName,
+            detail: error.message || String(error),
+          });
+        });
       }
-    }, 10000);
-  });
-
-  activeWatcher.on("add", (filePath) => onFileDetected("add", filePath, runtimeConfig));
-  activeWatcher.on("change", (filePath) => onFileDetected("change", filePath, runtimeConfig));
-  activeWatcher.on("error", (err) => {
-    log(`Watcher error: ${err.message}`, "error");
+    );
+  } catch (error) {
+    log(`Failed attaching replay directory watcher: ${error.message}`, "error");
     emitRuntimeEvent("watcher-error", {
-      detail: err.message,
+      detail: error.message,
+    });
+    activeWatcher = null;
+    return null;
+  }
+
+  activeWatcher.on("error", (error) => {
+    log(`Watcher error: ${error.message}`, "error");
+    emitRuntimeEvent("watcher-error", {
+      detail: error.message,
     });
   });
+
+  log("Native replay directory watcher is ready and listening for replay events.");
+
+  emitRuntimeEvent("watcher-ready", {
+    folderKind: folder.kind,
+    folderLabel: folder.label,
+    latestReplayBasename: folder.latestReplayBasename,
+    latestReplayModifiedAt: folder.latestReplayModifiedAt,
+  });
+
+  void scanRecentGrowingReplay(runtimeConfig);
+
+  setTimeout(() => {
+    if (activeWatcher && !activeRuntimeStatus.activeReplay) {
+      void scanRecentGrowingReplay(runtimeConfig);
+    }
+  }, 10000);
 
   return activeWatcher;
 }
