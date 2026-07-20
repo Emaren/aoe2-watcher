@@ -1,6 +1,6 @@
 {
   "name": "aoe2-watcher",
-  "version": "1.5.4",
+  "version": "1.5.5",
   "description": "AoE2HDBets Replay Watcher",
   "author": "AoE2HDBets",
   "license": "ISC",
@@ -58,7 +58,7 @@
       "extendInfo": {
         "CFBundleDisplayName": "AoE2HDBets Watcher",
         "CFBundleName": "AoE2HDBets Watcher",
-        "NSHumanReadableCopyright": "\u00a9 AoE2HDBets"
+        "NSHumanReadableCopyright": "© AoE2HDBets"
       }
     },
     "win": {

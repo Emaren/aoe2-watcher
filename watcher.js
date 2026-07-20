@@ -23,6 +23,7 @@ const RECENT_LIVE_CANDIDATE_MS = Number(
 const LIVE_CANDIDATE_GROWTH_CHECK_MS = Number(
   process.env.AOE2_LIVE_CANDIDATE_GROWTH_CHECK_MS || 1500
 );
+const DEFAULT_RECOVERY_SCAN_INTERVAL_MS = 10 * 1000;
 const LEGACY_DOMAIN_MIGRATIONS = [
   ["https://api-prodn.aoe2hdbets.com", "https://api-prodn.aoe2war.com"],
   ["https://api.aoe2hdbets.com", "https://api-prodn.aoe2war.com"],
@@ -31,6 +32,8 @@ const LEGACY_DOMAIN_MIGRATIONS = [
 ];
 
 let activeWatcher = null;
+let activeRecoveryScanTimer = null;
+let activeRecoveryScanInFlight = false;
 let activeUploadState = new Map();
 let activePreferredUploadTargetBaseUrl = null;
 let activeLogger = defaultLogger;
@@ -329,6 +332,13 @@ function buildRuntimeConfig(config = {}) {
     firstBytesPollMs: Number(process.env.AOE2_FIRST_BYTES_POLL_MS || 1000),
     replayProgressLogIntervalMs: Number(
       process.env.AOE2_REPLAY_PROGRESS_LOG_INTERVAL_MS || 180000
+    ),
+    recoveryScanIntervalMs: Math.max(
+      2000,
+      Number(
+        process.env.AOE2_RECOVERY_SCAN_INTERVAL_MS ||
+          DEFAULT_RECOVERY_SCAN_INTERVAL_MS
+      )
     ),
     minReplayBytes: Number(process.env.AOE2_MIN_REPLAY_BYTES || 131072),
     watcherUid:
@@ -1709,7 +1719,10 @@ async function onFileDetected(eventType, filePath, runtimeConfig) {
   });
 }
 
-async function scanRecentGrowingReplay(runtimeConfig) {
+async function scanRecentGrowingReplay(
+  runtimeConfig,
+  { emitCompletion = true } = {}
+) {
   let entries;
   try {
     entries = await fs.promises.readdir(runtimeConfig.watchDir, { withFileTypes: true });
@@ -1751,11 +1764,58 @@ async function scanRecentGrowingReplay(runtimeConfig) {
       // Continue to the next conservative candidate.
     }
   }
-  emitRuntimeEvent("initial-replay-scan-complete", {
-    reason: candidates.length > 0 ? "recent_files_not_growing" : "no_recent_replays",
-    found: candidates.length,
-  });
+  if (emitCompletion) {
+    emitRuntimeEvent("initial-replay-scan-complete", {
+      reason: candidates.length > 0 ? "recent_files_not_growing" : "no_recent_replays",
+      found: candidates.length,
+    });
+  }
+
   return false;
+}
+
+async function runRecoveryScan(runtimeConfig) {
+  if (
+    !activeWatcher ||
+    activeRuntimeStatus.activeReplay ||
+    activeRecoveryScanInFlight
+  ) {
+    return false;
+  }
+
+  activeRecoveryScanInFlight = true;
+
+  try {
+    const recovered = await scanRecentGrowingReplay(runtimeConfig, {
+      emitCompletion: false,
+    });
+
+    if (recovered) {
+      log(
+        "Recovery scan found a growing replay that the native directory watcher missed.",
+        "warn"
+      );
+
+      emitRuntimeEvent("watcher-recovery-scan-hit", {
+        reason: "native_event_missed",
+      });
+    }
+
+    return recovered;
+  } catch (error) {
+    log(
+      `Recovery replay scan failed: ${error.message || error}`,
+      "warn"
+    );
+
+    emitRuntimeEvent("watcher-recovery-scan-error", {
+      detail: error.message || String(error),
+    });
+
+    return false;
+  } finally {
+    activeRecoveryScanInFlight = false;
+  }
 }
 
 function createImportItem(filePath, status, detail) {
@@ -2324,6 +2384,13 @@ async function importHistoricalReplays(config = {}, options = {}, hooks = {}) {
 
 
 function stopWatching() {
+  if (activeRecoveryScanTimer) {
+    clearInterval(activeRecoveryScanTimer);
+    activeRecoveryScanTimer = null;
+  }
+
+  activeRecoveryScanInFlight = false;
+
   if (activeWatcher) {
     try {
       activeWatcher.close();
@@ -2464,11 +2531,15 @@ function startWatching(config = {}, hooks = {}) {
 
   void scanRecentGrowingReplay(runtimeConfig);
 
-  setTimeout(() => {
-    if (activeWatcher && !activeRuntimeStatus.activeReplay) {
-      void scanRecentGrowingReplay(runtimeConfig);
-    }
-  }, 10000);
+  activeRecoveryScanTimer = setInterval(() => {
+    void runRecoveryScan(runtimeConfig);
+  }, runtimeConfig.recoveryScanIntervalMs);
+
+  log(
+    `Replay recovery watchdog armed every ${Math.round(
+      runtimeConfig.recoveryScanIntervalMs / 1000
+    )}s for missed CrossOver/native directory events.`
+  );
 
   return activeWatcher;
 }
