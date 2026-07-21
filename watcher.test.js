@@ -6,12 +6,15 @@ const path = require("node:path");
 const test = require("node:test");
 
 const {
+  buildPersistedSettlementState,
   buildReplayReceiptDetail,
   classifyReplayAcceptance,
   getFileFingerprint,
   getReplayContentHash,
   importHistoricalReplays,
   resolveFinalReplayShortCircuit,
+  restorePersistedSettlementState,
+  shouldRecheckKnownFinalFingerprint,
   summarizeUploadResponse,
 } = require("./watcher");
 
@@ -272,4 +275,256 @@ test("batch import never counts a 2xx final_not_ready receipt as result ready", 
   assert.equal(state.recentItems[0]?.status, "review_routed");
   assert.match(state.summaryText, /result ready 0/i);
   assert.match(state.summaryText, /review routed 1/i);
+});
+
+
+test("rechecks an archived unresolved final when its fingerprint changes after monitor exit", () => {
+  const entry = buildEntry({
+    monitoring: false,
+    finalAccepted: false,
+    finalStored: true,
+    lastFinalUploadedFingerprint: "1000:100",
+  });
+
+  assert.equal(
+    shouldRecheckKnownFinalFingerprint(
+      entry,
+      "1100:200"
+    ),
+    true
+  );
+});
+
+
+test("does not recheck a known final when its fingerprint is unchanged", () => {
+  const entry = buildEntry({
+    monitoring: false,
+    finalAccepted: false,
+    finalStored: true,
+    lastFinalUploadedFingerprint: "1000:100",
+  });
+
+  assert.equal(
+    shouldRecheckKnownFinalFingerprint(
+      entry,
+      "1000:100"
+    ),
+    false
+  );
+});
+
+
+test("does not run recovery divergence logic while the replay monitor is already active", () => {
+  const entry = buildEntry({
+    monitoring: true,
+    finalAccepted: false,
+    finalStored: true,
+    lastFinalUploadedFingerprint: "1000:100",
+  });
+
+  assert.equal(
+    shouldRecheckKnownFinalFingerprint(
+      entry,
+      "1100:200"
+    ),
+    false
+  );
+});
+
+
+test("does not treat a never-finalized replay as a known-final divergence", () => {
+  const entry = buildEntry({
+    monitoring: false,
+    finalAccepted: false,
+    finalStored: false,
+    lastFinalUploadedFingerprint: "1000:100",
+  });
+
+  assert.equal(
+    shouldRecheckKnownFinalFingerprint(
+      entry,
+      "1100:200"
+    ),
+    false
+  );
+});
+
+
+test("persists final replay fingerprint and hash across watcher restart", () => {
+  const now = Date.now();
+  const filePath = "/tmp/example-final.aoe2record";
+
+  const state = new Map([
+    [
+      filePath,
+      buildEntry({
+        monitoring: false,
+        finalAccepted: false,
+        finalStored: true,
+        lastObservedFingerprint: "1000:100",
+        lastFinalUploadedFingerprint: "1000:100",
+        lastFinalReplayHash: "a".repeat(64),
+        lastFinalUploadAt: now,
+      }),
+    ],
+  ]);
+
+  const snapshot =
+    buildPersistedSettlementState(
+      state,
+      now
+    );
+
+  const restored =
+    restorePersistedSettlementState(
+      snapshot,
+      {
+        watchDir: "/tmp",
+        now,
+      }
+    );
+
+  const entry =
+    restored.get(filePath);
+
+  assert.ok(entry);
+  assert.equal(
+    entry.finalStored,
+    true
+  );
+  assert.equal(
+    entry.finalAccepted,
+    false
+  );
+  assert.equal(
+    entry.lastFinalUploadedFingerprint,
+    "1000:100"
+  );
+  assert.equal(
+    entry.lastFinalReplayHash,
+    "a".repeat(64)
+  );
+});
+
+
+test("restored final state rechecks changed fingerprint after watcher restart", () => {
+  const now = Date.now();
+  const filePath = "/tmp/example-final.aoe2record";
+
+  const restored =
+    restorePersistedSettlementState(
+      {
+        version: 1,
+        entries: [
+          {
+            filePath,
+            lastObservedFingerprint:
+              "1000:100",
+            lastFinalUploadedFingerprint:
+              "1000:100",
+            lastFinalReplayHash:
+              "b".repeat(64),
+            lastFinalUploadAt:
+              now,
+            finalAccepted:
+              false,
+            finalStored:
+              true,
+          },
+        ],
+      },
+      {
+        watchDir: "/tmp",
+        now,
+      }
+    );
+
+  const entry =
+    restored.get(filePath);
+
+  assert.ok(entry);
+
+  assert.equal(
+    shouldRecheckKnownFinalFingerprint(
+      entry,
+      "1100:200"
+    ),
+    true
+  );
+});
+
+
+test("does not restore stale persisted final state", () => {
+  const now = Date.now();
+  const filePath = "/tmp/stale-final.aoe2record";
+
+  const restored =
+    restorePersistedSettlementState(
+      {
+        version: 1,
+        entries: [
+          {
+            filePath,
+            lastFinalUploadedFingerprint:
+              "1000:100",
+            lastFinalReplayHash:
+              "c".repeat(64),
+            lastFinalUploadAt:
+              now -
+              120 * 24 * 60 * 60 * 1000,
+            finalAccepted:
+              false,
+            finalStored:
+              true,
+          },
+        ],
+      },
+      {
+        watchDir: "/tmp",
+        now,
+      }
+    );
+
+  assert.equal(
+    restored.size,
+    0
+  );
+});
+
+
+test("does not restore persisted final state outside active watch directory", () => {
+  const now = Date.now();
+
+  const restored =
+    restorePersistedSettlementState(
+      {
+        version: 1,
+        entries: [
+          {
+            filePath:
+              "/somewhere-else/game.aoe2record",
+            lastFinalUploadedFingerprint:
+              "1000:100",
+            lastFinalReplayHash:
+              "d".repeat(64),
+            lastFinalUploadAt:
+              now,
+            finalAccepted:
+              true,
+            finalStored:
+              true,
+          },
+        ],
+      },
+      {
+        watchDir:
+          "/tmp/aoe2-savegame",
+        now,
+      }
+    );
+
+  assert.equal(
+    restored.size,
+    0
+  );
 });

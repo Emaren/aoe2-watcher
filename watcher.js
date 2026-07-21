@@ -24,6 +24,10 @@ const LIVE_CANDIDATE_GROWTH_CHECK_MS = Number(
   process.env.AOE2_LIVE_CANDIDATE_GROWTH_CHECK_MS || 1500
 );
 const DEFAULT_RECOVERY_SCAN_INTERVAL_MS = 10 * 1000;
+const SETTLEMENT_STATE_VERSION = 1;
+const SETTLEMENT_STATE_MAX_ENTRIES = 5000;
+const SETTLEMENT_STATE_MAX_AGE_MS =
+  90 * 24 * 60 * 60 * 1000;
 const LEGACY_DOMAIN_MIGRATIONS = [
   ["https://api-prodn.aoe2hdbets.com", "https://api-prodn.aoe2war.com"],
   ["https://api.aoe2hdbets.com", "https://api-prodn.aoe2war.com"],
@@ -35,6 +39,7 @@ let activeWatcher = null;
 let activeRecoveryScanTimer = null;
 let activeRecoveryScanInFlight = false;
 let activeUploadState = new Map();
+let activeSettlementStatePath = null;
 let activePreferredUploadTargetBaseUrl = null;
 let activeLogger = defaultLogger;
 let activeEventHook = () => {};
@@ -112,7 +117,10 @@ function emitRuntimeEvent(type, payload = {}) {
     activeRuntimeStatus.lastReplayUploadStatus = type === "upload-success" ? "succeeded" : "failed";
     activeRuntimeStatus.repeatedUploadErrors =
       type === "upload-success" ? 0 : activeRuntimeStatus.repeatedUploadErrors + 1;
-  } else if (type === "final-candidate-accepted" || type === "monitor-stop") {
+  } else if (
+    type === "final-settle-observation-complete" ||
+    type === "monitor-stop"
+  ) {
     activeRuntimeStatus.activeReplay = false;
   }
 
@@ -350,6 +358,10 @@ function buildRuntimeConfig(config = {}) {
         .slice(0, 12)}`,
     watcherId: config.watcherId || process.env.AOE2_WATCHER_ID || null,
     appSessionId: config.appSessionId || process.env.AOE2_WATCHER_SESSION_ID || null,
+    settlementStatePath:
+      config.settlementStatePath ||
+      process.env.AOE2_SETTLEMENT_STATE_PATH ||
+      null,
   };
 }
 
@@ -416,33 +428,327 @@ async function getReplayContentHash(filePath) {
   });
 }
 
+function createStateEntry(patch = {}) {
+  return {
+    monitoring: false,
+    importing: false,
+    lastObservedFingerprint: null,
+    lastChangeAt: 0,
+    lastLiveAttemptAt: 0,
+    lastLiveUploadAt: 0,
+    lastLiveUploadedFingerprint: null,
+    lastFinalUploadedFingerprint: null,
+    lastFinalReplayHash: null,
+    lastFinalUploadAt: 0,
+    lastFinalCandidateAt: 0,
+    lastFinalCandidateFingerprint: null,
+    lastFinalDeferralReason: null,
+    lastFinalDeferralNoticeAt: 0,
+    lastReplayGrowthNoticeAt: 0,
+    monitorStartedAt: 0,
+    finalAccepted: false,
+    finalStored: false,
+    liveIteration: 0,
+    ...patch,
+  };
+}
+
 function getStateEntry(filePath) {
   let entry = activeUploadState.get(filePath);
+
   if (!entry) {
-    entry = {
-      monitoring: false,
-      importing: false,
-      lastObservedFingerprint: null,
-      lastChangeAt: 0,
-      lastLiveAttemptAt: 0,
-      lastLiveUploadAt: 0,
-      lastLiveUploadedFingerprint: null,
-      lastFinalUploadedFingerprint: null,
-      lastFinalReplayHash: null,
-      lastFinalUploadAt: 0,
-      lastFinalCandidateAt: 0,
-      lastFinalCandidateFingerprint: null,
-      lastFinalDeferralReason: null,
-      lastFinalDeferralNoticeAt: 0,
-      lastReplayGrowthNoticeAt: 0,
-      monitorStartedAt: 0,
-      finalAccepted: false,
-      finalStored: false,
-      liveIteration: 0,
-    };
-    activeUploadState.set(filePath, entry);
+    entry = createStateEntry();
+
+    activeUploadState.set(
+      filePath,
+      entry
+    );
   }
+
   return entry;
+}
+
+function shouldPersistSettlementEntry(
+  entry
+) {
+  return Boolean(
+    entry &&
+      (entry.finalAccepted ||
+        entry.finalStored) &&
+      (entry.lastFinalUploadedFingerprint ||
+        entry.lastFinalReplayHash) &&
+      Number(entry.lastFinalUploadAt || 0) >
+        0
+  );
+}
+
+function buildPersistedSettlementState(
+  stateMap = activeUploadState,
+  now = Date.now()
+) {
+  const entries = [];
+
+  for (
+    const [filePath, entry] of stateMap
+  ) {
+    if (
+      !shouldPersistSettlementEntry(
+        entry
+      )
+    ) {
+      continue;
+    }
+
+    if (
+      now -
+        Number(
+          entry.lastFinalUploadAt || 0
+        ) >
+      SETTLEMENT_STATE_MAX_AGE_MS
+    ) {
+      continue;
+    }
+
+    entries.push({
+      filePath,
+      lastObservedFingerprint:
+        entry.lastObservedFingerprint ||
+        null,
+      lastChangeAt:
+        Number(entry.lastChangeAt || 0),
+      lastFinalUploadedFingerprint:
+        entry.lastFinalUploadedFingerprint ||
+        null,
+      lastFinalReplayHash:
+        entry.lastFinalReplayHash ||
+        null,
+      lastFinalUploadAt:
+        Number(
+          entry.lastFinalUploadAt || 0
+        ),
+      finalAccepted:
+        Boolean(entry.finalAccepted),
+      finalStored:
+        Boolean(entry.finalStored),
+    });
+  }
+
+  entries.sort(
+    (left, right) =>
+      right.lastFinalUploadAt -
+      left.lastFinalUploadAt
+  );
+
+  return {
+    version:
+      SETTLEMENT_STATE_VERSION,
+    updatedAt:
+      new Date(now).toISOString(),
+    entries:
+      entries.slice(
+        0,
+        SETTLEMENT_STATE_MAX_ENTRIES
+      ),
+  };
+}
+
+function restorePersistedSettlementState(
+  snapshot,
+  {
+    watchDir = null,
+    now = Date.now(),
+  } = {}
+) {
+  let parsed = snapshot;
+
+  if (typeof parsed === "string") {
+    parsed = JSON.parse(parsed);
+  }
+
+  const restored = new Map();
+
+  if (
+    !parsed ||
+    typeof parsed !== "object" ||
+    !Array.isArray(parsed.entries)
+  ) {
+    return restored;
+  }
+
+  const root = watchDir
+    ? path.resolve(watchDir)
+    : null;
+
+  for (const saved of parsed.entries) {
+    const filePath =
+      typeof saved?.filePath ===
+      "string"
+        ? saved.filePath
+        : null;
+
+    if (!filePath) {
+      continue;
+    }
+
+    if (root) {
+      const relative =
+        path.relative(
+          root,
+          path.resolve(filePath)
+        );
+
+      if (
+        relative.startsWith("..") ||
+        path.isAbsolute(relative)
+      ) {
+        continue;
+      }
+    }
+
+    const lastFinalUploadAt =
+      Number(
+        saved.lastFinalUploadAt || 0
+      );
+
+    if (
+      lastFinalUploadAt <= 0 ||
+      now - lastFinalUploadAt >
+        SETTLEMENT_STATE_MAX_AGE_MS
+    ) {
+      continue;
+    }
+
+    const entry =
+      createStateEntry({
+        lastObservedFingerprint:
+          saved.lastObservedFingerprint ||
+          null,
+        lastChangeAt:
+          Number(
+            saved.lastChangeAt || 0
+          ),
+        lastFinalUploadedFingerprint:
+          saved.lastFinalUploadedFingerprint ||
+          null,
+        lastFinalReplayHash:
+          saved.lastFinalReplayHash ||
+          null,
+        lastFinalUploadAt,
+        finalAccepted:
+          Boolean(
+            saved.finalAccepted
+          ),
+        finalStored:
+          Boolean(saved.finalStored),
+      });
+
+    if (
+      shouldPersistSettlementEntry(
+        entry
+      )
+    ) {
+      restored.set(
+        filePath,
+        entry
+      );
+    }
+  }
+
+  return restored;
+}
+
+function persistSettlementState() {
+  if (!activeSettlementStatePath) {
+    return;
+  }
+
+  try {
+    const snapshot =
+      buildPersistedSettlementState();
+
+    fs.mkdirSync(
+      path.dirname(
+        activeSettlementStatePath
+      ),
+      {
+        recursive: true,
+      }
+    );
+
+    const tempPath =
+      `${activeSettlementStatePath}.tmp-${process.pid}`;
+
+    fs.writeFileSync(
+      tempPath,
+      `${JSON.stringify(
+        snapshot,
+        null,
+        2
+      )}\n`,
+      "utf8"
+    );
+
+    fs.renameSync(
+      tempPath,
+      activeSettlementStatePath
+    );
+  } catch (error) {
+    log(
+      `Unable to persist replay settlement state: ${
+        error.message || error
+      }`,
+      "warn"
+    );
+  }
+}
+
+function loadSettlementState(
+  statePath,
+  watchDir
+) {
+  if (
+    !statePath ||
+    !fs.existsSync(statePath)
+  ) {
+    return 0;
+  }
+
+  try {
+    const raw =
+      fs.readFileSync(
+        statePath,
+        "utf8"
+      );
+
+    const restored =
+      restorePersistedSettlementState(
+        raw,
+        {
+          watchDir,
+        }
+      );
+
+    for (
+      const [filePath, entry] of
+      restored
+    ) {
+      activeUploadState.set(
+        filePath,
+        entry
+      );
+    }
+
+    return restored.size;
+  } catch (error) {
+    log(
+      `Unable to restore replay settlement state: ${
+        error.message || error
+      }`,
+      "warn"
+    );
+
+    return 0;
+  }
 }
 
 function formatResponseBody(data) {
@@ -964,6 +1270,8 @@ async function resolveFinalReplayShortCircuit(
   entry.lastFinalUploadedFingerprint = nextFingerprint;
   entry.lastChangeAt = now;
 
+  persistSettlementState();
+
   return {
     reason: "settled_replay_hash",
     fingerprint: nextFingerprint,
@@ -1162,6 +1470,10 @@ async function uploadReplayWithRetry(
           entry,
           attemptFingerprint
         );
+
+        if (finalStored) {
+          persistSettlementState();
+        }
 
         log(`Uploaded (${res.status}): ${path.basename(filePath)}${detail ? ` - ${detail}` : ""}`);
 
@@ -1411,6 +1723,9 @@ async function reopenFinalIfReplayGrew(filePath, entry, fingerprint) {
       if (contentHash === entry.lastFinalReplayHash) {
         entry.lastObservedFingerprint = fingerprint;
         entry.lastFinalUploadedFingerprint = fingerprint;
+
+        persistSettlementState();
+
         return false;
       }
     } catch (error) {
@@ -1434,6 +1749,9 @@ async function reopenFinalIfReplayGrew(filePath, entry, fingerprint) {
   entry.lastFinalReplayHash = null;
   entry.lastFinalUploadAt = 0;
   entry.lastFinalCandidateFingerprint = null;
+
+  persistSettlementState();
+
   return true;
 }
 
@@ -1542,6 +1860,18 @@ async function monitorReplayFile(filePath, runtimeConfig) {
 
       if (hasSettledReplayFingerprint(entry, fingerprint, runtimeConfig, now)) {
         log(`Monitor loop complete for ${path.basename(filePath)}. Replay is fully settled.`);
+
+        emitRuntimeEvent("final-settle-observation-complete", {
+          filePath,
+          fileName: path.basename(filePath),
+          replayHash: entry.lastFinalReplayHash || null,
+          finalAccepted: entry.finalAccepted,
+          finalStored: entry.finalStored,
+          settleWindowMs: runtimeConfig.finalSettleWindowMs,
+          fingerprint,
+          ...parseFingerprintParts(fingerprint),
+        });
+
         return;
       }
 
@@ -1640,7 +1970,25 @@ async function monitorReplayFile(filePath, runtimeConfig) {
         });
 
         if (stored.ok && stored.finalStored && !stored.changedDuringUpload) {
-          return;
+          log(
+            `Final replay stored for ${path.basename(
+              filePath
+            )}. Continuing byte observation for up to ${Math.round(
+              runtimeConfig.finalSettleWindowMs / 1000
+            )}s before declaring the replay fully settled.`
+          );
+
+          emitRuntimeEvent("final-settle-observation-started", {
+            filePath,
+            fileName: path.basename(filePath),
+            replayHash: stored.replayHash || entry.lastFinalReplayHash || null,
+            finalAccepted: stored.finalAccepted,
+            finalStored: stored.finalStored,
+            resultReady: stored.resultReady,
+            settleWindowMs: runtimeConfig.finalSettleWindowMs,
+            fingerprint: entry.lastFinalUploadedFingerprint,
+            ...parseFingerprintParts(entry.lastFinalUploadedFingerprint),
+          });
         }
       }
 
@@ -1719,6 +2067,18 @@ async function onFileDetected(eventType, filePath, runtimeConfig) {
   });
 }
 
+function shouldRecheckKnownFinalFingerprint(entry, fingerprint) {
+  return Boolean(
+    entry &&
+      !entry.monitoring &&
+      (entry.finalAccepted || entry.finalStored) &&
+      entry.lastFinalUploadedFingerprint &&
+      fingerprint &&
+      fingerprint !== entry.lastFinalUploadedFingerprint
+  );
+}
+
+
 async function scanRecentGrowingReplay(
   runtimeConfig,
   { emitCompletion = true } = {}
@@ -1739,13 +2099,100 @@ async function scanRecentGrowingReplay(
     if (!shouldHandle(filePath, runtimeConfig)) continue;
     try {
       const stats = await fs.promises.stat(filePath);
-      if (stats.mtimeMs >= cutoff) candidates.push({ filePath, size: stats.size, mtimeMs: stats.mtimeMs });
+
+      const fingerprint =
+        `${stats.size}:${Math.floor(stats.mtimeMs)}`;
+
+      const knownFinalChanged =
+        shouldRecheckKnownFinalFingerprint(
+          activeUploadState.get(filePath),
+          fingerprint
+        );
+
+      if (
+        stats.mtimeMs >= cutoff ||
+        knownFinalChanged
+      ) {
+        candidates.push({
+          filePath,
+          size: stats.size,
+          mtimeMs: stats.mtimeMs,
+          fingerprint,
+        });
+      }
     } catch {
       // A game may replace the file between directory scan and stat.
     }
   }
 
   candidates.sort((left, right) => right.mtimeMs - left.mtimeMs);
+
+  //
+  // A finalized replay may receive one late write after the monitor has
+  // already exited. Native filesystem notifications are best-effort, and
+  // the old recovery path only detected files that happened to be growing
+  // during its 1.5-second sampling window.
+  //
+  // First compare every recent replay that has known final state against
+  // the fingerprint we actually uploaded. A fingerprint divergence is
+  // rechecked through resolveFinalReplayShortCircuit(), which performs the
+  // stronger content-hash comparison:
+  //
+  //   same bytes, touched metadata -> normalize state and skip
+  //   different bytes             -> reopen monitoring
+  //
+  for (const candidate of candidates) {
+    const entry = activeUploadState.get(candidate.filePath);
+
+    if (!shouldRecheckKnownFinalFingerprint(entry, candidate.fingerprint)) {
+      continue;
+    }
+
+    const finalReplayShortCircuit = await resolveFinalReplayShortCircuit(
+      candidate.filePath,
+      entry,
+      runtimeConfig,
+      {
+        fingerprint: candidate.fingerprint,
+      }
+    );
+
+    if (finalReplayShortCircuit) {
+      continue;
+    }
+
+    log(
+      `Recovery scan found changed bytes after final storage for ${path.basename(
+        candidate.filePath
+      )}. Reopening replay monitoring.`,
+      "warn"
+    );
+
+    emitRuntimeEvent("final-replay-change-recovered", {
+      filePath: candidate.filePath,
+      fileName: path.basename(candidate.filePath),
+      reason: "known_final_fingerprint_changed",
+      previousReplayHash: entry.lastFinalReplayHash || null,
+      previousFinalFingerprint: entry.lastFinalUploadedFingerprint,
+      fingerprint: candidate.fingerprint,
+      fileSizeBytes: candidate.size,
+      mtimeMs: Math.floor(candidate.mtimeMs),
+      ...parseFingerprintParts(candidate.fingerprint),
+    });
+
+    await onFileDetected(
+      "recovery-scan",
+      candidate.filePath,
+      runtimeConfig
+    );
+
+    return true;
+  }
+
+  //
+  // Preserve the original conservative path for newly discovered replays
+  // that have no prior in-memory final state.
+  //
   for (const candidate of candidates.slice(0, 3)) {
     await sleep(LIVE_CANDIDATE_GROWTH_CHECK_MS);
     try {
@@ -1792,12 +2239,12 @@ async function runRecoveryScan(runtimeConfig) {
 
     if (recovered) {
       log(
-        "Recovery scan found a growing replay that the native directory watcher missed.",
+        "Recovery scan found replay bytes that require renewed monitoring.",
         "warn"
       );
 
       emitRuntimeEvent("watcher-recovery-scan-hit", {
-        reason: "native_event_missed",
+        reason: "replay_change_recovered",
       });
     }
 
@@ -2403,6 +2850,7 @@ function stopWatching() {
   activeWatcher = null;
   activeRuntimeStatus.monitorAttached = false;
   activeUploadState = new Map();
+  activeSettlementStatePath = null;
   activePreferredUploadTargetBaseUrl = null;
   emitRuntimeEvent("watching-stopped", {});
 }
@@ -2433,6 +2881,36 @@ function startWatching(config = {}, hooks = {}) {
     });
     return null;
   }
+
+  activeSettlementStatePath =
+    runtimeConfig.settlementStatePath ||
+    null;
+
+  const restoredSettlementEntries =
+    loadSettlementState(
+      activeSettlementStatePath,
+      runtimeConfig.watchDir
+    );
+
+  log(
+    `Restored ${restoredSettlementEntries} persisted final replay state entr${
+      restoredSettlementEntries === 1
+        ? "y"
+        : "ies"
+    }.`
+  );
+
+  emitRuntimeEvent(
+    "settlement-state-restored",
+    {
+      restoredEntries:
+        restoredSettlementEntries,
+      persistenceEnabled:
+        Boolean(
+          activeSettlementStatePath
+        ),
+    }
+  );
 
   log(`Watching directory: ${runtimeConfig.watchDir}`);
   log(
@@ -2545,7 +3023,10 @@ function startWatching(config = {}, hooks = {}) {
 }
 
 module.exports = {
+  buildPersistedSettlementState,
   buildRuntimeConfig,
+  restorePersistedSettlementState,
+  shouldRecheckKnownFinalFingerprint,
   buildReplayReceiptDetail,
   classifyUploadResult,
   classifyReplayAcceptance,

@@ -1,6 +1,6 @@
 {
   "name": "aoe2-watcher",
-  "version": "1.5.5",
+  "version": "1.5.6",
   "description": "AoE2HDBets Replay Watcher",
   "author": "AoE2HDBets",
   "license": "ISC",
@@ -8,7 +8,7 @@
   "productName": "AoE2HDBets Watcher",
   "scripts": {
     "start": "electron main.js",
-    "lint": "node --check main.js && node --check watcher.js && node --check renderer.js && node --check preload.js",
+    "lint": "node --check main.js && node --check watcher.js && node --check telemetryQueue.js && node --check renderer.js && node --check preload.js",
     "test": "node --test watcher.test.js tests/*.test.js",
     "build": "electron-builder",
     "pack": "electron-builder --dir",
@@ -34,6 +34,7 @@
     },
     "files": [
       "main.js",
+      "telemetryQueue.js",
       "watcher.js",
       "streamHandoff.js",
       "preload.js",

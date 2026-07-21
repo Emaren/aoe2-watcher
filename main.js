@@ -17,6 +17,9 @@ const {
 } = require("electron");
 const { autoUpdater } = require("electron-updater");
 const { version: WATCHER_VERSION } = require("./package.json");
+const {
+  createDurableTelemetryQueue,
+} = require("./telemetryQueue");
 
 const {
   detectReplayFolder,
@@ -58,6 +61,18 @@ const STREAM_HANDOFF_CLEAR_EVENTS = new Set([
 ]);
 const TELEMETRY_HEARTBEAT_MS = Number(process.env.AOE2_TELEMETRY_HEARTBEAT_MS || 60 * 1000);
 const TELEMETRY_TIMEOUT_MS = Number(process.env.AOE2_TELEMETRY_TIMEOUT_MS || 5000);
+const TELEMETRY_QUEUE_MAX_ENTRIES = Number(
+  process.env.AOE2_TELEMETRY_QUEUE_MAX_ENTRIES ||
+    1000
+);
+const TELEMETRY_QUEUE_MAX_AGE_MS = Number(
+  process.env.AOE2_TELEMETRY_QUEUE_MAX_AGE_MS ||
+    7 * 24 * 60 * 60 * 1000
+);
+const RUNTIME_EVENT_JOURNAL_MAX_BYTES = Number(
+  process.env.AOE2_RUNTIME_EVENT_JOURNAL_MAX_BYTES ||
+    5 * 1024 * 1024
+);
 const RELEASE_CHECK_TIMEOUT_MS = Number(process.env.AOE2_RELEASE_CHECK_TIMEOUT_MS || 5000);
 const AUTO_UPDATE_FEED_URL = process.env.AOE2_UPDATE_FEED_URL || "https://aoe2war.com/downloads";
 const MAC_AUTO_UPDATE_ENABLED = process.env.AOE2_ENABLE_MAC_AUTO_UPDATE === "1";
@@ -71,6 +86,7 @@ let rendererReady = false;
 let pendingPairingUrl = null;
 let currentImportState = createImportStateFromSummary();
 let heartbeatTimer = null;
+let durableTelemetryQueue = null;
 let releaseState = createReleaseState();
 let updateState = createUpdateState();
 let updateCheckInFlight = false;
@@ -1105,26 +1121,212 @@ function normalizeRuntimeEventType(type) {
     .slice(0, 40);
 }
 
-async function postWatcherTelemetry(eventType, payload = {}, { wait = false, config = loadConfig() } = {}) {
-  const baseUrl = getTelemetryBaseUrl(config);
+function isRetryableTelemetryError(
+  error
+) {
+  const status =
+    error?.response?.status;
+
+  if (!error?.response) {
+    return true;
+  }
+
+  return (
+    status === 408 ||
+    status === 425 ||
+    status === 429 ||
+    status >= 500
+  );
+}
+
+function getDurableTelemetryQueue() {
+  if (!app.isReady()) {
+    return null;
+  }
+
+  if (!durableTelemetryQueue) {
+    durableTelemetryQueue =
+      createDurableTelemetryQueue({
+        filePath: path.join(
+          app.getPath("userData"),
+          "watcher-telemetry-queue.json"
+        ),
+        maxEntries:
+          TELEMETRY_QUEUE_MAX_ENTRIES,
+        maxAgeMs:
+          TELEMETRY_QUEUE_MAX_AGE_MS,
+      });
+  }
+
+  return durableTelemetryQueue;
+}
+
+async function flushWatcherTelemetryQueue(
+  config = loadConfig()
+) {
+  const queue =
+    getDurableTelemetryQueue();
+
+  const baseUrl =
+    getTelemetryBaseUrl(config);
+
+  if (!queue || !baseUrl) {
+    return null;
+  }
+
+  const result =
+    await queue.flush(
+      async (entry) => {
+        try {
+          await axios.post(
+            `${baseUrl}/api/watcher/events`,
+            entry.payload,
+            {
+              timeout:
+                TELEMETRY_TIMEOUT_MS,
+              headers: {
+                "content-type":
+                  "application/json",
+                ...(config.uploadApiKey
+                  ? {
+                      "x-api-key":
+                        config.uploadApiKey,
+                    }
+                  : {}),
+              },
+            }
+          );
+
+          return {
+            ok: true,
+          };
+        } catch (error) {
+          return {
+            ok: false,
+            retryable:
+              isRetryableTelemetryError(
+                error
+              ),
+          };
+        }
+      },
+      {
+        limit: 100,
+      }
+    );
+
+  if (
+    result.delivered > 0 ||
+    result.dropped > 0
+  ) {
+    console.log(
+      `Watcher telemetry queue flush: delivered=${result.delivered} dropped=${result.dropped} remaining=${result.remaining}`
+    );
+  }
+
+  return result;
+}
+
+async function postWatcherTelemetry(
+  eventType,
+  payload = {},
+  {
+    wait = false,
+    config = loadConfig(),
+  } = {}
+) {
+  const baseUrl =
+    getTelemetryBaseUrl(config);
+
   if (!baseUrl) {
     return null;
   }
 
-  const request = axios
-    .post(`${baseUrl}/api/watcher/events`, buildTelemetryPayload(eventType, payload, config), {
-      timeout: TELEMETRY_TIMEOUT_MS,
-      headers: {
-        "content-type": "application/json",
-        ...(config.uploadApiKey ? { "x-api-key": config.uploadApiKey } : {}),
+  const telemetryEventId =
+    createRandomId("telemetry");
+
+  const telemetryPayload =
+    buildTelemetryPayload(
+      eventType,
+      {
+        ...payload,
+        metadata: {
+          ...(payload.metadata || {}),
+          telemetryEventId,
+        },
       },
-    })
-    .then((response) => response.data)
-    .catch((error) => {
-      const detail = error?.response?.status
-        ? `${error.response.status} ${error.response.statusText || ""}`.trim()
-        : error.message || "network error";
-      console.warn(`Watcher telemetry ${eventType} failed: ${detail}`);
+      config
+    );
+
+  const request = axios
+    .post(
+      `${baseUrl}/api/watcher/events`,
+      telemetryPayload,
+      {
+        timeout:
+          TELEMETRY_TIMEOUT_MS,
+        headers: {
+          "content-type":
+            "application/json",
+          ...(config.uploadApiKey
+            ? {
+                "x-api-key":
+                  config.uploadApiKey,
+              }
+            : {}),
+        },
+      }
+    )
+    .then(
+      (response) =>
+        response.data
+    )
+    .catch(async (error) => {
+      const detail =
+        error?.response?.status
+          ? `${error.response.status} ${
+              error.response.statusText ||
+              ""
+            }`.trim()
+          : error.message ||
+            "network error";
+
+      const retryable =
+        isRetryableTelemetryError(
+          error
+        );
+
+      if (retryable) {
+        const queue =
+          getDurableTelemetryQueue();
+
+        if (queue) {
+          const queued =
+            await queue.enqueue({
+              id: telemetryEventId,
+              eventType,
+              payload:
+                telemetryPayload,
+              queuedAtMs:
+                Date.now(),
+            });
+
+          console.warn(
+            `Watcher telemetry ${eventType} failed: ${detail}; queued for retry (${queued} pending).`
+          );
+
+          return null;
+        }
+      }
+
+      console.warn(
+        `Watcher telemetry ${eventType} failed: ${detail}${
+          retryable
+            ? ""
+            : "; non-retryable response, not queued"
+        }`
+      );
+
       return null;
     });
 
@@ -1133,6 +1335,7 @@ async function postWatcherTelemetry(eventType, payload = {}, { wait = false, con
   }
 
   void request;
+
   return null;
 }
 
@@ -1170,9 +1373,16 @@ function startTelemetryHeartbeat() {
   }
 
   heartbeatTimer = setInterval(() => {
+    const config = loadConfig();
+
     emitWatcherTelemetry("heartbeat", {
-      metadata: buildRuntimeMetadata(loadConfig()),
+      metadata:
+        buildRuntimeMetadata(config),
     });
+
+    void flushWatcherTelemetryQueue(
+      config
+    );
   }, TELEMETRY_HEARTBEAT_MS);
 }
 
@@ -1682,7 +1892,78 @@ function emitTelemetryForRuntimeEvent(event) {
   }
 }
 
+function appendRuntimeEventJournal(
+  event
+) {
+  if (
+    !app.isReady() ||
+    !event ||
+    typeof event !== "object"
+  ) {
+    return;
+  }
+
+  try {
+    const journalPath =
+      path.join(
+        app.getPath("userData"),
+        "watcher-runtime-events.jsonl"
+      );
+
+    fs.mkdirSync(
+      path.dirname(journalPath),
+      {
+        recursive: true,
+      }
+    );
+
+    if (
+      fs.existsSync(journalPath) &&
+      fs.statSync(journalPath).size >
+        RUNTIME_EVENT_JOURNAL_MAX_BYTES
+    ) {
+      const rotated =
+        `${journalPath}.1`;
+
+      try {
+        fs.rmSync(
+          rotated,
+          {
+            force: true,
+          }
+        );
+      } catch {}
+
+      fs.renameSync(
+        journalPath,
+        rotated
+      );
+    }
+
+    fs.appendFileSync(
+      journalPath,
+      `${JSON.stringify({
+        recordedAt:
+          new Date().toISOString(),
+        appVersion:
+          WATCHER_VERSION,
+        sessionId:
+          APP_SESSION_ID,
+        ...event,
+      })}\n`,
+      "utf8"
+    );
+  } catch (error) {
+    console.warn(
+      `Watcher runtime journal failed: ${
+        error.message || error
+      }`
+    );
+  }
+}
+
 function handleWatcherRuntimeEvent(event) {
+  appendRuntimeEventJournal(event);
   updateStreamHandoffFromRuntimeEvent(event);
   sendToRenderer("watcher:runtime-event", event);
   emitTelemetryForRuntimeEvent(event);
@@ -1811,6 +2092,11 @@ function startCurrentWatcher(
   const runtimeConfig = {
     ...config,
     appSessionId: APP_SESSION_ID,
+    settlementStatePath:
+      path.join(
+        app.getPath("userData"),
+        "replay-settlement-state.json"
+      ),
   };
 
   watcherHandle = startWatching(runtimeConfig, {
@@ -2335,6 +2621,9 @@ function bootWatcherApp() {
     void refreshWatcherRelease(config);
     void checkForWatcherUpdates({ config });
     startTelemetryHeartbeat();
+    void flushWatcherTelemetryQueue(
+      config
+    );
     startMonitorWatchdog();
 
     const pairedFromUrl = processPendingPairingUrl();
@@ -2379,8 +2668,30 @@ if (!gotSingleInstanceLock) {
   app.whenReady().then(() => {
     bootWatcherApp();
     powerMonitor.on("resume", () => {
-      emitWatcherTelemetry("system_resumed", { metadata: buildRuntimeMetadata(loadConfig()) });
-      setTimeout(() => safelyReattachMonitor("system_resume"), 1500);
+      const config =
+        loadConfig();
+
+      emitWatcherTelemetry(
+        "system_resumed",
+        {
+          metadata:
+            buildRuntimeMetadata(
+              config
+            ),
+        }
+      );
+
+      void flushWatcherTelemetryQueue(
+        config
+      );
+
+      setTimeout(
+        () =>
+          safelyReattachMonitor(
+            "system_resume"
+          ),
+        1500
+      );
     });
   });
 
