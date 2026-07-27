@@ -1,0 +1,14 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: aoe2-watcher
+  title: AoE2WAR Desktop Watcher
+  annotations:
+    backstage.io/techdocs-ref: dir:.
+spec:
+  type: application
+  lifecycle: production
+  owner: group:default/aoe2war-watcher
+  system: aoe2war
+  dependsOn:
+    - component:default/api-prodn

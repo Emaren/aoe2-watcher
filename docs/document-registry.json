@@ -1,0 +1,57 @@
+{
+  "documents": [
+    {
+      "audience": [
+        "developers",
+        "operators",
+        "ai-agents"
+      ],
+      "authority": "repository-entrypoint",
+      "id": "aoe2war.aoe2-watcher.readme",
+      "owner": "aoe2war-watcher",
+      "path": "README.md",
+      "review_interval_days": 60,
+      "reviewed_at": "2026-07-26",
+      "sensitivity": "internal",
+      "sha256": "7cdc2fc48cb245a647d192025c2e584d7cc7ba27a3cde76355ac37c7447a4b57",
+      "source_of_truth": "git",
+      "status": "active",
+      "systems": [
+        "aoe2-watcher",
+        "api-prodn"
+      ],
+      "title": "aoe2-watcher",
+      "type": "reference"
+    },
+    {
+      "audience": [
+        "developers",
+        "operators",
+        "ai-agents"
+      ],
+      "authority": "generated-repository-index",
+      "id": "aoe2war.aoe2-watcher.docs-documentation-control-plane",
+      "owner": "aoe2war-watcher",
+      "path": "docs/DOCUMENTATION_CONTROL_PLANE.md",
+      "review_interval_days": 0,
+      "reviewed_at": "2026-07-26",
+      "sensitivity": "internal",
+      "sha256": "2f454cf155f6c10ef928f0fa24e18e6a8bb28c2e09201b85a67a8e3436a0f43e",
+      "source_of_truth": "generated",
+      "status": "generated",
+      "systems": [
+        "aoe2-watcher"
+      ],
+      "title": "aoe2-watcher Documentation Index",
+      "type": "generated"
+    }
+  ],
+  "generated_at": "2026-07-26T22:17:27.403460+00:00",
+  "implementation_baseline": {
+    "branch": "release/watcher-1.5.6-20260720-200245",
+    "commit": "377920af9874a0bfc4e1f1b978d801cf4cfe3c70"
+  },
+  "owner": "aoe2war-watcher",
+  "repo": "aoe2-watcher",
+  "schema_version": "2.1.0"
+}

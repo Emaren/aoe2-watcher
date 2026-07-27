@@ -1,3 +1,18 @@
+---
+id: "aoe2war.aoe2-watcher.readme"
+title: "aoe2-watcher"
+type: "reference"
+status: "active"
+owner: "aoe2war-watcher"
+systems: ["aoe2-watcher","api-prodn"]
+audience: ["developers","operators","ai-agents"]
+source_of_truth: "git"
+authority: "repository-entrypoint"
+reviewed_at: "2026-07-26"
+review_interval_days: 60
+sensitivity: "internal"
+---
+
 # aoe2-watcher
 
 ## v1.5.4 reliability contract
