@@ -15,6 +15,12 @@ sensitivity: "internal"
 
 # aoe2-watcher
 
+## v1.5.7 upload snapshot contract
+
+v1.5.7 binds every upload request to one immutable in-memory replay snapshot. The request body, `Content-Length`, `x-file-size-bytes`, and replay fingerprint are all derived from the same captured bytes, so AoE2HD may continue appending to the source replay without causing a false `409 Replay changed while it was being uploaded` mismatch. After upload, the watcher rechecks the source fingerprint and schedules the next live iteration when growth continued.
+
+Upload queue telemetry now counts one logical live/final upload per replay. Retries and fallback targets reuse that queue position instead of inflating `uploadQueueLength`.
+
 ## v1.5.4 reliability contract
 
 Connection and replay monitoring are independent states. A heartbeat proves connection only. v1.5.4 heartbeats additionally report monitor attachment, HD-folder validity/classification, recent folder activity, current replay basename/size/change time, replay detection/upload state, queue depth, batch state, stream state, version, platform, watcher ID, and session ID. Full filesystem paths and replay contents are not sent as telemetry.

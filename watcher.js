@@ -39,6 +39,7 @@ let activeWatcher = null;
 let activeRecoveryScanTimer = null;
 let activeRecoveryScanInFlight = false;
 let activeUploadState = new Map();
+let activeUploadKeys = new Set();
 let activeSettlementStatePath = null;
 let activePreferredUploadTargetBaseUrl = null;
 let activeLogger = defaultLogger;
@@ -84,6 +85,15 @@ function log(message, level = "info") {
   activeLogger(message, level);
 }
 
+function getUploadQueueKey(payload = {}) {
+  const fileKey =
+    payload.filePath ||
+    payload.fileName ||
+    "unknown";
+
+  return `${fileKey}:${payload.isFinal ? "final" : "live"}`;
+}
+
 function emitRuntimeEvent(type, payload = {}) {
   const occurredAt = new Date().toISOString();
   if (type === "watching-started") {
@@ -106,13 +116,23 @@ function emitRuntimeEvent(type, payload = {}) {
       ? new Date(payload.mtimeMs).toISOString()
       : occurredAt;
   } else if (type === "upload-start") {
-    activeRuntimeStatus.uploadQueueLength += 1;
-    activeRuntimeStatus.lastReplayUploadStatus = "uploading";
-  } else if (type === "upload-success" || type === "upload-failure") {
-    activeRuntimeStatus.uploadQueueLength = Math.max(
-      0,
-      activeRuntimeStatus.uploadQueueLength - 1
+    activeUploadKeys.add(
+      getUploadQueueKey(payload)
     );
+
+    activeRuntimeStatus.uploadQueueLength =
+      activeUploadKeys.size;
+
+    activeRuntimeStatus.lastReplayUploadStatus =
+      "uploading";
+  } else if (type === "upload-success" || type === "upload-failure") {
+    activeUploadKeys.delete(
+      getUploadQueueKey(payload)
+    );
+
+    activeRuntimeStatus.uploadQueueLength =
+      activeUploadKeys.size;
+
     activeRuntimeStatus.lastReplayUploadAt = occurredAt;
     activeRuntimeStatus.lastReplayUploadStatus = type === "upload-success" ? "succeeded" : "failed";
     activeRuntimeStatus.repeatedUploadErrors =
@@ -415,6 +435,30 @@ function getRetryDelayMsFactory(runtimeConfig, attempt) {
 async function getFileFingerprint(filePath) {
   const stats = await fs.promises.stat(filePath);
   return `${stats.size}:${Math.floor(stats.mtimeMs)}`;
+}
+
+async function createReplayUploadSnapshot(filePath) {
+  const sourceStats =
+    await fs.promises.stat(filePath);
+
+  const replayBuffer =
+    await fs.promises.readFile(filePath);
+
+  const fileSizeBytes =
+    replayBuffer.length;
+
+  const mtimeMs =
+    Math.floor(sourceStats.mtimeMs);
+
+  const fingerprint =
+    `${fileSizeBytes}:${mtimeMs}`;
+
+  return {
+    replayBuffer,
+    fileSizeBytes,
+    mtimeMs,
+    fingerprint,
+  };
 }
 
 async function getReplayContentHash(filePath) {
@@ -1282,60 +1326,142 @@ async function resolveFinalReplayShortCircuit(
 async function uploadReplay(
   filePath,
   runtimeConfig,
-  { parseIteration = 1, isFinal = true, uploadUrl, uploadContext = {} } = {}
+  {
+    parseIteration = 1,
+    isFinal = true,
+    uploadUrl,
+  } = {}
 ) {
-  const replayBuffer = await fs.promises.readFile(filePath);
+  const snapshot =
+    await createReplayUploadSnapshot(
+      filePath
+    );
 
   const form = new FormData();
-  form.append("file", replayBuffer, {
-    filename: path.basename(filePath),
-    contentType: "application/octet-stream",
-    knownLength: replayBuffer.length,
-  });
 
-  const parseSource = getParseSource(isFinal);
-  const parseReason = getParseReason(isFinal);
+  form.append(
+    "file",
+    snapshot.replayBuffer,
+    {
+      filename:
+        path.basename(filePath),
+
+      contentType:
+        "application/octet-stream",
+
+      knownLength:
+        snapshot.fileSizeBytes,
+    }
+  );
+
+  const parseSource =
+    getParseSource(isFinal);
+
+  const parseReason =
+    getParseReason(isFinal);
 
   const headers = {
     ...form.getHeaders(),
-    "x-user-uid": runtimeConfig.watcherUid,
-    "x-parse-iteration": String(parseIteration),
-    "x-is-final": isFinal ? "true" : "false",
-    "x-parse-source": parseSource,
-    "x-parse-reason": parseReason,
+
+    "x-user-uid":
+      runtimeConfig.watcherUid,
+
+    "x-parse-iteration":
+      String(parseIteration),
+
+    "x-is-final":
+      isFinal ? "true" : "false",
+
+    "x-parse-source":
+      parseSource,
+
+    "x-parse-reason":
+      parseReason,
   };
 
   const metadataHeaders = {
-    "x-watcher-id": runtimeConfig.watcherId,
-    "x-watcher-session-id": runtimeConfig.appSessionId,
-    "x-replay-fingerprint": uploadContext.fingerprint,
-    "x-file-size-bytes": uploadContext.fileSizeBytes,
-    "x-file-mtime-ms": uploadContext.mtimeMs,
-    "x-final-candidate": isFinal ? "true" : "false",
+    "x-watcher-id":
+      runtimeConfig.watcherId,
+
+    "x-watcher-session-id":
+      runtimeConfig.appSessionId,
+
+    "x-replay-fingerprint":
+      snapshot.fingerprint,
+
+    "x-file-size-bytes":
+      snapshot.fileSizeBytes,
+
+    "x-file-mtime-ms":
+      snapshot.mtimeMs,
+
+    "x-final-candidate":
+      isFinal ? "true" : "false",
   };
 
-  for (const [name, value] of Object.entries(metadataHeaders)) {
-    if (value !== null && value !== undefined && value !== "") {
-      headers[name] = String(value);
+  for (
+    const [name, value]
+    of Object.entries(
+      metadataHeaders
+    )
+  ) {
+    if (
+      value !== null &&
+      value !== undefined &&
+      value !== ""
+    ) {
+      headers[name] =
+        String(value);
     }
   }
 
-  if (runtimeConfig.uploadApiKey) {
-    headers["x-api-key"] = runtimeConfig.uploadApiKey;
+  if (
+    runtimeConfig.uploadApiKey
+  ) {
+    headers["x-api-key"] =
+      runtimeConfig.uploadApiKey;
   }
 
   try {
-    headers["Content-Length"] = await getFormLength(form);
-  } catch (err) {
-    log(`Unable to precompute upload size for ${path.basename(filePath)}: ${err.message}`, "warn");
+    headers["Content-Length"] =
+      await getFormLength(form);
+  } catch (error) {
+    log(
+      `Unable to precompute upload size for ${
+        path.basename(filePath)
+      }: ${error.message}`,
+      "warn"
+    );
   }
 
-  return axios.post(uploadUrl, form, {
-    timeout: 60000,
-    maxBodyLength: Infinity,
-    maxContentLength: Infinity,
-    headers,
-  });
+  try {
+    const response =
+      await axios.post(
+        uploadUrl,
+        form,
+        {
+          timeout: 60000,
+          maxBodyLength: Infinity,
+          maxContentLength: Infinity,
+          headers,
+        }
+      );
+
+    return {
+      response,
+      snapshot,
+    };
+  } catch (error) {
+    if (
+      error &&
+      typeof error === "object"
+    ) {
+      error.replayUploadSnapshot =
+        snapshot;
+    }
+
+    throw error;
+  }
 }
 
 function isRetryableUploadError(error) {
@@ -1403,18 +1529,42 @@ async function uploadReplayWithRetry(
       );
 
       try {
-        attemptFingerprint = await getFileFingerprint(filePath);
-        const fingerprintParts = parseFingerprintParts(attemptFingerprint);
-        const res = await uploadReplay(filePath, runtimeConfig, {
-          parseIteration,
-          isFinal,
-          uploadUrl: target.uploadUrl,
-          uploadContext: {
-            fingerprint: attemptFingerprint,
-            ...fingerprintParts,
-          },
-        });
-        const detail = formatResponseBody(res.data);
+        const uploadResult =
+          await uploadReplay(
+            filePath,
+            runtimeConfig,
+            {
+              parseIteration,
+              isFinal,
+              uploadUrl:
+                target.uploadUrl,
+            }
+          );
+
+        const res =
+          uploadResult.response;
+
+        attemptFingerprint =
+          uploadResult
+            .snapshot
+            .fingerprint;
+
+        const fingerprintParts = {
+          fileSizeBytes:
+            uploadResult
+              .snapshot
+              .fileSizeBytes,
+
+          mtimeMs:
+            uploadResult
+              .snapshot
+              .mtimeMs,
+        };
+
+        const detail =
+          formatResponseBody(
+            res.data
+          );
         const resultType = classifyUploadResult(detail);
         const responseSummary = summarizeUploadResponse(res.data);
         const acceptance = classifyReplayAcceptance(responseSummary, { isFinal });
@@ -1550,7 +1700,21 @@ async function uploadReplayWithRetry(
           replayHash,
         };
       } catch (err) {
-        const responseDetail = formatResponseBody(err?.response?.data);
+        if (
+          err
+            ?.replayUploadSnapshot
+            ?.fingerprint
+        ) {
+          attemptFingerprint =
+            err
+              .replayUploadSnapshot
+              .fingerprint;
+        }
+
+        const responseDetail =
+          formatResponseBody(
+            err?.response?.data
+          );
         const prefix = isFinal ? "Final upload failed" : "Live upload failed";
         const errorMessage = responseDetail || err.message;
 
@@ -2850,6 +3014,7 @@ function stopWatching() {
   activeWatcher = null;
   activeRuntimeStatus.monitorAttached = false;
   activeUploadState = new Map();
+  activeUploadKeys = new Set();
   activeSettlementStatePath = null;
   activePreferredUploadTargetBaseUrl = null;
   emitRuntimeEvent("watching-stopped", {});
@@ -3030,6 +3195,7 @@ module.exports = {
   buildReplayReceiptDetail,
   classifyUploadResult,
   classifyReplayAcceptance,
+  createReplayUploadSnapshot,
   getDefaultReplayDir,
   detectReplayFolder,
   inspectReplayFolder,

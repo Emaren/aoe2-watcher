@@ -4,7 +4,10 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 
-const { inspectReplayFolder } = require("../watcher");
+const {
+  createReplayUploadSnapshot,
+  inspectReplayFolder,
+} = require("../watcher");
 
 function temporaryFolder(segment) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "aoe2-watcher-"));
@@ -47,5 +50,78 @@ test("accepts a manually selected folder only with HD replay evidence", () => {
     assert.equal(inspectReplayFolder(folder).valid, true);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+
+test("captures immutable replay bytes and matching transport metadata", async () => {
+  const { root, folder } =
+    temporaryFolder([
+      "Documents",
+      "My Games",
+      "Age of Empires 2 HD",
+      "SaveGame",
+    ]);
+
+  const sourcePath =
+    path.join(
+      folder,
+      "growing.aoe2record"
+    );
+
+  try {
+    fs.writeFileSync(
+      sourcePath,
+      "first-pass"
+    );
+
+    const snapshot =
+      await createReplayUploadSnapshot(
+        sourcePath
+      );
+
+    fs.appendFileSync(
+      sourcePath,
+      "-continued-growth"
+    );
+
+    assert.equal(
+      snapshot
+        .replayBuffer
+        .toString("utf8"),
+      "first-pass"
+    );
+
+    assert.equal(
+      snapshot.fileSizeBytes,
+      Buffer.byteLength(
+        "first-pass"
+      )
+    );
+
+    assert.equal(
+      snapshot
+        .fingerprint
+        .split(":")[0],
+      String(
+        snapshot.fileSizeBytes
+      )
+    );
+
+    assert.equal(
+      fs.readFileSync(
+        sourcePath,
+        "utf8"
+      ),
+      "first-pass-continued-growth"
+    );
+  } finally {
+    fs.rmSync(
+      root,
+      {
+        recursive: true,
+        force: true,
+      }
+    );
   }
 });
