@@ -8,7 +8,7 @@ systems: ["aoe2-watcher","api-prodn"]
 audience: ["developers","operators","ai-agents"]
 source_of_truth: "git"
 authority: "repository-entrypoint"
-reviewed_at: "2026-07-26"
+reviewed_at: "2026-08-04"
 review_interval_days: 60
 sensitivity: "internal"
 ---
@@ -20,6 +20,27 @@ sensitivity: "internal"
 v1.5.7 binds every upload request to one immutable in-memory replay snapshot. The request body, `Content-Length`, `x-file-size-bytes`, and replay fingerprint are all derived from the same captured bytes, so AoE2HD may continue appending to the source replay without causing a false `409 Replay changed while it was being uploaded` mismatch. After upload, the watcher rechecks the source fingerprint and schedules the next live iteration when growth continued.
 
 Upload queue telemetry now counts one logical live/final upload per replay. Retries and fallback targets reuse that queue position instead of inflating `uploadQueueLength`.
+
+
+<!-- AOE2WAR:TERMINAL_RESULT_RECEIPT_SOURCE_V3:START -->
+## Terminal result receipt source contract
+
+After the final replay settle-observation window, the Electron main process now
+preserves `finalStored` and `settleWindowMs` when forwarding runtime events to
+remote telemetry. This allows the app to retain an exact
+`final_settle_observation_complete` receipt tied to the same replay/session/file
+identity used by the final upload.
+
+The receipt is corroborating transport evidence. The Watcher does not decide
+which player won. Server policy may use exact final 1v1 action-tail evidence
+without a receipt, but a supplied conflicting receipt blocks automatic result
+recovery. Any accepted automatic result is stats-only and cannot authorize a
+market or chain action.
+
+This source commit does not change the advertised desktop version. Public
+Windows, macOS, and Linux artifacts remain `1.5.7` until a separate release
+build, test, signing/staging, manifest-sync, and publication gate is completed.
+<!-- AOE2WAR:TERMINAL_RESULT_RECEIPT_SOURCE_V3:END -->
 
 ## v1.5.4 reliability contract
 
