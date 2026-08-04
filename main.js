@@ -1039,6 +1039,10 @@ function buildTelemetryPayload(eventType, payload = {}, config = loadConfig()) {
       typeof payload.reviewRouted === "boolean" ? payload.reviewRouted : undefined,
     finalAccepted:
       typeof payload.finalAccepted === "boolean" ? payload.finalAccepted : undefined,
+    finalStored:
+      typeof payload.finalStored === "boolean" ? payload.finalStored : undefined,
+    settleWindowMs:
+      Number.isFinite(payload.settleWindowMs) ? payload.settleWindowMs : undefined,
     fingerprint: payload.fingerprint || undefined,
     previousFinalFingerprint: payload.previousFinalFingerprint || undefined,
     unknownFields: Array.isArray(payload.unknownFields) ? payload.unknownFields : undefined,
