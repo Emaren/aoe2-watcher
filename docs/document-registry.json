@@ -11,9 +11,9 @@
       "owner": "aoe2war-watcher",
       "path": "README.md",
       "review_interval_days": 60,
-      "reviewed_at": "2026-08-04",
+      "reviewed_at": "2026-08-08",
       "sensitivity": "internal",
-      "sha256": "5acfc86339bc66cd7314eb66d58e6b29ca0906c228973f09f9c89e88cf032307",
+      "sha256": "73945c3672ac93c318abda20fa75f590d46f74578e22ce6c337764b020443a5d",
       "source_of_truth": "git",
       "status": "active",
       "systems": [
@@ -36,7 +36,7 @@
       "review_interval_days": 0,
       "reviewed_at": "2026-07-26",
       "sensitivity": "internal",
-      "sha256": "2d26bcd24d230d8332b0051f9bb65dfe3a5218a6a8d78382070dcfaaf2d94c73",
+      "sha256": "c55d5876ffac2c0c846c3d4cec4b36ce53218b6170ff18011f7d5dc435dd3ef3",
       "source_of_truth": "generated",
       "status": "generated",
       "systems": [
@@ -48,8 +48,8 @@
   ],
   "generated_at": "2026-08-04T02:09:37Z",
   "implementation_baseline": {
-    "branch": "release/watcher-1.5.7-20260731-202609",
-    "commit": "87f98aa7a385a71940561e0458ea1dea6c9fc0a5"
+    "branch": "main",
+    "commit": "95b987547d24313474be74646933c74583142ba4"
   },
   "owner": "aoe2war-watcher",
   "repo": "aoe2-watcher",
