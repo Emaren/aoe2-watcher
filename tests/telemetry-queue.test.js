@@ -6,6 +6,7 @@ const test = require("node:test");
 
 const {
   createDurableTelemetryQueue,
+  createRuntimeEventCoalescer,
 } = require("../telemetryQueue");
 
 function tempQueue() {
@@ -142,6 +143,150 @@ test(
     assert.equal(
       await queue.size(),
       0
+    );
+  }
+);
+
+test(
+  "coalesces repeated monitoring notifications without delaying the first signal",
+  () => {
+    let now = 1000;
+    const coalescer =
+      createRuntimeEventCoalescer({
+        windowMs: 30000,
+        now: () => now,
+      });
+    const event = {
+      type: "replay-detected-ignored",
+      reason: "monitoring",
+      filePath: "/replays/live.aoe2record",
+    };
+
+    assert.deepEqual(
+      coalescer.coalesce(event),
+      {
+        ...event,
+        coalescedCount: 1,
+        coalescedWindowMs: 30000,
+      }
+    );
+
+    now += 100;
+    assert.equal(
+      coalescer.coalesce(event),
+      null
+    );
+
+    now += 29900;
+    assert.deepEqual(
+      coalescer.coalesce(event),
+      {
+        ...event,
+        coalescedCount: 2,
+        coalescedWindowMs: 30000,
+      }
+    );
+  }
+);
+
+test(
+  "never coalesces upload or finality transitions",
+  () => {
+    const coalescer =
+      createRuntimeEventCoalescer();
+
+    for (const event of [
+      {
+        type: "replay-detected",
+        filePath: "/replays/live.aoe2record",
+      },
+      {
+        type: "upload-start",
+        filePath: "/replays/live.aoe2record",
+        parseIteration: 4,
+      },
+      {
+        type: "final-candidate-ready",
+        filePath: "/replays/live.aoe2record",
+      },
+      {
+        type: "upload-success",
+        filePath: "/replays/live.aoe2record",
+        isFinal: true,
+      },
+    ]) {
+      assert.equal(
+        coalescer.coalesce(event),
+        event
+      );
+    }
+  }
+);
+
+test(
+  "monitor stop clears the replay coalescing window for a new session",
+  () => {
+    let now = 1000;
+    const coalescer =
+      createRuntimeEventCoalescer({
+        windowMs: 30000,
+        now: () => now,
+      });
+    const ignored = {
+      type: "replay-detected-ignored",
+      reason: "monitoring",
+      fileName: "live.aoe2record",
+    };
+    const stopped = {
+      type: "monitor-stop",
+      fileName: "live.aoe2record",
+    };
+
+    assert.ok(coalescer.coalesce(ignored));
+    now += 100;
+    assert.equal(
+      coalescer.coalesce(ignored),
+      null
+    );
+    assert.equal(
+      coalescer.coalesce(stopped),
+      stopped
+    );
+    assert.deepEqual(
+      coalescer.coalesce(ignored),
+      {
+        ...ignored,
+        coalescedCount: 1,
+        coalescedWindowMs: 30000,
+      }
+    );
+  }
+);
+
+test(
+  "tracks monitoring notifications independently per replay",
+  () => {
+    const coalescer =
+      createRuntimeEventCoalescer();
+    const first = {
+      type: "replay-detected-ignored",
+      reason: "monitoring",
+      filePath: "/replays/first.aoe2record",
+    };
+    const second = {
+      ...first,
+      filePath: "/replays/second.aoe2record",
+    };
+
+    assert.ok(coalescer.coalesce(first));
+    assert.ok(coalescer.coalesce(second));
+    assert.equal(
+      coalescer.coalesce(first),
+      null
+    );
+    assert.equal(
+      coalescer.coalesce(second),
+      null
     );
   }
 );

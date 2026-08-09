@@ -30,3 +30,24 @@ test("settled replay telemetry preserves the terminal result receipt", () => {
     );
   }
 });
+
+test("runtime telemetry coalescing is wired before remote event emission", () => {
+  assert.match(
+    mainSource,
+    /createRuntimeEventCoalescer\(\)/
+  );
+  assert.match(
+    mainSource,
+    /runtimeEventCoalescer\.coalesce/
+  );
+
+  for (const metadataField of [
+    "coalescedCount",
+    "coalescedWindowMs",
+  ]) {
+    assert.match(
+      mainSource,
+      new RegExp(metadataField)
+    );
+  }
+});

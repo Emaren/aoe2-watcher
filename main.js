@@ -19,6 +19,7 @@ const { autoUpdater } = require("electron-updater");
 const { version: WATCHER_VERSION } = require("./package.json");
 const {
   createDurableTelemetryQueue,
+  createRuntimeEventCoalescer,
 } = require("./telemetryQueue");
 
 const {
@@ -77,6 +78,8 @@ const RELEASE_CHECK_TIMEOUT_MS = Number(process.env.AOE2_RELEASE_CHECK_TIMEOUT_M
 const AUTO_UPDATE_FEED_URL = process.env.AOE2_UPDATE_FEED_URL || "https://aoe2war.com/downloads";
 const MAC_AUTO_UPDATE_ENABLED = process.env.AOE2_ENABLE_MAC_AUTO_UPDATE === "1";
 const APP_SESSION_ID = createRandomId("session");
+const runtimeEventCoalescer =
+  createRuntimeEventCoalescer();
 
 let mainWindow = null;
 let watcherHandle = null;
@@ -1020,6 +1023,12 @@ function buildTelemetryPayload(eventType, payload = {}, config = loadConfig()) {
     requiredMs: Number.isFinite(payload.requiredMs) ? payload.requiredMs : undefined,
     sampleCount: Number.isFinite(payload.sampleCount) ? payload.sampleCount : undefined,
     retryInMs: Number.isFinite(payload.retryInMs) ? payload.retryInMs : undefined,
+    coalescedCount: Number.isFinite(payload.coalescedCount)
+      ? payload.coalescedCount
+      : undefined,
+    coalescedWindowMs: Number.isFinite(payload.coalescedWindowMs)
+      ? payload.coalescedWindowMs
+      : undefined,
     nextRetryAttempt: Number.isFinite(payload.nextRetryAttempt)
       ? payload.nextRetryAttempt
       : undefined,
@@ -1840,6 +1849,15 @@ function appendSessionHeader(title) {
 
 function emitTelemetryForRuntimeEvent(event) {
   if (!event || typeof event !== "object") {
+    return;
+  }
+
+  event =
+    runtimeEventCoalescer.coalesce(
+      event
+    );
+
+  if (!event) {
     return;
   }
 

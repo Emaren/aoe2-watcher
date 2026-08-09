@@ -8,7 +8,7 @@ systems: ["aoe2-watcher","api-prodn"]
 audience: ["developers","operators","ai-agents"]
 source_of_truth: "git"
 authority: "repository-entrypoint"
-reviewed_at: "2026-08-04"
+reviewed_at: "2026-08-08"
 review_interval_days: 60
 sensitivity: "internal"
 ---
@@ -20,6 +20,12 @@ sensitivity: "internal"
 v1.5.7 binds every upload request to one immutable in-memory replay snapshot. The request body, `Content-Length`, `x-file-size-bytes`, and replay fingerprint are all derived from the same captured bytes, so AoE2HD may continue appending to the source replay without causing a false `409 Replay changed while it was being uploaded` mismatch. After upload, the watcher rechecks the source fingerprint and schedules the next live iteration when growth continued.
 
 Upload queue telemetry now counts one logical live/final upload per replay. Retries and fallback targets reuse that queue position instead of inflating `uploadQueueLength`.
+
+## Monitoring notification telemetry coalescing
+
+Native filesystem watchers, especially on Windows, may emit many change notifications while the watcher is already monitoring the same growing replay. Those notifications still reach the local runtime journal and UI, but remote `replay_detected_ignored` telemetry with reason `monitoring` is coalesced to at most one event per replay every 30 seconds. Periodic summaries include the raw notification count represented by that event.
+
+Replay detection, upload attempts and receipts, file-growth transitions, final-candidate transitions, and monitor-stop events are never coalesced. The correction changes support telemetry load only; it does not alter the replay polling loop, live-upload cooldown, final-stability checks, or final upload timing. Public artifacts remain `1.5.7` until the next complete release gate.
 
 
 <!-- AOE2WAR:TERMINAL_RESULT_RECEIPT_SOURCE_V3:START -->

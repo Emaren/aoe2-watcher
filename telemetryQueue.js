@@ -3,6 +3,100 @@ const path = require("path");
 
 const DEFAULT_MAX_ENTRIES = 1000;
 const DEFAULT_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+const DEFAULT_RUNTIME_EVENT_COALESCE_WINDOW_MS = 30 * 1000;
+
+function runtimeEventKey(event) {
+  const replayIdentity =
+    event?.filePath ||
+    event?.fileName;
+
+  if (!replayIdentity) {
+    return null;
+  }
+
+  return `${event.type}:${event.reason}:${replayIdentity}`;
+}
+
+function createRuntimeEventCoalescer({
+  windowMs =
+    DEFAULT_RUNTIME_EVENT_COALESCE_WINDOW_MS,
+  now = Date.now,
+} = {}) {
+  const effectiveWindowMs =
+    Number.isFinite(windowMs) &&
+    windowMs > 0
+      ? windowMs
+      : DEFAULT_RUNTIME_EVENT_COALESCE_WINDOW_MS;
+  const observed = new Map();
+
+  function clearReplay(event) {
+    const replayIdentity =
+      event?.filePath ||
+      event?.fileName;
+
+    if (!replayIdentity) {
+      return;
+    }
+
+    for (const key of observed.keys()) {
+      if (key.endsWith(`:${replayIdentity}`)) {
+        observed.delete(key);
+      }
+    }
+  }
+
+  return {
+    coalesce(event) {
+      if (
+        event?.type === "monitor-stop"
+      ) {
+        clearReplay(event);
+        return event;
+      }
+
+      if (
+        event?.type !==
+          "replay-detected-ignored" ||
+        event?.reason !== "monitoring"
+      ) {
+        return event;
+      }
+
+      const key = runtimeEventKey(event);
+
+      if (!key) {
+        return event;
+      }
+
+      const observedAt = Number(now());
+      const prior = observed.get(key);
+
+      if (
+        prior &&
+        observedAt - prior.emittedAt <
+          effectiveWindowMs
+      ) {
+        prior.suppressedCount += 1;
+        return null;
+      }
+
+      const coalescedCount =
+        (prior?.suppressedCount || 0) + 1;
+
+      observed.set(key, {
+        emittedAt: observedAt,
+        suppressedCount: 0,
+      });
+
+      return {
+        ...event,
+        coalescedCount,
+        coalescedWindowMs:
+          effectiveWindowMs,
+      };
+    },
+  };
+}
 
 function readQueueFile(filePath, maxAgeMs, now = Date.now()) {
   try {
@@ -184,4 +278,5 @@ function createDurableTelemetryQueue({
 
 module.exports = {
   createDurableTelemetryQueue,
+  createRuntimeEventCoalescer,
 };
