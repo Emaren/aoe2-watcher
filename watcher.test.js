@@ -14,9 +14,29 @@ const {
   importHistoricalReplays,
   resolveFinalReplayShortCircuit,
   restorePersistedSettlementState,
+  signWatcherProvenance,
   shouldRecheckKnownFinalFingerprint,
   summarizeUploadResponse,
 } = require("./watcher");
+
+test("signs Watcher provenance over immutable upload identity", () => {
+  const signature = signWatcherProvenance({
+    apiKey: "test-watcher-key",
+    provenance: "live_monitor",
+    watcherUid: "u_jim",
+    watcherId: "watcher-jim",
+    watcherSessionId: "session-jim",
+    replayFingerprint: "123:456",
+    replaySha256: "a".repeat(64),
+    parseIteration: 2,
+    isFinal: true,
+  });
+
+  assert.equal(
+    signature,
+    "3f863f8c1a161fa329be5ef04931ea4f37ca551d3c9df43c94728976252ef0bf",
+  );
+});
 
 function buildEntry(overrides = {}) {
   return {
@@ -240,18 +260,22 @@ test("does not route live replay receipts through final result review", () => {
 test("batch import never counts a 2xx final_not_ready receipt as result ready", async (t) => {
   const filePath = await createTempReplay(t, Buffer.from("stable team replay bytes"));
   const previousPost = axios.post;
-  axios.post = async () => ({
-    status: 200,
-    data: {
-      message: "Final proof stored; result under review",
-      replay_hash: "batch-review-hash",
-      finality_status: "final_not_ready",
-      final_accepted: false,
-      should_settle: false,
-      pending_parse: false,
-      raw_replay_archived: true,
-    },
-  });
+  let observedHeaders = null;
+  axios.post = async (_url, _body, requestConfig) => {
+    observedHeaders = requestConfig?.headers || null;
+    return {
+      status: 200,
+      data: {
+        message: "Final proof stored; result under review",
+        replay_hash: "batch-review-hash",
+        finality_status: "final_not_ready",
+        final_accepted: false,
+        should_settle: false,
+        pending_parse: false,
+        raw_replay_archived: true,
+      },
+    };
+  };
   t.after(() => {
     axios.post = previousPost;
   });
@@ -272,6 +296,12 @@ test("batch import never counts a 2xx final_not_ready receipt as result ready", 
   assert.equal(state.resultReady, 0);
   assert.equal(state.reviewRouted, 1);
   assert.equal(state.failed, 0);
+  assert.equal(observedHeaders?.["x-watcher-provenance"], "historical_import");
+  assert.match(observedHeaders?.["x-client-sha256"] || "", /^[a-f0-9]{64}$/);
+  assert.match(
+    observedHeaders?.["x-watcher-provenance-signature"] || "",
+    /^[a-f0-9]{64}$/,
+  );
   assert.equal(state.recentItems[0]?.status, "review_routed");
   assert.match(state.summaryText, /result ready 0/i);
   assert.match(state.summaryText, /review routed 1/i);

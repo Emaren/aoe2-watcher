@@ -24,6 +24,8 @@ const LIVE_CANDIDATE_GROWTH_CHECK_MS = Number(
   process.env.AOE2_LIVE_CANDIDATE_GROWTH_CHECK_MS || 1500
 );
 const DEFAULT_RECOVERY_SCAN_INTERVAL_MS = 10 * 1000;
+const WATCHER_PROVENANCE_LIVE_MONITOR = "live_monitor";
+const WATCHER_PROVENANCE_HISTORICAL_IMPORT = "historical_import";
 const SETTLEMENT_STATE_VERSION = 1;
 const SETTLEMENT_STATE_MAX_ENTRIES = 5000;
 const SETTLEMENT_STATE_MAX_AGE_MS =
@@ -453,12 +455,47 @@ async function createReplayUploadSnapshot(filePath) {
   const fingerprint =
     `${fileSizeBytes}:${mtimeMs}`;
 
+  const sha256 = crypto
+    .createHash("sha256")
+    .update(replayBuffer)
+    .digest("hex");
+
   return {
     replayBuffer,
     fileSizeBytes,
     mtimeMs,
     fingerprint,
+    sha256,
   };
+}
+
+function signWatcherProvenance({
+  apiKey,
+  provenance,
+  watcherUid,
+  watcherId,
+  watcherSessionId,
+  replayFingerprint,
+  replaySha256,
+  parseIteration,
+  isFinal,
+}) {
+  if (!apiKey) return null;
+  const canonical = [
+    "aoe2war-watcher-provenance/v1",
+    provenance,
+    watcherUid,
+    watcherId,
+    watcherSessionId,
+    replayFingerprint,
+    replaySha256,
+    String(parseIteration),
+    isFinal ? "true" : "false",
+  ].join("\n");
+  return crypto
+    .createHmac("sha256", String(apiKey))
+    .update(canonical)
+    .digest("hex");
 }
 
 async function getReplayContentHash(filePath) {
@@ -1329,6 +1366,7 @@ async function uploadReplay(
   {
     parseIteration = 1,
     isFinal = true,
+    provenance = WATCHER_PROVENANCE_LIVE_MONITOR,
     uploadUrl,
   } = {}
 ) {
@@ -1377,6 +1415,9 @@ async function uploadReplay(
 
     "x-parse-reason":
       parseReason,
+
+    "x-watcher-provenance":
+      provenance,
   };
 
   const metadataHeaders = {
@@ -1389,6 +1430,9 @@ async function uploadReplay(
     "x-replay-fingerprint":
       snapshot.fingerprint,
 
+    "x-client-sha256":
+      snapshot.sha256,
+
     "x-file-size-bytes":
       snapshot.fileSizeBytes,
 
@@ -1397,6 +1441,19 @@ async function uploadReplay(
 
     "x-final-candidate":
       isFinal ? "true" : "false",
+
+    "x-watcher-provenance-signature":
+      signWatcherProvenance({
+        apiKey: runtimeConfig.uploadApiKey,
+        provenance,
+        watcherUid: runtimeConfig.watcherUid,
+        watcherId: runtimeConfig.watcherId,
+        watcherSessionId: runtimeConfig.appSessionId,
+        replayFingerprint: snapshot.fingerprint,
+        replaySha256: snapshot.sha256,
+        parseIteration,
+        isFinal,
+      }),
   };
 
   for (
@@ -1491,7 +1548,12 @@ async function uploadReplayWithRetry(
   filePath,
   runtimeConfig,
   entry,
-  { fingerprint, parseIteration, isFinal }
+  {
+    fingerprint,
+    parseIteration,
+    isFinal,
+    provenance = WATCHER_PROVENANCE_LIVE_MONITOR,
+  }
 ) {
   const maxAttempts = runtimeConfig.maxUploadRetries + 1;
   let attemptFingerprint = fingerprint;
@@ -1514,6 +1576,7 @@ async function uploadReplayWithRetry(
         parseIteration,
         parseSource,
         parseReason,
+        provenance,
         attempt,
         maxRetryCount: runtimeConfig.maxUploadRetries,
         uploadHost: targetHost,
@@ -1536,6 +1599,7 @@ async function uploadReplayWithRetry(
             {
               parseIteration,
               isFinal,
+              provenance,
               uploadUrl:
                 target.uploadUrl,
             }
@@ -1580,6 +1644,7 @@ async function uploadReplayWithRetry(
             parseIteration,
             parseSource,
             parseReason,
+            provenance,
             uploadHost: targetHost,
             attempt,
             responseStatus: res.status,
@@ -2893,6 +2958,7 @@ async function importHistoricalReplays(config = {}, options = {}, hooks = {}) {
         fingerprint: stability.fingerprint,
         parseIteration: 1,
         isFinal: true,
+        provenance: WATCHER_PROVENANCE_HISTORICAL_IMPORT,
       });
 
       if (!result.ok) {
@@ -3192,6 +3258,7 @@ module.exports = {
   buildRuntimeConfig,
   restorePersistedSettlementState,
   shouldRecheckKnownFinalFingerprint,
+  signWatcherProvenance,
   buildReplayReceiptDetail,
   classifyUploadResult,
   classifyReplayAcceptance,
