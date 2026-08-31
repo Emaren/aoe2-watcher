@@ -9,7 +9,7 @@
   "scripts": {
     "start": "electron main.js",
     "lint": "node --check main.js && node --check watcher.js && node --check telemetryQueue.js && node --check renderer.js && node --check preload.js",
-    "test": "node --test watcher.test.js tests/*.test.js",
+    "test": "node --test *.test.js tests/*.test.js",
     "build": "electron-builder",
     "pack": "electron-builder --dir",
     "dist:mac": "electron-builder --mac dmg --arm64",
