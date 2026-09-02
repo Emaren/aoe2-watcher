@@ -180,6 +180,111 @@ function getWindowsDocumentRoots(home = os.homedir()) {
   );
 }
 
+function includeMultiplayerReplayFolders(saveGameRoots) {
+  return Array.from(
+    new Set(
+      saveGameRoots.flatMap((root) => [
+        path.join(root, "multi"),
+        root,
+      ])
+    )
+  );
+}
+
+function getWindowsSteamRoots() {
+  return Array.from(
+    new Set(
+      [
+        process.env["ProgramFiles(x86)"] &&
+          path.join(
+            process.env["ProgramFiles(x86)"],
+            "Steam"
+          ),
+        process.env.ProgramFiles &&
+          path.join(
+            process.env.ProgramFiles,
+            "Steam"
+          ),
+        process.env.ProgramW6432 &&
+          path.join(
+            process.env.ProgramW6432,
+            "Steam"
+          ),
+      ].filter(Boolean)
+    )
+  );
+}
+
+function getSteamLibraryRoots(steamRoots) {
+  const libraryRoots =
+    new Set(steamRoots);
+
+  for (const steamRoot of steamRoots) {
+    const libraryFile =
+      path.join(
+        steamRoot,
+        "steamapps",
+        "libraryfolders.vdf"
+      );
+
+    try {
+      const raw =
+        fs.readFileSync(
+          libraryFile,
+          "utf8"
+        );
+
+      for (
+        const match of
+          raw.matchAll(
+            /"path"\s+"([^"]+)"/g
+          )
+      ) {
+        const libraryRoot =
+          match[1]
+            .replace(/\\\\/g, "\\")
+            .trim();
+
+        if (libraryRoot) {
+          libraryRoots.add(
+            libraryRoot
+          );
+        }
+      }
+    } catch {
+      // Steam may not be installed here, or this
+      // installation may have no library manifest.
+    }
+  }
+
+  return Array.from(
+    libraryRoots
+  );
+}
+
+function getWindowsSteamReplayFolders() {
+  const steamRoots =
+    getWindowsSteamRoots();
+
+  const libraryRoots =
+    getSteamLibraryRoots(
+      steamRoots
+    );
+
+  return includeMultiplayerReplayFolders(
+    libraryRoots.map(
+      (libraryRoot) =>
+        path.join(
+          libraryRoot,
+          "steamapps",
+          "common",
+          "Age2HD",
+          "SaveGame"
+        )
+    )
+  );
+}
+
 function replayFolderCandidates() {
   const home = os.homedir();
   const platform = os.platform();
@@ -189,13 +294,30 @@ function replayFolderCandidates() {
   ];
 
   if (platform === "win32") {
-    return getWindowsDocumentRoots(home).flatMap((root) =>
-      hdSuffixes.map((suffix) => path.join(root, ...suffix))
+    const documentSaveRoots =
+      getWindowsDocumentRoots(home)
+        .flatMap((root) =>
+          hdSuffixes.map(
+            (suffix) =>
+              path.join(
+                root,
+                ...suffix
+              )
+          )
+        );
+
+    return Array.from(
+      new Set([
+        ...getWindowsSteamReplayFolders(),
+        ...includeMultiplayerReplayFolders(
+          documentSaveRoots
+        ),
+      ])
     );
   }
 
   if (platform === "darwin") {
-    return [
+    return includeMultiplayerReplayFolders([
       path.join(
         home,
         "Library/Application Support/CrossOver/Bottles/Steam/drive_c/Program Files (x86)/Steam/steamapps/common/Age2HD/SaveGame"
@@ -204,11 +326,18 @@ function replayFolderCandidates() {
         home,
         "Library/Application Support/CrossOver/Bottles/Steam/drive_c/users/crossover/My Documents/My Games/Age of Empires 2 HD/SaveGame"
       ),
-      ...hdSuffixes.map((suffix) => path.join(home, "Documents", ...suffix)),
-    ];
+      ...hdSuffixes.map(
+        (suffix) =>
+          path.join(
+            home,
+            "Documents",
+            ...suffix
+          )
+      ),
+    ]);
   }
 
-  return [
+  return includeMultiplayerReplayFolders([
     path.join(
       home,
       ".wine/drive_c/Program Files (x86)/Microsoft Games/Age of Empires II HD/SaveGame"
@@ -219,8 +348,15 @@ function replayFolderCandidates() {
       os.userInfo().username,
       "My Documents/My Games/Age of Empires 2 HD/SaveGame"
     ),
-    ...hdSuffixes.map((suffix) => path.join(home, "Documents", ...suffix)),
-  ];
+    ...hdSuffixes.map(
+      (suffix) =>
+        path.join(
+          home,
+          "Documents",
+          ...suffix
+        )
+    ),
+  ]);
 }
 
 function inspectReplayFolder(targetPath) {

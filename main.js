@@ -759,6 +759,139 @@ function saveConfig(config) {
   return merged;
 }
 
+function classifyReplayFolderProblem(folder) {
+  if (!folder) {
+    return "folder_unknown";
+  }
+
+  if (!folder.exists) {
+    return "folder_missing";
+  }
+
+  if (!folder.isDirectory) {
+    return "not_directory";
+  }
+
+  if (!folder.readable) {
+    return "folder_unreadable";
+  }
+
+  if (!folder.valid) {
+    return "folder_invalid";
+  }
+
+  return null;
+}
+
+function recoverReplayFolderConfig(
+  config,
+  {
+    source = "runtime",
+    emitFailure = true,
+  } = {}
+) {
+  const currentFolder =
+    inspectReplayFolder(config?.watchDir);
+
+  if (currentFolder.valid) {
+    return config;
+  }
+
+  const detectedFolder =
+    detectReplayFolder();
+
+  if (
+    !detectedFolder?.valid ||
+    !detectedFolder.path ||
+    detectedFolder.path === config?.watchDir
+  ) {
+    if (emitFailure) {
+      emitWatcherTelemetry(
+        "watch_folder_auto_repair_failed",
+        {
+          metadata: {
+            source,
+            previousFolderKind:
+              currentFolder.kind,
+            previousFolderLabel:
+              currentFolder.label,
+            previousFolderProblem:
+              classifyReplayFolderProblem(
+                currentFolder
+              ),
+            reason:
+              "no_valid_hd_candidate",
+          },
+        },
+        config
+      );
+    }
+
+    return config;
+  }
+
+  emitWatcherTelemetry(
+    "watch_folder_auto_repair_started",
+    {
+      metadata: {
+        source,
+        previousFolderKind:
+          currentFolder.kind,
+        previousFolderLabel:
+          currentFolder.label,
+        detectedFolderKind:
+          detectedFolder.kind,
+        detectedFolderLabel:
+          detectedFolder.label,
+        supportedReplayCount:
+          detectedFolder.supportedReplayCount,
+      },
+    },
+    config
+  );
+
+  const saved =
+    saveConfig({
+      ...config,
+      watchDir:
+        detectedFolder.path,
+    });
+
+  appendLog(
+    `Replay folder auto-repaired to ${
+      detectedFolder.label ||
+      "AoE2 HD SaveGame"
+    }.`
+  );
+
+  broadcastConfig(saved);
+
+  emitWatcherTelemetry(
+    "watch_folder_auto_repaired",
+    {
+      metadata: {
+        source,
+        previousFolderKind:
+          currentFolder.kind,
+        previousFolderLabel:
+          currentFolder.label,
+        folderKind:
+          detectedFolder.kind,
+        folderLabel:
+          detectedFolder.label,
+        supportedReplayCount:
+          detectedFolder.supportedReplayCount,
+        latestReplayModifiedAt:
+          detectedFolder.latestReplayModifiedAt,
+        ...buildRuntimeMetadata(saved),
+      },
+    },
+    saved
+  );
+
+  return saved;
+}
+
 function applyLaunchAtLogin(config = loadConfig()) {
   const requested = config.launchAtLogin !== false;
 
@@ -1412,9 +1545,35 @@ function stopMonitorWatchdog() {
 }
 
 function safelyReattachMonitor(reason) {
-  const config = loadConfig();
-  const folder = inspectReplayFolder(config.watchDir);
-  if (!config.autoStartWatching || !config.uploadApiKey || !folder.valid) return false;
+  let config = loadConfig();
+
+  if (
+    !config.autoStartWatching ||
+    !config.uploadApiKey
+  ) {
+    return false;
+  }
+
+  config =
+    recoverReplayFolderConfig(
+      config,
+      {
+        source: reason,
+        emitFailure:
+          reason !==
+          "watchdog_folder_unavailable",
+      }
+    );
+
+  const folder =
+    inspectReplayFolder(
+      config.watchDir
+    );
+
+  if (!folder.valid) {
+    return false;
+  }
+
   const now = Date.now();
   if (monitorReattachAttempts >= MONITOR_REATTACH_LIMIT || now - monitorLastReattachAt < MONITOR_REATTACH_COOLDOWN_MS) {
     emitWatcherTelemetry("monitor_watchdog_blocked", {
@@ -1458,14 +1617,36 @@ function startMonitorWatchdog() {
     const folder = inspectReplayFolder(config.watchDir);
 
     if (!folder.valid) {
+      const repairedAndAttached =
+        safelyReattachMonitor(
+          "watchdog_folder_unavailable"
+        );
+
+      if (repairedAndAttached) {
+        return;
+      }
+
+      const latestConfig =
+        loadConfig();
+      const latestFolder =
+        inspectReplayFolder(
+          latestConfig.watchDir
+        );
+
       emitWatcherTelemetry(
         "monitor_watchdog_folder_unavailable",
         {
-          folderKind: folder.kind,
-          folderLabel: folder.label,
-          reason: folder.error || "folder_invalid",
+          folderKind:
+            latestFolder.kind,
+          folderLabel:
+            latestFolder.label,
+          reason:
+            classifyReplayFolderProblem(
+              latestFolder
+            ) ||
+            "folder_invalid",
         },
-        config
+        latestConfig
       );
       return;
     }
@@ -2261,7 +2442,7 @@ function processPendingPairingUrl() {
   }
 
   const currentConfig = loadConfig();
-  const savedConfig = saveConfig({
+  let savedConfig = saveConfig({
     ...currentConfig,
     uploadApiKey: pairingConfig.uploadApiKey,
     watchDir:
@@ -2270,6 +2451,14 @@ function processPendingPairingUrl() {
       getDefaultReplayDir() ||
       "",
   });
+
+  savedConfig =
+    recoverReplayFolderConfig(
+      savedConfig,
+      {
+        source: "pairing",
+      }
+    );
 
   broadcastConfig(savedConfig);
   appendLog("Paired this watcher with your AoE2HDBets profile key.");
@@ -2559,7 +2748,9 @@ function bootWatcherApp() {
   });
 
   ipcMain.handle("watcher:get-default-replay-dir", async () => {
-    return detectReplayFolder()?.path || getDefaultReplayDir() || "";
+    // "Auto Detect" must return proven detection only.
+    // Do not turn a guessed/default path into a false success.
+    return detectReplayFolder()?.path || "";
   });
 
   ipcMain.handle("watcher:check-release", async () => {
@@ -2610,13 +2801,22 @@ function bootWatcherApp() {
     return { ok: true };
   });
 
-  const config = saveConfig(loadConfig());
+  let config = saveConfig(loadConfig());
   const launchState = applyLaunchAtLogin(config);
 
   currentImportState = createImportStateFromSummary(config.lastImportSummary);
 
   mainWindow.webContents.once("did-finish-load", () => {
     rendererReady = true;
+
+    config =
+      recoverReplayFolderConfig(
+        config,
+        {
+          source: "startup",
+        }
+      );
+
     broadcastConfig(config);
     sendToRenderer("watcher:import-state", currentImportState);
     appendLog("UI loaded.");
