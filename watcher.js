@@ -563,10 +563,149 @@ function rememberWorkingUploadTarget(target) {
   }
 }
 
-function getRetryDelayMsFactory(runtimeConfig, attempt) {
+const MAX_SERVER_RETRY_AFTER_MS =
+  5 * 60 * 1000;
+const MAX_UPLOAD_RETRY_JITTER_MS =
+  2000;
+
+function parseRetryAfterMs(
+  value,
+  now = Date.now()
+) {
+  if (
+    value === null ||
+    value === undefined
+  ) {
+    return 0;
+  }
+
+  const text =
+    String(value).trim();
+
+  if (!text) {
+    return 0;
+  }
+
+  const seconds =
+    Number(text);
+
+  if (
+    Number.isFinite(seconds) &&
+    seconds >= 0
+  ) {
+    return Math.min(
+      MAX_SERVER_RETRY_AFTER_MS,
+      Math.ceil(
+        seconds * 1000
+      )
+    );
+  }
+
+  const retryAt =
+    Date.parse(text);
+
+  if (!Number.isFinite(retryAt)) {
+    return 0;
+  }
+
   return Math.min(
-    runtimeConfig.retryBaseDelayMs * Math.max(1, 2 ** Math.max(0, attempt - 1)),
-    30000
+    MAX_SERVER_RETRY_AFTER_MS,
+    Math.max(
+      0,
+      retryAt - now
+    )
+  );
+}
+
+function readRetryAfterHeader(error) {
+  const headers =
+    error?.response?.headers;
+
+  if (!headers) {
+    return null;
+  }
+
+  if (
+    typeof headers.get ===
+    "function"
+  ) {
+    return headers.get(
+      "retry-after"
+    );
+  }
+
+  return (
+    headers["retry-after"] ??
+    headers["Retry-After"] ??
+    null
+  );
+}
+
+function getRetryDelayMsFactory(
+  runtimeConfig,
+  attempt,
+  {
+    retryAfterMs = 0,
+    random = Math.random,
+  } = {}
+) {
+  const exponentialDelay =
+    Math.min(
+      runtimeConfig.retryBaseDelayMs *
+        Math.max(
+          1,
+          2 **
+            Math.max(
+              0,
+              attempt - 1
+            )
+        ),
+      30000
+    );
+
+  const serverFloor =
+    Number.isFinite(retryAfterMs)
+      ? Math.max(
+          0,
+          Math.min(
+            MAX_SERVER_RETRY_AFTER_MS,
+            retryAfterMs
+          )
+        )
+      : 0;
+
+  const floor =
+    Math.max(
+      exponentialDelay,
+      serverFloor
+    );
+
+  const jitterWindow =
+    Math.min(
+      MAX_UPLOAD_RETRY_JITTER_MS,
+      Math.max(
+        250,
+        Math.floor(
+          floor * 0.2
+        )
+      )
+    );
+
+  const randomValue =
+    Math.max(
+      0,
+      Math.min(
+        1,
+        Number(random()) || 0
+      )
+    );
+
+  return (
+    floor +
+    Math.floor(
+      jitterWindow *
+        randomValue
+    )
   );
 }
 
@@ -1504,9 +1643,11 @@ async function uploadReplay(
     isFinal = true,
     provenance = WATCHER_PROVENANCE_LIVE_MONITOR,
     uploadUrl,
+    snapshot: providedSnapshot = null,
   } = {}
 ) {
   const snapshot =
+    providedSnapshot ||
     await createReplayUploadSnapshot(
       filePath
     );
@@ -1693,8 +1834,19 @@ async function uploadReplayWithRetry(
 ) {
   const maxAttempts = runtimeConfig.maxUploadRetries + 1;
   let attemptFingerprint = fingerprint;
+  let retrySnapshot = null;
 
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    if (!retrySnapshot) {
+      retrySnapshot =
+        await createReplayUploadSnapshot(
+          filePath
+        );
+
+      attemptFingerprint =
+        retrySnapshot.fingerprint;
+    }
+
     const retryLabel =
       attempt > 0 ? ` (retry ${attempt}/${runtimeConfig.maxUploadRetries})` : "";
     const targetSequence = getUploadTargetsForAttempt(runtimeConfig);
@@ -1738,6 +1890,8 @@ async function uploadReplayWithRetry(
               provenance,
               uploadUrl:
                 target.uploadUrl,
+              snapshot:
+                retrySnapshot,
             }
           );
 
@@ -1957,7 +2111,22 @@ async function uploadReplayWithRetry(
           };
         }
 
-        const delayMs = getRetryDelayMsFactory(runtimeConfig, attempt + 1);
+        const retryAfterMs =
+          parseRetryAfterMs(
+            readRetryAfterHeader(
+              err
+            )
+          );
+
+        const delayMs =
+          getRetryDelayMsFactory(
+            runtimeConfig,
+            attempt + 1,
+            {
+              retryAfterMs,
+            }
+          );
+
         log(
           `Retrying ${path.basename(filePath)} in ${Math.round(delayMs / 1000)}s ` +
             `(attempt ${attempt + 1}/${runtimeConfig.maxUploadRetries}) because ${
@@ -1983,7 +2152,13 @@ async function uploadReplayWithRetry(
         });
 
         if (isReplayFinalizingError(err)) {
-          await waitForReplayProgress(filePath, attemptFingerprint, delayMs);
+          await waitForReplayProgress(
+            filePath,
+            attemptFingerprint,
+            delayMs
+          );
+
+          retrySnapshot = null;
         } else {
           await sleep(delayMs);
         }
@@ -3404,8 +3579,18 @@ module.exports = {
   inspectReplayFolder,
   getRuntimeStatus: () => ({ ...activeRuntimeStatus }),
   getFileFingerprint,
-  getRetryDelayMs: (attempt, config = {}) =>
-    getRetryDelayMsFactory(buildRuntimeConfig(config), attempt),
+  getRetryDelayMs: (
+    attempt,
+    config = {},
+    options = {}
+  ) =>
+    getRetryDelayMsFactory(
+      buildRuntimeConfig(config),
+      attempt,
+      options
+    ),
+  parseRetryAfterMs,
+  readRetryAfterHeader,
   getReplayContentHash,
   getRuntimeValidationError,
   getSupportedReplayExtensions,
