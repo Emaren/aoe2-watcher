@@ -36,7 +36,7 @@
       "review_interval_days": 0,
       "reviewed_at": "2026-07-26",
       "sensitivity": "internal",
-      "sha256": "abe068eac74a3ca7aa688692049cecb214b93dc3dc69db187cbb7d2d73f4f260",
+      "sha256": "4209034509c34f90c27798fb72ec196ea09dc99f15646c5ab72b928570879db7",
       "source_of_truth": "generated",
       "status": "generated",
       "systems": [
@@ -48,8 +48,8 @@
   ],
   "generated_at": "2026-08-04T02:09:37Z",
   "implementation_baseline": {
-    "branch": "watcher-1.5.8-folder-self-heal",
-    "commit": "9875f13da0929c296727f748a86658ec3d912dc9"
+    "branch": "main",
+    "commit": "3546b86d3cdc1203baa563ae74f9d5a5e82557d7"
   },
   "owner": "aoe2war-watcher",
   "repo": "aoe2-watcher",

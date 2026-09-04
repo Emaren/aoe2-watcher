@@ -19,7 +19,7 @@ Repository ID: `aoe2-watcher`
 
 Documentation owner: `aoe2war-watcher`
 
-Implementation baseline: `watcher-1.5.8-folder-self-heal` at `9875f13da0929c296727f748a86658ec3d912dc9`
+Implementation baseline: `main` at `3546b86d3cdc1203baa563ae74f9d5a5e82557d7`
 
 The implementation baseline identifies the code commit described by this documentation. Documentation-only commits may follow it without creating a self-referential registry hash.
 
