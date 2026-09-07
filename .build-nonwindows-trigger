@@ -1,0 +1,4 @@
+AoE2HDBets Watcher non-Windows release build
+version=1.5.10
+runtime_source=f499e5a64e48a048fe3506ab52a9681c8f3b5966
+reason=coherent_public_release_1.5.10
