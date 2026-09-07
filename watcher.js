@@ -24,6 +24,10 @@ const LIVE_CANDIDATE_GROWTH_CHECK_MS = Number(
   process.env.AOE2_LIVE_CANDIDATE_GROWTH_CHECK_MS || 1500
 );
 const DEFAULT_RECOVERY_SCAN_INTERVAL_MS = 10 * 1000;
+const DEFAULT_VALID_FOLDER_STALE_MS = 3 * 60 * 1000;
+const DEFAULT_ALTERNATE_FOLDER_FRESH_MS = 2 * 60 * 1000;
+const DEFAULT_ALTERNATE_FOLDER_MIN_LEAD_MS = 60 * 1000;
+const DEFAULT_DETECTION_RECENT_MS = 24 * 60 * 60 * 1000;
 const WATCHER_PROVENANCE_LIVE_MONITOR = "live_monitor";
 const WATCHER_PROVENANCE_HISTORICAL_IMPORT = "historical_import";
 const SETTLEMENT_STATE_VERSION = 1;
@@ -414,11 +418,139 @@ function inspectReplayFolder(targetPath) {
   }
 }
 
+function replayFolderModifiedMs(folder) {
+  const value =
+    folder?.latestReplayModifiedAt;
+
+  if (!value) {
+    return 0;
+  }
+
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed)
+    ? parsed
+    : 0;
+}
+
+function selectPreferredReplayFolder(
+  candidates,
+  now = Date.now()
+) {
+  const valid = candidates
+    .filter((candidate) => candidate?.valid);
+
+  valid.sort((left, right) => {
+    const leftModified =
+      replayFolderModifiedMs(left);
+    const rightModified =
+      replayFolderModifiedMs(right);
+    const leftRecent =
+      leftModified > 0 &&
+      now - leftModified <=
+        DEFAULT_DETECTION_RECENT_MS;
+    const rightRecent =
+      rightModified > 0 &&
+      now - rightModified <=
+        DEFAULT_DETECTION_RECENT_MS;
+
+    if (leftRecent !== rightRecent) {
+      return rightRecent ? 1 : -1;
+    }
+
+    if (
+      leftRecent &&
+      rightRecent &&
+      leftModified !== rightModified
+    ) {
+      return rightModified - leftModified;
+    }
+
+    if (right.score !== left.score) {
+      return right.score - left.score;
+    }
+
+    if (rightModified !== leftModified) {
+      return rightModified - leftModified;
+    }
+
+    return String(left.path || "")
+      .localeCompare(
+        String(right.path || "")
+      );
+  });
+
+  return valid[0] || null;
+}
+
+function shouldSwitchReplayFolder(
+  currentFolder,
+  detectedFolder,
+  {
+    now = Date.now(),
+    currentStaleMs =
+      DEFAULT_VALID_FOLDER_STALE_MS,
+    candidateFreshMs =
+      DEFAULT_ALTERNATE_FOLDER_FRESH_MS,
+    minFreshnessLeadMs =
+      DEFAULT_ALTERNATE_FOLDER_MIN_LEAD_MS,
+  } = {}
+) {
+  if (
+    !currentFolder?.valid ||
+    !detectedFolder?.valid ||
+    !detectedFolder.path ||
+    detectedFolder.path ===
+      currentFolder.path
+  ) {
+    return false;
+  }
+
+  const detectedModified =
+    replayFolderModifiedMs(
+      detectedFolder
+    );
+
+  if (
+    detectedModified <= 0 ||
+    now - detectedModified >
+      candidateFreshMs
+  ) {
+    return false;
+  }
+
+  const currentModified =
+    replayFolderModifiedMs(
+      currentFolder
+    );
+
+  if (currentModified <= 0) {
+    return true;
+  }
+
+  if (
+    now - currentModified <
+      currentStaleMs
+  ) {
+    return false;
+  }
+
+  return (
+    detectedModified -
+      currentModified >=
+    minFreshnessLeadMs
+  );
+}
+
 function detectReplayFolder() {
-  const inspected = replayFolderCandidates().map(inspectReplayFolder);
-  return inspected
-    .filter((candidate) => candidate.valid)
-    .sort((left, right) => right.score - left.score)[0] || null;
+  const now = Date.now();
+  const inspected =
+    replayFolderCandidates()
+      .map(inspectReplayFolder);
+
+  return selectPreferredReplayFolder(
+    inspected,
+    now
+  );
 }
 
 function getDefaultReplayDir() {
@@ -3577,6 +3709,8 @@ module.exports = {
   getDefaultReplayDir,
   detectReplayFolder,
   inspectReplayFolder,
+  selectPreferredReplayFolder,
+  shouldSwitchReplayFolder,
   getRuntimeStatus: () => ({ ...activeRuntimeStatus }),
   getFileFingerprint,
   getRetryDelayMs: (
