@@ -1,4 +1,6 @@
 AoE2HDBets Watcher Windows signing trigger
 version=1.5.10
 runtime_source=f499e5a64e48a048fe3506ab52a9681c8f3b5966
+test_runner_source=8286f6e6fdd085a878a2c7021724cbaa3ad55cee
+attempt=2
 reason=release_1.5.10_folder_recovery_and_replay_priority
