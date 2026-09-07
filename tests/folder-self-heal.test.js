@@ -68,7 +68,17 @@ test(
 
     assert.match(
       mainSource,
-      /const detectedFolder =\s*detectReplayFolder\(\)/
+      /const detectedFolder =\s*!currentFolder\.valid \|\|\s*allowFreshnessSwitch\s*\? detectReplayFolder\(\)\s*:\s*null/
+    );
+
+    assert.match(
+      mainSource,
+      /source:\s*"watchdog_valid_folder_stale"[\s\S]*?allowFreshnessSwitch:\s*true/
+    );
+
+    assert.match(
+      mainSource,
+      /shouldSwitchReplayFolder\(\s*currentFolder,\s*detectedFolder\s*\)/
     );
 
     assert.match(
