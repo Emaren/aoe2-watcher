@@ -8,6 +8,8 @@ const {
   createReplayUploadSnapshot,
   detectReplayFolder,
   inspectReplayFolder,
+  selectPreferredReplayFolder,
+  shouldSwitchReplayFolder,
 } = require("../watcher");
 
 function temporaryFolder(segment) {
@@ -400,6 +402,94 @@ test("auto-detects Age2HD in a custom Steam library", () => {
       }
     );
   }
+});
+
+test("fresh replay activity outranks a stale folder with more historical files", () => {
+  const now = Date.now();
+  const activeFolder = {
+    path: "C:\\active\\SaveGame",
+    valid: true,
+    score: 34,
+    supportedReplayCount: 1,
+    latestReplayModifiedAt: new Date(now - 30 * 1000).toISOString(),
+  };
+  const staleFolder = {
+    path: "C:\\stale\\SaveGame",
+    valid: true,
+    score: 70,
+    supportedReplayCount: 20,
+    latestReplayModifiedAt: new Date(now - 3 * 24 * 60 * 60 * 1000).toISOString(),
+  };
+
+  assert.equal(
+    selectPreferredReplayFolder(
+      [staleFolder, activeFolder],
+      now,
+    ),
+    activeFolder,
+  );
+});
+
+test("valid stale folder switches only to materially fresher proven activity", () => {
+  const now = Date.now();
+  const current = {
+    path: "C:\\old\\SaveGame",
+    valid: true,
+    latestReplayModifiedAt: new Date(now - 15 * 60 * 1000).toISOString(),
+  };
+  const fresh = {
+    path: "D:\\SteamLibrary\\Age2HD\\SaveGame\\multi",
+    valid: true,
+    latestReplayModifiedAt: new Date(now - 30 * 1000).toISOString(),
+  };
+
+  assert.equal(
+    shouldSwitchReplayFolder(
+      current,
+      fresh,
+      { now },
+    ),
+    true,
+  );
+
+  assert.equal(
+    shouldSwitchReplayFolder(
+      {
+        ...current,
+        latestReplayModifiedAt: new Date(now - 90 * 1000).toISOString(),
+      },
+      fresh,
+      { now },
+    ),
+    false,
+    "a recently active current folder must not be displaced",
+  );
+
+  assert.equal(
+    shouldSwitchReplayFolder(
+      current,
+      {
+        ...fresh,
+        latestReplayModifiedAt: new Date(now - 10 * 60 * 1000).toISOString(),
+      },
+      { now },
+    ),
+    false,
+    "a stale alternative must not trigger a switch",
+  );
+
+  assert.equal(
+    shouldSwitchReplayFolder(
+      current,
+      {
+        ...fresh,
+        path: current.path,
+      },
+      { now },
+    ),
+    false,
+    "the same folder is never a switch candidate",
+  );
 });
 
 test("accepts a readable AoE2 HD SaveGame folder", () => {
