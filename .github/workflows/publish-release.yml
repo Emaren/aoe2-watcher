@@ -1,0 +1,167 @@
+name: Publish Watcher Release
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - ".publish-release-trigger"
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    env:
+      VERSION: "1.5.10"
+      WINDOWS_RUN_ID: "34082963205"
+      NONWINDOWS_RUN_ID: "34083586837"
+      RUNTIME_SOURCE_SHA: "f499e5a64e48a048fe3506ab52a9681c8f3b5966"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download certified platform artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf staging
+          mkdir -p staging/windows staging/macos staging/linux release
+
+          gh run download "$WINDOWS_RUN_ID" \
+            --repo "$GITHUB_REPOSITORY" \
+            --name signed-windows-watcher \
+            --dir staging/windows
+
+          gh run download "$NONWINDOWS_RUN_ID" \
+            --repo "$GITHUB_REPOSITORY" \
+            --name watcher-macos-1.5.10 \
+            --dir staging/macos
+
+          gh run download "$NONWINDOWS_RUN_ID" \
+            --repo "$GITHUB_REPOSITORY" \
+            --name watcher-linux-1.5.10 \
+            --dir staging/linux
+
+          cp staging/windows/*.exe release/
+          cp staging/macos/*.dmg release/
+          cp staging/macos/*.dmg.blockmap release/
+          cp staging/macos/aoe2hdbets-watcher-direct.zip release/
+          cp staging/macos/latest-mac.yml release/
+          cp staging/linux/*.AppImage release/
+          cp staging/linux/latest-linux.yml release/
+
+      - name: Build signed Windows updater manifest and release receipts
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import base64
+          import datetime
+          import hashlib
+          import json
+          import os
+
+          root = Path("release")
+          version = os.environ["VERSION"]
+          installer = root / f"AoE2HDBets Watcher Setup {version}.exe"
+          payload = installer.read_bytes()
+          sha512 = base64.b64encode(hashlib.sha512(payload).digest()).decode()
+
+          latest = (
+              f"version: {version}\n"
+              "files:\n"
+              f"  - url: AoE2HDBets%20Watcher%20Setup%20{version}.exe\n"
+              f"    sha512: {sha512}\n"
+              f"    size: {len(payload)}\n"
+              f"path: AoE2HDBets Watcher Setup {version}.exe\n"
+              f"sha512: {sha512}\n"
+              f"releaseDate: '{datetime.datetime.now(datetime.timezone.utc).isoformat().replace('+00:00', 'Z')}'\n"
+          )
+          (root / "latest.yml").write_text(latest)
+
+          canonical = [
+              f"AoE2HDBets Watcher Setup {version}.exe",
+              f"AoE2HDBets Watcher {version}.exe",
+              f"AoE2HDBets Watcher-{version}-arm64.dmg",
+              "aoe2hdbets-watcher-direct.zip",
+              f"AoE2HDBets Watcher-{version}.AppImage",
+              f"AoE2HDBets Watcher-{version}-arm64.dmg.blockmap",
+              "latest.yml",
+              "latest-mac.yml",
+              "latest-linux.yml",
+          ]
+
+          rows = []
+          for name in canonical:
+              path = root / name
+              data = path.read_bytes()
+              rows.append({
+                  "filename": name,
+                  "bytes": len(data),
+                  "sha256": hashlib.sha256(data).hexdigest(),
+              })
+
+          (root / f"SHA256SUMS-{version}.txt").write_text(
+              "".join(f"{row['sha256']}  {row['filename']}\n" for row in rows)
+          )
+
+          manifest = {
+              "schema": 1,
+              "release": f"AoE2HDBets Watcher {version}",
+              "version": version,
+              "runtime_source_sha": os.environ["RUNTIME_SOURCE_SHA"],
+              "windows_signing_run_id": int(os.environ["WINDOWS_RUN_ID"]),
+              "nonwindows_build_run_id": int(os.environ["NONWINDOWS_RUN_ID"]),
+              "files": rows,
+          }
+          (root / f"watcher-release-manifest-{version}.json").write_text(
+              json.dumps(manifest, indent=2) + "\n"
+          )
+
+          expected = {
+              f"AoE2HDBets Watcher Setup {version}.exe": "294b5b39f8347cf17c72ab992be79d55e0494f33c7432a9452d7e0b54154ab63",
+              f"AoE2HDBets Watcher {version}.exe": "a389d4cedd11a354ab87f46175194b7030ccf45717c4d8907ddaa5eb6d637b81",
+              f"AoE2HDBets Watcher-{version}-arm64.dmg": "93c580bd42727cb68c94e9c2959403703a874099f6b382214c058edef5d7fc14",
+              "aoe2hdbets-watcher-direct.zip": "d4cc8dd10a3be7bae4c1027b4580d1d8595b6404252fcdafec3dc11ebba70a02",
+              f"AoE2HDBets Watcher-{version}.AppImage": "f2511e68f383642b7478b08abc588201dbe30c1ba1640650b34d5ff1d7449421",
+          }
+
+          actual = {row["filename"]: row["sha256"] for row in rows}
+          for name, digest in expected.items():
+              if actual.get(name) != digest:
+                  raise SystemExit(
+                      f"STOP: certified hash mismatch for {name}: {actual.get(name)} != {digest}"
+                  )
+
+          print(json.dumps(manifest, indent=2))
+          PY
+
+      - name: Publish immutable GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="v$VERSION"
+
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "STOP: release $TAG already exists" >&2
+            exit 2
+          fi
+
+          gh release create "$TAG" release/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "AoE2HDBets Watcher $VERSION" \
+            --notes "Watcher $VERSION closes valid-but-stale replay-folder recovery and makes optional video streaming yield to replay live/final transport. Windows artifacts are Azure-signed and timestamped. Runtime source: $RUNTIME_SOURCE_SHA."
+
+      - name: Verify published release inventory
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "v$VERSION" \
+            --repo "$GITHUB_REPOSITORY" \
+            --json tagName,name,assets
