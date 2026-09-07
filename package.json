@@ -8,7 +8,7 @@
   "productName": "AoE2HDBets Watcher",
   "scripts": {
     "start": "electron main.js",
-    "lint": "node --check main.js && node --check watcher.js && node --check telemetryQueue.js && node --check renderer.js && node --check preload.js",
+    "lint": "node --check main.js && node --check watcher.js && node --check telemetryQueue.js && node --check networkPriority.js && node --check renderer.js && node --check preload.js",
     "test": "node --test *.test.js tests/*.test.js",
     "build": "electron-builder",
     "pack": "electron-builder --dir",
@@ -35,6 +35,7 @@
     "files": [
       "main.js",
       "telemetryQueue.js",
+      "networkPriority.js",
       "watcher.js",
       "streamHandoff.js",
       "preload.js",

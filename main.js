@@ -34,6 +34,9 @@ const {
   stopWatching,
 } = require("./watcher");
 const { buildStreamHandoff } = require("./streamHandoff");
+const {
+  createNetworkPriorityArbiter,
+} = require("./networkPriority");
 
 const WATCHER_PAIR_PROTOCOL = "aoe2hd-watcher";
 const APP_NAME = "AoE2HDBets Watcher";
@@ -81,6 +84,9 @@ const MAC_AUTO_UPDATE_ENABLED = process.env.AOE2_ENABLE_MAC_AUTO_UPDATE === "1";
 const APP_SESSION_ID = createRandomId("session");
 const runtimeEventCoalescer =
   createRuntimeEventCoalescer();
+
+const networkPriorityArbiter =
+  createNetworkPriorityArbiter();
 
 let mainWindow = null;
 let watcherHandle = null;
@@ -1955,27 +1961,81 @@ async function postStreamChunk(payload = {}) {
     return { ok: true, skipped: true };
   }
 
-  const baseUrl = normalizeBaseUrl(payload.baseUrl || getStreamWebBaseUrl(config));
-  const response = await axios.post(
-    `${baseUrl}/api/streams/${streamId}/chunks?sequence=${sequence}`,
-    buffer,
-    {
-      timeout: 20000,
-      maxBodyLength: Infinity,
-      maxContentLength: Infinity,
-      headers: streamRequestHeaders(config, {
-        "content-type": payload.mimeType || "video/webm",
-        "x-stream-sequence": String(sequence),
-        accept: "application/json",
-      }),
-    }
-  );
+  if (
+    networkPriorityArbiter
+      .isReplayPriorityActive()
+  ) {
+    return {
+      ok: true,
+      skipped: true,
+      priorityYield: true,
+      reason:
+        "replay_upload_priority",
+    };
+  }
 
-  return {
-    ok: true,
-    status: response.status,
-    data: response.data,
-  };
+  const controller =
+    new AbortController();
+
+  if (
+    !networkPriorityArbiter
+      .registerStreamUpload(
+        controller
+      )
+  ) {
+    return {
+      ok: true,
+      skipped: true,
+      priorityYield: true,
+      reason:
+        "replay_upload_priority",
+    };
+  }
+
+  const baseUrl = normalizeBaseUrl(payload.baseUrl || getStreamWebBaseUrl(config));
+
+  try {
+    const response = await axios.post(
+      `${baseUrl}/api/streams/${streamId}/chunks?sequence=${sequence}`,
+      buffer,
+      {
+        timeout: 20000,
+        maxBodyLength: Infinity,
+        maxContentLength: Infinity,
+        signal: controller.signal,
+        headers: streamRequestHeaders(config, {
+          "content-type": payload.mimeType || "video/webm",
+          "x-stream-sequence": String(sequence),
+          accept: "application/json",
+        }),
+      }
+    );
+
+    return {
+      ok: true,
+      status: response.status,
+      data: response.data,
+    };
+  } catch (error) {
+    if (
+      controller.signal.aborted
+    ) {
+      return {
+        ok: true,
+        skipped: true,
+        priorityYield: true,
+        reason:
+          "replay_upload_priority",
+      };
+    }
+
+    throw error;
+  } finally {
+    networkPriorityArbiter
+      .unregisterStreamUpload(
+        controller
+      );
+  }
 }
 
 function isBrowserOrAoE2WarCaptureName(value) {
@@ -2253,6 +2313,22 @@ function appendRuntimeEventJournal(
 }
 
 function handleWatcherRuntimeEvent(event) {
+  const priority =
+    networkPriorityArbiter
+      .handleReplayEvent(event);
+
+  if (
+    priority.preemptedVideoUploads > 0
+  ) {
+    appendLog(
+      `Replay upload took network priority; preempted ${priority.preemptedVideoUploads} video chunk upload${
+        priority.preemptedVideoUploads === 1
+          ? ""
+          : "s"
+      }.`
+    );
+  }
+
   appendRuntimeEventJournal(event);
   updateStreamHandoffFromRuntimeEvent(event);
   sendToRenderer("watcher:runtime-event", event);

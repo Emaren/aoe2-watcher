@@ -205,6 +205,7 @@ let nativeStreamState = {
   uploadQueueLength: 0,
   lastUploadLatencyMs: 0,
   droppedChunks: 0,
+  priorityYieldedChunks: 0,
   lastHeartbeatAt: 0,
   mediaMimeType: "video/webm",
   heartbeatTimer: null,
@@ -215,6 +216,9 @@ let nativeStreamState = {
 };
 let nativeStreamLastThumbnailAt = 0;
 let nativeUploadChain = Promise.resolve();
+let nativeVideoUploadGeneration = 0;
+let replayVideoPriorityActive = false;
+let replayPriorityPausedRecorder = false;
 let watchDirStatus = {
   exists: false,
   isDirectory: false,
@@ -750,6 +754,7 @@ async function sendNativeStreamEvent(eventType, metadata = {}) {
         uploadQueueLength: nativeStreamState.uploadQueueLength,
         lastUploadLatencyMs: nativeStreamState.lastUploadLatencyMs,
         droppedChunks: nativeStreamState.droppedChunks,
+        priorityYieldedChunks: nativeStreamState.priorityYieldedChunks,
         ...metadata,
       },
     });
@@ -885,6 +890,91 @@ async function endNativeStream(reason = "manual") {
   });
 }
 
+function setReplayVideoPriority(active) {
+  const next = Boolean(active);
+
+  if (
+    next &&
+    !replayVideoPriorityActive
+  ) {
+    nativeVideoUploadGeneration += 1;
+
+    if (
+      nativeStreamState.recorder?.state ===
+      "recording"
+    ) {
+      try {
+        nativeStreamState.recorder.pause();
+        replayPriorityPausedRecorder =
+          true;
+      } catch {}
+    }
+  }
+
+  if (
+    !next &&
+    replayVideoPriorityActive &&
+    replayPriorityPausedRecorder
+  ) {
+    try {
+      if (
+        nativeStreamState.status ===
+          "live" &&
+        nativeStreamState.recorder?.state ===
+          "paused"
+      ) {
+        nativeStreamState.recorder.resume();
+      }
+    } catch {}
+
+    replayPriorityPausedRecorder =
+      false;
+  }
+
+  replayVideoPriorityActive = next;
+}
+
+function yieldNativeVideoChunk(
+  streamId,
+  sequence,
+  blob,
+  reason =
+    "replay_upload_priority"
+) {
+  updateNativeStreamState({
+    droppedChunks:
+      nativeStreamState.droppedChunks +
+      1,
+    priorityYieldedChunks:
+      nativeStreamState
+        .priorityYieldedChunks +
+      1,
+    readout:
+      "Replay upload has priority. Skipping video slice.",
+    detail:
+      `${nativeStreamState.sourceName || "Capture source"} · video yielded so replay data can transfer first`,
+  });
+
+  if (
+    sequence === 0 ||
+    sequence % 8 === 0
+  ) {
+    void sendNativeStreamEvent(
+      "stream_chunk_dropped",
+      {
+        streamId,
+        sequence,
+        blobSize:
+          blob?.size || 0,
+        uploadQueueLength:
+          nativeStreamState
+            .uploadQueueLength,
+        reason,
+      }
+    );
+  }
+}
+
 async function uploadNativeChunk(streamId, sequence, blob) {
   if (!blob?.size) {
     return;
@@ -898,6 +988,19 @@ async function uploadNativeChunk(streamId, sequence, blob) {
     mimeType: blob.type || nativeStreamState.mediaMimeType,
     bytes: await blob.arrayBuffer(),
   });
+
+  if (
+    result?.priorityYield
+  ) {
+    yieldNativeVideoChunk(
+      streamId,
+      sequence,
+      blob,
+      result.reason ||
+        "replay_upload_priority"
+    );
+    return;
+  }
 
   if (!result?.ok) {
     throw new Error(result?.error || result?.data?.detail || "Chunk upload failed.");
@@ -932,6 +1035,18 @@ function queueNativeChunkUpload(streamId, sequence, blob) {
     return;
   }
 
+  if (replayVideoPriorityActive) {
+    yieldNativeVideoChunk(
+      streamId,
+      sequence,
+      blob
+    );
+    return;
+  }
+
+  const uploadGeneration =
+    nativeVideoUploadGeneration;
+
   if (nativeStreamState.uploadQueueLength >= STREAM_MAX_UPLOAD_QUEUE) {
     updateNativeStreamState({
       droppedChunks: nativeStreamState.droppedChunks + 1,
@@ -960,6 +1075,19 @@ function queueNativeChunkUpload(streamId, sequence, blob) {
         nativeStreamState.status === "idle" ||
         nativeStreamState.stream?.id !== streamId
       ) {
+        return;
+      }
+
+      if (
+        replayVideoPriorityActive ||
+        uploadGeneration !==
+          nativeVideoUploadGeneration
+      ) {
+        yieldNativeVideoChunk(
+          streamId,
+          sequence,
+          blob
+        );
         return;
       }
 
@@ -998,6 +1126,7 @@ function queueNativeChunkUpload(streamId, sequence, blob) {
 async function sendNativeHeartbeat(streamId, status = "live") {
   const now = Date.now();
   const shouldRefreshThumbnail =
+    !replayVideoPriorityActive &&
     now - nativeStreamLastThumbnailAt >= STREAM_THUMBNAIL_INTERVAL_MS;
 
   const thumbnailUrl = shouldRefreshThumbnail
@@ -1184,7 +1313,10 @@ async function startNativeStream() {
       playerLabel: "Watcher",
       sourceType: "watcher_native",
       mediaMimeType,
-      thumbnailUrl: captureNativeThumbnail(),
+      thumbnailUrl:
+        replayVideoPriorityActive
+          ? null
+          : captureNativeThumbnail(),
     });
 
     const stream = streamData.stream;
@@ -1203,6 +1335,10 @@ async function startNativeStream() {
     nativeStreamState.uploadQueueLength = 0;
     nativeStreamState.lastUploadLatencyMs = 0;
     nativeStreamState.droppedChunks = 0;
+    nativeStreamState.priorityYieldedChunks = 0;
+    nativeVideoUploadGeneration += 1;
+    replayVideoPriorityActive = false;
+    replayPriorityPausedRecorder = false;
     nativeUploadChain = Promise.resolve();
 
     const recorder = new MediaRecorder(capture, buildNativeRecorderOptions(mode, mediaMimeType));
@@ -1977,6 +2113,28 @@ function buildSupportSnapshot() {
 
 function consumeRuntimeEvent(event) {
   syncStreamCandidateFromRuntimeEvent(event);
+
+  if (
+    event?.type ===
+      "final-candidate-ready" ||
+    event?.type ===
+      "upload-start"
+  ) {
+    setReplayVideoPriority(true);
+  } else if (
+    event?.type ===
+      "upload-retry" ||
+    event?.type ===
+      "upload-success" ||
+    event?.type ===
+      "upload-failure" ||
+    event?.type ===
+      "final-candidate-accepted" ||
+    event?.type ===
+      "watching-stopped"
+  ) {
+    setReplayVideoPriority(false);
+  }
 
   switch (event.type) {
     case "watching-started":
