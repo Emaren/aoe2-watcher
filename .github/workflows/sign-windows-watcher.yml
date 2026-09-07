@@ -2,6 +2,11 @@ name: Sign Windows Watcher
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - ".sign-windows-trigger"
 
 permissions:
   contents: read
@@ -24,6 +29,14 @@ jobs:
       - name: Install dependencies
         shell: pwsh
         run: npm ci
+
+      - name: Lint runtime JavaScript
+        shell: pwsh
+        run: npm run lint
+
+      - name: Run Watcher contracts
+        shell: pwsh
+        run: npm test
 
       - name: Build Windows watcher EXEs on Windows
         shell: pwsh
