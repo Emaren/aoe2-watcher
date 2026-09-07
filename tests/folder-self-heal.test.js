@@ -43,7 +43,7 @@ function extractTelemetryCall(
 
   const endMatch =
     tail.match(
-      /\n\s*\);\n/
+      /\r?\n\s*\);\r?\n/
     );
 
   assert.ok(
@@ -175,7 +175,7 @@ test(
   () => {
     const handler =
       mainSource.match(
-        /ipcMain\.handle\("watcher:get-default-replay-dir"[\s\S]*?\n\s*\}\);/
+        /ipcMain\.handle\("watcher:get-default-replay-dir"[\s\S]*?\r?\n\s*\}\);/
       )?.[0] || "";
 
     assert.ok(
