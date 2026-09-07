@@ -29,6 +29,7 @@ const {
   getSupportedReplayExtensions,
   inspectReplayFolder,
   importHistoricalReplays,
+  shouldSwitchReplayFolder,
   startWatching,
   stopWatching,
 } = require("./watcher");
@@ -98,7 +99,12 @@ let lastStreamHandoff = null;
 let monitorWatchdogTimer = null;
 let monitorReattachAttempts = 0;
 let monitorLastReattachAt = 0;
+let lastReplayFolderFreshnessProbeAt = 0;
 const MONITOR_WATCHDOG_MS = Number(process.env.AOE2_MONITOR_WATCHDOG_MS || 30 * 1000);
+const REPLAY_FOLDER_FRESHNESS_PROBE_MS = Number(
+  process.env.AOE2_REPLAY_FOLDER_FRESHNESS_PROBE_MS ||
+    60 * 1000
+);
 const MONITOR_REATTACH_LIMIT = Number(process.env.AOE2_MONITOR_REATTACH_LIMIT || 3);
 const MONITOR_REATTACH_COOLDOWN_MS = Number(
   process.env.AOE2_MONITOR_REATTACH_COOLDOWN_MS || 60 * 1000
@@ -788,24 +794,41 @@ function recoverReplayFolderConfig(
   {
     source = "runtime",
     emitFailure = true,
+    allowFreshnessSwitch = false,
   } = {}
 ) {
   const currentFolder =
     inspectReplayFolder(config?.watchDir);
 
-  if (currentFolder.valid) {
+  const detectedFolder =
+    !currentFolder.valid ||
+    allowFreshnessSwitch
+      ? detectReplayFolder()
+      : null;
+
+  const freshnessSwitch =
+    Boolean(
+      currentFolder.valid &&
+      allowFreshnessSwitch &&
+      shouldSwitchReplayFolder(
+        currentFolder,
+        detectedFolder
+      )
+    );
+
+  if (
+    currentFolder.valid &&
+    !freshnessSwitch
+  ) {
     return config;
   }
-
-  const detectedFolder =
-    detectReplayFolder();
 
   if (
     !detectedFolder?.valid ||
     !detectedFolder.path ||
     detectedFolder.path === config?.watchDir
   ) {
-    if (emitFailure) {
+    if (emitFailure && !currentFolder.valid) {
       emitWatcherTelemetry(
         "watch_folder_auto_repair_failed",
         {
@@ -845,6 +868,16 @@ function recoverReplayFolderConfig(
           detectedFolder.label,
         supportedReplayCount:
           detectedFolder.supportedReplayCount,
+        previousLatestReplayModifiedAt:
+          currentFolder.latestReplayModifiedAt,
+        detectedLatestReplayModifiedAt:
+          detectedFolder.latestReplayModifiedAt,
+        repairReason:
+          freshnessSwitch
+            ? "valid_folder_stale"
+            : classifyReplayFolderProblem(
+                currentFolder
+              ),
       },
     },
     config
@@ -858,10 +891,15 @@ function recoverReplayFolderConfig(
     });
 
   appendLog(
-    `Replay folder auto-repaired to ${
-      detectedFolder.label ||
-      "AoE2 HD SaveGame"
-    }.`
+    freshnessSwitch
+      ? `Replay folder switched to active HD folder ${
+          detectedFolder.label ||
+          "AoE2 HD SaveGame"
+        } after fresher replay activity was detected.`
+      : `Replay folder auto-repaired to ${
+          detectedFolder.label ||
+          "AoE2 HD SaveGame"
+        }.`
   );
 
   broadcastConfig(saved);
@@ -883,6 +921,14 @@ function recoverReplayFolderConfig(
           detectedFolder.supportedReplayCount,
         latestReplayModifiedAt:
           detectedFolder.latestReplayModifiedAt,
+        previousLatestReplayModifiedAt:
+          currentFolder.latestReplayModifiedAt,
+        repairReason:
+          freshnessSwitch
+            ? "valid_folder_stale"
+            : classifyReplayFolderProblem(
+                currentFolder
+              ),
         ...buildRuntimeMetadata(saved),
       },
     },
@@ -1600,11 +1646,52 @@ function startMonitorWatchdog() {
   monitorWatchdogTimer = setInterval(() => {
     const runtime = getRuntimeStatus();
 
-    // Normal operation is event-driven. When the Chokidar monitor is
-    // healthy there is no reason to touch the replay directory merely
-    // to prove that the already-attached watcher still exists.
+    // Normal operation is event-driven, but a structurally valid HD
+    // folder can still be the wrong active folder (for example local
+    // Documents vs OneDrive vs a Steam library). Probe infrequently for
+    // materially fresher replay writes and switch only when the pure
+    // folder-selection contract proves a better active target.
     if (watcherHandle && runtime.monitorAttached) {
       monitorReattachAttempts = 0;
+
+      const now = Date.now();
+      if (
+        now -
+          lastReplayFolderFreshnessProbeAt >=
+        REPLAY_FOLDER_FRESHNESS_PROBE_MS
+      ) {
+        lastReplayFolderFreshnessProbeAt =
+          now;
+
+        const currentConfig =
+          loadConfig();
+        const recoveredConfig =
+          recoverReplayFolderConfig(
+            currentConfig,
+            {
+              source:
+                "watchdog_valid_folder_stale",
+              emitFailure: false,
+              allowFreshnessSwitch: true,
+            }
+          );
+
+        if (
+          recoveredConfig.watchDir &&
+          recoveredConfig.watchDir !==
+            currentConfig.watchDir
+        ) {
+          startCurrentWatcher(
+            recoveredConfig,
+            {
+              preserveLog: true,
+              startMessage:
+                "Replay folder freshness watchdog found a more active HD SaveGame folder.",
+            }
+          );
+        }
+      }
+
       return;
     }
 
