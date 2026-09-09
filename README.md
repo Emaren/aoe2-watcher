@@ -44,9 +44,23 @@ recovery. Any accepted automatic result is stats-only and cannot authorize a
 market or chain action.
 
 This source commit does not change the advertised desktop version. Public
-Windows, macOS, and Linux artifacts remain `1.5.7` until a separate release
+Windows, macOS, and Linux artifacts remain `1.5.10` until a separate release
 build, test, signing/staging, manifest-sync, and publication gate is completed.
 <!-- AOE2WAR:TERMINAL_RESULT_RECEIPT_SOURCE_V3:END -->
+
+## Post-v1.5.10 live diagnostics hardening
+
+Current source keeps parser diagnostics phase-aware. A live partial replay may
+legitimately lack winner proof while the match is still in progress, so those
+winner-only gaps are not emitted as unknown parse fields until the upload is
+final. Populated player arrays are traversed structurally rather than treated as
+objects that should themselves expose a `name`. Structural live gaps such as an
+unknown map or an unknown player name still surface immediately, and an
+unresolved winner on a final replay remains diagnostic truth.
+
+This hardening is source-only and does not advance the advertised desktop
+version beyond `1.5.10`; a new public Watcher version still requires the full
+five-artifact release gate.
 
 ## v1.5.4 reliability contract
 

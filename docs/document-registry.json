@@ -13,7 +13,7 @@
       "review_interval_days": 60,
       "reviewed_at": "2026-08-08",
       "sensitivity": "internal",
-      "sha256": "73945c3672ac93c318abda20fa75f590d46f74578e22ce6c337764b020443a5d",
+      "sha256": "3ea9f4d47decb05854a79239ee185d3611a990fc3998ae837b8db4fa3afcd979",
       "source_of_truth": "git",
       "status": "active",
       "systems": [
@@ -36,7 +36,7 @@
       "review_interval_days": 0,
       "reviewed_at": "2026-07-26",
       "sensitivity": "internal",
-      "sha256": "bc28bbcf1ccd002be56b0d7cace851c2916be23234c55bd4ed84e1ef259ebb28",
+      "sha256": "6771e94d2fad419c3c58150d49046f9ef0835bf719f6d28ce5aa3333136c4f7d",
       "source_of_truth": "generated",
       "status": "generated",
       "systems": [
@@ -48,8 +48,8 @@
   ],
   "generated_at": "2026-08-04T02:09:37Z",
   "implementation_baseline": {
-    "branch": "main",
-    "commit": "0a8309e0d1febbe0cf39608b6a6e1bc27fba07ed"
+    "branch": "fix/live-parse-diagnostics-v2",
+    "commit": "078ef01ae0a8e24a1a9933ffa229ba986003dc0a"
   },
   "owner": "aoe2war-watcher",
   "repo": "aoe2-watcher",

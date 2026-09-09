@@ -19,7 +19,7 @@ Repository ID: `aoe2-watcher`
 
 Documentation owner: `aoe2war-watcher`
 
-Implementation baseline: `main` at `0a8309e0d1febbe0cf39608b6a6e1bc27fba07ed`
+Implementation baseline: `fix/live-parse-diagnostics-v2` at `078ef01ae0a8e24a1a9933ffa229ba986003dc0a`
 
 The implementation baseline identifies the code commit described by this documentation. Documentation-only commits may follow it without creating a self-referential registry hash.
 
