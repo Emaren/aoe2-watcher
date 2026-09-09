@@ -1458,7 +1458,7 @@ function isImportantParseField(key = "") {
   );
 }
 
-function detectUnknownParseFields(payload) {
+function detectUnknownParseFields(payload, { isFinal = true } = {}) {
   const found = new Set();
 
   function visit(value, pathParts = []) {
@@ -1475,6 +1475,15 @@ function detectUnknownParseFields(payload) {
       const childPath = [...pathParts, key];
       const childPathText = childPath.join(".");
       const important = isImportantParseField(key);
+      const normalizedPath = childPathText.toLowerCase();
+      const expectedLiveWinnerGap =
+        !isFinal && normalizedPath.includes("winner");
+      const optionalDiagnosticGap =
+        normalizedPath.endsWith("single_team_winner_flag_team_id");
+
+      if (expectedLiveWinnerGap || optionalDiagnosticGap) {
+        continue;
+      }
 
       if (important && isUnknownishValue(child)) {
         found.add(childPathText);
@@ -1486,7 +1495,12 @@ function detectUnknownParseFields(payload) {
         continue;
       }
 
-      if (important && child && typeof child === "object") {
+      if (
+        important &&
+        child &&
+        typeof child === "object" &&
+        !Array.isArray(child)
+      ) {
         const objectName = child.name || child.label || child.value;
         if (isUnknownishValue(objectName)) {
           found.add(`${childPathText}.name`);
@@ -2054,7 +2068,7 @@ async function uploadReplayWithRetry(
         const resultType = classifyUploadResult(detail);
         const responseSummary = summarizeUploadResponse(res.data);
         const acceptance = classifyReplayAcceptance(responseSummary, { isFinal });
-        const unknownParseFields = detectUnknownParseFields(res.data);
+        const unknownParseFields = detectUnknownParseFields(res.data, { isFinal });
         const finalAccepted = acceptance.resultReady;
         const finalStored = Boolean(isFinal && (acceptance.archived || finalAccepted));
 
@@ -3708,6 +3722,7 @@ module.exports = {
   createReplayUploadSnapshot,
   getDefaultReplayDir,
   detectReplayFolder,
+  detectUnknownParseFields,
   inspectReplayFolder,
   selectPreferredReplayFolder,
   shouldSwitchReplayFolder,
