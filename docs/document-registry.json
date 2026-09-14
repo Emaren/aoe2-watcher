@@ -13,7 +13,7 @@
       "review_interval_days": 60,
       "reviewed_at": "2026-08-08",
       "sensitivity": "internal",
-      "sha256": "e4a00b7ab461bc83c5e547398627601c97d42b6ee2817a9bab39eac436203f84",
+      "sha256": "30e19adff3f104709f21402d57dce2f534f4d41f9668eda33392817a6db2b828",
       "source_of_truth": "git",
       "status": "active",
       "systems": [
@@ -36,7 +36,7 @@
       "review_interval_days": 0,
       "reviewed_at": "2026-07-26",
       "sensitivity": "internal",
-      "sha256": "fa3aed958d9e706bb5556285a31a2870687d984506c89f30faca1676ed7b1fc8",
+      "sha256": "48dcf0cd90f224f0dfccd2a7834ddce7de59e2e1bedaf1b3d0b2eacb5d6398b5",
       "source_of_truth": "generated",
       "status": "generated",
       "systems": [
@@ -48,8 +48,8 @@
   ],
   "generated_at": "2026-08-04T02:09:37Z",
   "implementation_baseline": {
-    "branch": "fix/server-media-shed-terminal-v1",
-    "commit": "790768fba05fc83da3c1681dafa05dcb925804cc"
+    "branch": "release/watcher-1.5.11-v1",
+    "commit": "599e22c45d190535f5ebe589021be9a3c8cb747b"
   },
   "owner": "aoe2war-watcher",
   "repo": "aoe2-watcher",
