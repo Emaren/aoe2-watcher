@@ -2029,6 +2029,29 @@ async function postStreamChunk(payload = {}) {
       };
     }
 
+    const responseData =
+      error?.response?.data;
+    if (
+      error?.response?.status === 409 &&
+      responseData?.code ===
+        "STREAM_MEDIA_SHED" &&
+      responseData?.terminal === true
+    ) {
+      return {
+        ok: false,
+        status: 409,
+        terminalMediaShed: true,
+        reason:
+          responseData?.reason ||
+          "server_media_shed",
+        retryAfterSeconds:
+          Number(
+            responseData?.retryAfterSeconds
+          ) || 0,
+        data: responseData,
+      };
+    }
+
     throw error;
   } finally {
     networkPriorityArbiter
