@@ -76,3 +76,35 @@ test("renderer invalidates stale video backlog during replay transfer", () => {
     /event\?\.type ===\s*"upload-retry"/,
   );
 });
+
+
+test("watcher advertises terminal media-shed capability on stream requests", () => {
+  assert.match(
+    mainSource,
+    /"x-aoe2war-stream-capabilities":\s*"server-media-shed-v1"/,
+  );
+});
+
+test("server media-shed response is terminal before generic chunk failure", () => {
+  assert.match(
+    mainSource,
+    /responseData\?\.code ===\s*"STREAM_MEDIA_SHED"/,
+  );
+  assert.match(
+    mainSource,
+    /terminalMediaShed:\s*true/,
+  );
+
+  const terminalOffset = rendererSource.indexOf("result?.terminalMediaShed");
+  const genericFailureOffset = rendererSource.indexOf("if (!result?.ok)", terminalOffset);
+  assert.ok(terminalOffset >= 0);
+  assert.ok(genericFailureOffset > terminalOffset);
+  assert.match(
+    rendererSource,
+    /await endNativeStream\(\s*"server_media_shed"\s*\)/,
+  );
+  assert.match(
+    rendererSource,
+    /Video stopped to protect replay and API traffic\./,
+  );
+});

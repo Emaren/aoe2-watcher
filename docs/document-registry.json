@@ -13,7 +13,7 @@
       "review_interval_days": 60,
       "reviewed_at": "2026-08-08",
       "sensitivity": "internal",
-      "sha256": "3ea9f4d47decb05854a79239ee185d3611a990fc3998ae837b8db4fa3afcd979",
+      "sha256": "e4a00b7ab461bc83c5e547398627601c97d42b6ee2817a9bab39eac436203f84",
       "source_of_truth": "git",
       "status": "active",
       "systems": [
@@ -36,7 +36,7 @@
       "review_interval_days": 0,
       "reviewed_at": "2026-07-26",
       "sensitivity": "internal",
-      "sha256": "6771e94d2fad419c3c58150d49046f9ef0835bf719f6d28ce5aa3333136c4f7d",
+      "sha256": "fa3aed958d9e706bb5556285a31a2870687d984506c89f30faca1676ed7b1fc8",
       "source_of_truth": "generated",
       "status": "generated",
       "systems": [
@@ -48,8 +48,8 @@
   ],
   "generated_at": "2026-08-04T02:09:37Z",
   "implementation_baseline": {
-    "branch": "fix/live-parse-diagnostics-v2",
-    "commit": "078ef01ae0a8e24a1a9933ffa229ba986003dc0a"
+    "branch": "fix/server-media-shed-terminal-v1",
+    "commit": "790768fba05fc83da3c1681dafa05dcb925804cc"
   },
   "owner": "aoe2war-watcher",
   "repo": "aoe2-watcher",

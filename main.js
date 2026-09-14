@@ -1903,6 +1903,7 @@ function getSafeStreamApiPath(value) {
 function streamRequestHeaders(config, headers = {}) {
   return {
     ...headers,
+    "x-aoe2war-stream-capabilities": "server-media-shed-v1",
     ...(config.uploadApiKey ? { "x-api-key": config.uploadApiKey } : {}),
   };
 }
@@ -2026,6 +2027,29 @@ async function postStreamChunk(payload = {}) {
         priorityYield: true,
         reason:
           "replay_upload_priority",
+      };
+    }
+
+    const responseData =
+      error?.response?.data;
+    if (
+      error?.response?.status === 409 &&
+      responseData?.code ===
+        "STREAM_MEDIA_SHED" &&
+      responseData?.terminal === true
+    ) {
+      return {
+        ok: false,
+        status: 409,
+        terminalMediaShed: true,
+        reason:
+          responseData?.reason ||
+          "server_media_shed",
+        retryAfterSeconds:
+          Number(
+            responseData?.retryAfterSeconds
+          ) || 0,
+        data: responseData,
       };
     }
 

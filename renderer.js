@@ -1002,6 +1002,27 @@ async function uploadNativeChunk(streamId, sequence, blob) {
     return;
   }
 
+  if (result?.terminalMediaShed) {
+    const reason =
+      result.reason ||
+      "server_media_shed";
+    const retryAfterSeconds = Math.max(
+      0,
+      Number(result.retryAfterSeconds) || 0
+    );
+    await endNativeStream(
+      "server_media_shed"
+    );
+    updateNativeStreamState({
+      readout:
+        "Video stopped to protect replay and API traffic.",
+      detail: retryAfterSeconds > 0
+        ? `${reason} · Start a fresh stream after about ${retryAfterSeconds}s.`
+        : `${reason} · Start a fresh stream after pressure clears.`,
+    });
+    return;
+  }
+
   if (!result?.ok) {
     throw new Error(result?.error || result?.data?.detail || "Chunk upload failed.");
   }
