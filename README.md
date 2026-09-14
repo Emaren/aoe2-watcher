@@ -146,6 +146,8 @@ feeds AoE2WAR's rolling WebM playback route so viewers recover from missing chun
 stalling at the live edge. The stream readout shows the latest capture/upload/heartbeat status so a user
 can see whether the source stopped, permissions failed, the network is catching up, or chunks are flowing.
 
+Replay delivery outranks optional video. The watcher already pauses or drops local video while its own replay transfer owns network priority. Updated builds also advertise the `server-media-shed-v1` stream capability. When AoE2WAR replies with terminal `STREAM_MEDIA_SHED`, the watcher stops native capture cleanly, preserves replay transport, and tells the user when to start a fresh stream. Older builds do not advertise that capability, so automatic server replay-pressure shedding is not applied to them; an operator emergency kill switch may still force video shedding server-side.
+
 Use **Full Screen** mode when AoE2HD is running through CrossOver or when the game window disappears from
 macOS capture after entering full screen. macOS defaults to Full Screen mode and labels screen sources as
 Display capture; go live, then switch to AoE2 full-screen. Stable and Sharp still prefer window capture
