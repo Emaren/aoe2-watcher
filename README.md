@@ -15,6 +15,12 @@ sensitivity: "internal"
 
 # aoe2-watcher
 
+## v1.5.11 release candidate
+
+Watcher 1.5.11 adds capability-negotiated server media shedding for watcher-native video. Updated clients advertise `server-media-shed-v1`; when AoE2WAR returns terminal `STREAM_MEDIA_SHED`, the Watcher stops optional native video cleanly while replay/API transport remains authoritative. Older Watchers do not advertise the capability and therefore keep the prior server behavior during rollout.
+
+The source version is `1.5.11`, but public Windows, macOS, and Linux artifacts remain `1.5.10` until fresh platform builds, Windows signing, artifact hashing, updater-manifest verification, and the five-artifact publication gate all complete.
+
 ## v1.5.7 upload snapshot contract
 
 v1.5.7 binds every upload request to one immutable in-memory replay snapshot. The request body, `Content-Length`, `x-file-size-bytes`, and replay fingerprint are all derived from the same captured bytes, so AoE2HD may continue appending to the source replay without causing a false `409 Replay changed while it was being uploaded` mismatch. After upload, the watcher rechecks the source fingerprint and schedules the next live iteration when growth continued.
