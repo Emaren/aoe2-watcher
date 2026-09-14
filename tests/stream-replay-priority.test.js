@@ -78,6 +78,13 @@ test("renderer invalidates stale video backlog during replay transfer", () => {
 });
 
 
+test("watcher advertises terminal media-shed capability on stream requests", () => {
+  assert.match(
+    mainSource,
+    /"x-aoe2war-stream-capabilities":\s*"server-media-shed-v1"/,
+  );
+});
+
 test("server media-shed response is terminal before generic chunk failure", () => {
   assert.match(
     mainSource,

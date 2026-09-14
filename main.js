@@ -1903,6 +1903,7 @@ function getSafeStreamApiPath(value) {
 function streamRequestHeaders(config, headers = {}) {
   return {
     ...headers,
+    "x-aoe2war-stream-capabilities": "server-media-shed-v1",
     ...(config.uploadApiKey ? { "x-api-key": config.uploadApiKey } : {}),
   };
 }
