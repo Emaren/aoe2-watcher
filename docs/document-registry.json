@@ -36,7 +36,7 @@
       "review_interval_days": 0,
       "reviewed_at": "2026-07-26",
       "sensitivity": "internal",
-      "sha256": "48dcf0cd90f224f0dfccd2a7834ddce7de59e2e1bedaf1b3d0b2eacb5d6398b5",
+      "sha256": "c4cb92324d7afb36ced829d8d7a400d7a8f72a28b4a69b4573921c8d425e2cd5",
       "source_of_truth": "generated",
       "status": "generated",
       "systems": [
@@ -48,8 +48,8 @@
   ],
   "generated_at": "2026-08-04T02:09:37Z",
   "implementation_baseline": {
-    "branch": "release/watcher-1.5.11-v1",
-    "commit": "599e22c45d190535f5ebe589021be9a3c8cb747b"
+    "branch": "release/watcher-1.5.11-publish-v1",
+    "commit": "bf6e042265d650638590a229631d60772c9f8c54"
   },
   "owner": "aoe2war-watcher",
   "repo": "aoe2-watcher",
