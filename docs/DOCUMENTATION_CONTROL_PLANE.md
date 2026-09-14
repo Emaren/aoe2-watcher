@@ -19,7 +19,7 @@ Repository ID: `aoe2-watcher`
 
 Documentation owner: `aoe2war-watcher`
 
-Implementation baseline: `fix/server-media-shed-terminal-v1` at `790768fba05fc83da3c1681dafa05dcb925804cc`
+Implementation baseline: `release/watcher-1.5.11-v1` at `599e22c45d190535f5ebe589021be9a3c8cb747b`
 
 The implementation baseline identifies the code commit described by this documentation. Documentation-only commits may follow it without creating a self-referential registry hash.
 
