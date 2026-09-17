@@ -36,7 +36,7 @@
       "review_interval_days": 0,
       "reviewed_at": "2026-07-26",
       "sensitivity": "internal",
-      "sha256": "25b1135c7d3094973fb9500039eb8e4bab84ec43456ae499bde9ae17e05f3227",
+      "sha256": "888b23bbd5fc6e65a29c6776f65d7d8b46cddd3619ef0e7c9b5b14c1c53ca159",
       "source_of_truth": "generated",
       "status": "generated",
       "systems": [
@@ -48,8 +48,8 @@
   ],
   "generated_at": "2026-08-04T02:09:37Z",
   "implementation_baseline": {
-    "branch": "feature/watcher-hd-folder-discovery-v1",
-    "commit": "e44b341bb5466b63d8722521e2c5d5a64b1a2e15"
+    "branch": "release/watcher-1.5.12-publish-v1",
+    "commit": "b71e0ef0f1f181e7abc4dde52ada2e42c922d5e3"
   },
   "owner": "aoe2war-watcher",
   "repo": "aoe2-watcher",

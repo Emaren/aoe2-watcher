@@ -19,7 +19,7 @@ Repository ID: `aoe2-watcher`
 
 Documentation owner: `aoe2war-watcher`
 
-Implementation baseline: `feature/watcher-hd-folder-discovery-v1` at `e44b341bb5466b63d8722521e2c5d5a64b1a2e15`
+Implementation baseline: `release/watcher-1.5.12-publish-v1` at `b71e0ef0f1f181e7abc4dde52ada2e42c922d5e3`
 
 The implementation baseline identifies the code commit described by this documentation. Documentation-only commits may follow it without creating a self-referential registry hash.
 
