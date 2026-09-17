@@ -15,6 +15,12 @@ sensitivity: "internal"
 
 # aoe2-watcher
 
+## v1.5.12 release candidate
+
+Watcher 1.5.12 hardens Windows HD replay-folder discovery and diagnostics. Windows now consults Steam registry install roots before reading `libraryfolders.vdf`, so a custom Steam install can still lead the Watcher to the active `Age2HD\SaveGame` / `multi` directory. Heartbeat and ready telemetry also separate structural HD-folder validity from proven replay activity by reporting supported replay count, newest replay metadata, and an activity-proof flag without transmitting the full local path.
+
+The source version is `1.5.12`, but public Windows, macOS, and Linux artifacts remain `1.5.11` until fresh platform builds, Windows signing, artifact hashing, updater-manifest verification, and the five-artifact publication gate all complete.
+
 ## v1.5.11 release candidate
 
 Watcher 1.5.11 adds capability-negotiated server media shedding for watcher-native video. Updated clients advertise `server-media-shed-v1`; when AoE2WAR returns terminal `STREAM_MEDIA_SHED`, the Watcher stops optional native video cleanly while replay/API transport remains authoritative. Older Watchers do not advertise the capability and therefore keep the prior server behavior during rollout.
@@ -72,7 +78,7 @@ five-artifact release gate.
 
 Connection and replay monitoring are independent states. A heartbeat proves connection only. v1.5.4 heartbeats additionally report monitor attachment, HD-folder validity/classification, recent folder activity, current replay basename/size/change time, replay detection/upload state, queue depth, batch state, stream state, version, platform, watcher ID, and session ID. Full filesystem paths and replay contents are not sent as telemetry.
 
-On launch, saved identity, folder, and auto-start preference are restored. The app verifies that the folder is readable and resembles an AoE2 HD SaveGame directory, attaches Chokidar, emits explicit start/ready events, and scans recent files twice for growth evidence. This recovers a game already underway without treating an old archive as live. Windows detection checks normal, OneDrive consumer/commercial, and profile Documents roots and never silently selects AoE2 DE.
+On launch, saved identity, folder, and auto-start preference are restored. The app verifies that the folder is readable and resembles an AoE2 HD SaveGame directory, attaches Chokidar, emits explicit start/ready events, and scans recent files twice for growth evidence. This recovers a game already underway without treating an old archive as live. Windows detection checks normal, OneDrive consumer/commercial, profile Documents, Steam registry install roots, and `libraryfolders.vdf`, and never silently selects AoE2 DE.
 
 The 30-second watchdog handles absent monitors, inaccessible folders, and sleep/wake with three bounded reattach attempts and a one-minute cooldown. File stability creates only a final candidate; monitoring suppresses future uploads only after trusted server acceptance. Deferred/unparsed final proof remains visible, and later file growth reopens monitoring.
 

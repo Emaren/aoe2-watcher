@@ -216,6 +216,12 @@ function buildRuntimeMetadata(config = loadConfig()) {
     folderValid: folder.valid,
     folderKind: folder.kind,
     folderLabel: folder.label,
+    folderSupportedReplayCount: folder.supportedReplayCount,
+    folderLatestReplayBasename: folder.latestReplayBasename,
+    folderLatestReplayModifiedAt: folder.latestReplayModifiedAt,
+    folderActivityProven: Boolean(
+      folder.supportedReplayCount > 0 && folder.latestReplayModifiedAt
+    ),
     lastFolderActivityAt: watcherRuntime.lastFolderActivityAt || folder.latestReplayModifiedAt,
     lastReplayDetectedAt: watcherRuntime.lastReplayDetectedAt,
     lastReplayUploadAt: watcherRuntime.lastReplayUploadAt,
