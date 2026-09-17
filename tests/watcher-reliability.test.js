@@ -7,7 +7,9 @@ const path = require("node:path");
 const {
   createReplayUploadSnapshot,
   detectReplayFolder,
+  getWindowsSteamRoots,
   inspectReplayFolder,
+  parseWindowsRegistryStringValue,
   selectPreferredReplayFolder,
   shouldSwitchReplayFolder,
 } = require("../watcher");
@@ -18,6 +20,23 @@ function temporaryFolder(segment) {
   fs.mkdirSync(folder, { recursive: true });
   return { root, folder };
 }
+
+
+test("parses custom Steam install roots from Windows registry output", () => {
+  const roots = parseWindowsRegistryStringValue(`
+HKEY_CURRENT_USER\Software\Valve\Steam
+    SteamPath    REG_SZ    D:/Games/Steam
+`);
+
+  assert.deepEqual(roots, ["D:/Games/Steam"]);
+});
+
+test("Windows Steam roots include registry-discovered custom installs", () => {
+  const customSteamRoot = "D:\\SteamCustom";
+  const roots = getWindowsSteamRoots({ registryRoots: [customSteamRoot] });
+
+  assert.ok(roots.includes(customSteamRoot));
+});
 
 test("auto-detects Steam Age2HD multiplayer SaveGame folder", () => {
   const root =

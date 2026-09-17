@@ -2,6 +2,7 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const crypto = require("crypto");
+const { execFileSync } = require("child_process");
 const axios = require("axios");
 const FormData = require("form-data");
 
@@ -195,7 +196,55 @@ function includeMultiplayerReplayFolders(saveGameRoots) {
   );
 }
 
-function getWindowsSteamRoots() {
+function parseWindowsRegistryStringValue(output) {
+  return String(output || "")
+    .split(/\r?\n/)
+    .map((line) =>
+      line.match(/\sREG_(?:SZ|EXPAND_SZ)\s+(.+?)\s*$/i)?.[1]?.trim() || null
+    )
+    .filter(Boolean);
+}
+
+function readWindowsSteamRegistryRoots() {
+  if (os.platform() !== "win32") return [];
+
+  const registryQueries = [
+    ["HKCU\\Software\\Valve\\Steam", "SteamPath"],
+    ["HKLM\\SOFTWARE\\WOW6432Node\\Valve\\Steam", "InstallPath"],
+    ["HKLM\\SOFTWARE\\Valve\\Steam", "InstallPath"],
+  ];
+  const roots = new Set();
+
+  for (const [key, valueName] of registryQueries) {
+    try {
+      const output = execFileSync(
+        "reg.exe",
+        ["query", key, "/v", valueName],
+        {
+          encoding: "utf8",
+          windowsHide: true,
+          stdio: ["ignore", "pipe", "ignore"],
+          timeout: 2000,
+        }
+      );
+
+      for (const value of parseWindowsRegistryStringValue(output)) {
+        roots.add(path.win32.normalize(value.replace(/^"|"$/g, "")));
+      }
+    } catch {
+      // Registry keys vary by Steam install and Windows architecture.
+    }
+  }
+
+  return Array.from(roots);
+}
+
+function getWindowsSteamRoots({ registryRoots = null } = {}) {
+  const discoveredRegistryRoots =
+    registryRoots === null
+      ? readWindowsSteamRegistryRoots()
+      : registryRoots;
+
   return Array.from(
     new Set(
       [
@@ -214,6 +263,7 @@ function getWindowsSteamRoots() {
             process.env.ProgramW6432,
             "Steam"
           ),
+        ...discoveredRegistryRoots,
       ].filter(Boolean)
     )
   );
@@ -3691,8 +3741,12 @@ function startWatching(config = {}, hooks = {}) {
   emitRuntimeEvent("watcher-ready", {
     folderKind: folder.kind,
     folderLabel: folder.label,
+    supportedReplayCount: folder.supportedReplayCount,
     latestReplayBasename: folder.latestReplayBasename,
     latestReplayModifiedAt: folder.latestReplayModifiedAt,
+    folderActivityProven: Boolean(
+      folder.supportedReplayCount > 0 && folder.latestReplayModifiedAt
+    ),
   });
 
   void scanRecentGrowingReplay(runtimeConfig);
@@ -3721,6 +3775,9 @@ module.exports = {
   classifyReplayAcceptance,
   createReplayUploadSnapshot,
   getDefaultReplayDir,
+  getWindowsSteamRoots,
+  parseWindowsRegistryStringValue,
+  readWindowsSteamRegistryRoots,
   detectReplayFolder,
   detectUnknownParseFields,
   inspectReplayFolder,
