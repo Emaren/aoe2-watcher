@@ -13,7 +13,7 @@
       "review_interval_days": 60,
       "reviewed_at": "2026-08-08",
       "sensitivity": "internal",
-      "sha256": "1deaaf67f3b87b1234cdd11cfbe5655e4d18617aa3ad72586a37079c4fd25457",
+      "sha256": "0e4d123a4fec49c66a59823d68c3a9f3c13aa269adc9a279d6d5d279f5ffebd7",
       "source_of_truth": "git",
       "status": "active",
       "systems": [
@@ -36,7 +36,7 @@
       "review_interval_days": 0,
       "reviewed_at": "2026-07-26",
       "sensitivity": "internal",
-      "sha256": "888b23bbd5fc6e65a29c6776f65d7d8b46cddd3619ef0e7c9b5b14c1c53ca159",
+      "sha256": "9faf0be583cf18b81a4849add1128385ed9e22ec781eaee627829c6ad2253bb4",
       "source_of_truth": "generated",
       "status": "generated",
       "systems": [
@@ -48,8 +48,8 @@
   ],
   "generated_at": "2026-08-04T02:09:37Z",
   "implementation_baseline": {
-    "branch": "release/watcher-1.5.12-publish-v1",
-    "commit": "b71e0ef0f1f181e7abc4dde52ada2e42c922d5e3"
+    "branch": "fix/release-doc-context-v1",
+    "commit": "1514be7b9116c5be9dbc81dfb0db97e77609fb6a"
   },
   "owner": "aoe2war-watcher",
   "repo": "aoe2-watcher",

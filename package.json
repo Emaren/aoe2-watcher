@@ -8,7 +8,7 @@
   "productName": "AoE2HDBets Watcher",
   "scripts": {
     "start": "electron main.js",
-    "lint": "node --check main.js && node --check watcher.js && node --check telemetryQueue.js && node --check networkPriority.js && node --check runTests.js && node --check renderer.js && node --check preload.js",
+    "lint": "node --check main.js && node --check watcher.js && node --check telemetryQueue.js && node --check networkPriority.js && node --check runTests.js && node --check renderer.js && node --check preload.js && node --check scripts/sync-release-docs.mjs",
     "test": "node runTests.js",
     "build": "electron-builder",
     "pack": "electron-builder --dir",
@@ -16,7 +16,8 @@
     "dist:win": "electron-builder --win nsis portable --x64",
     "dist:linux": "electron-builder --linux AppImage --x64",
     "dist:manual-zip": "node scripts/build-manual-zip.mjs",
-    "dist:release": "npm run dist:win && npm run dist:mac && npm run dist:manual-zip && npm run dist:linux"
+    "dist:release": "npm run dist:win && npm run dist:mac && npm run dist:manual-zip && npm run dist:linux",
+    "docs:release-sync": "node scripts/sync-release-docs.mjs"
   },
   "build": {
     "appId": "com.aoe2hdbets.watcher",
