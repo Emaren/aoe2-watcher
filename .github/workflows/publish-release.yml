@@ -18,10 +18,10 @@ jobs:
     timeout-minutes: 20
 
     env:
-      VERSION: "1.5.11"
-      WINDOWS_RUN_ID: "34847268397"
-      NONWINDOWS_RUN_ID: "34847268637"
-      RUNTIME_SOURCE_SHA: "758804e673f2fd06460cb30919ddb7629c76a555"
+      VERSION: "1.5.12"
+      WINDOWS_RUN_ID: "35165618190"
+      NONWINDOWS_RUN_ID: "35165618193"
+      RUNTIME_SOURCE_SHA: "329d0e99924126b0fc13f31ddcc26f81607b35cd"
 
     steps:
       - name: Checkout
@@ -41,12 +41,12 @@ jobs:
 
           gh run download "$NONWINDOWS_RUN_ID" \
             --repo "$GITHUB_REPOSITORY" \
-            --name watcher-macos-1.5.11 \
+            --name watcher-macos-1.5.12 \
             --dir staging/macos
 
           gh run download "$NONWINDOWS_RUN_ID" \
             --repo "$GITHUB_REPOSITORY" \
-            --name watcher-linux-1.5.11 \
+            --name watcher-linux-1.5.12 \
             --dir staging/linux
 
           cp staging/windows/*.exe release/
@@ -125,11 +125,11 @@ jobs:
           )
 
           expected = {
-              f"AoE2HDBets Watcher Setup {version}.exe": "be936b480aca200d4cfdc8db1475715ff640e161771be85017828fdfcec2fcf5",
-              f"AoE2HDBets Watcher {version}.exe": "25301abbc260ecb746a36f8e6466bdcc75840243a6b91bcf2a81558c8f4efda5",
-              f"AoE2HDBets Watcher-{version}-arm64.dmg": "300b270298534b7753e2533fd114e445075dc750a309ef430f716e2982c249cb",
-              "aoe2hdbets-watcher-direct.zip": "4d0530304ed4fa8c4b5dca1837f22fd0ed06901269325569f99aead598706985",
-              f"AoE2HDBets Watcher-{version}.AppImage": "0e01f821fcfeafa2c7bbff654b1ba22260ac9c47c3878b776c5cd0d9f0d1e715",
+              f"AoE2HDBets Watcher Setup {version}.exe": "611a98f710c42bf3c4486cca68bad6036662943cb0fbc67d0945ec9496509bf0",
+              f"AoE2HDBets Watcher {version}.exe": "d2d771b7cdc6abacca4b2ca6128ac16004d51cf151d286d5c87323721ce52d37",
+              f"AoE2HDBets Watcher-{version}-arm64.dmg": "68b18066888fc60392921b6dc44d66c0a32f23fc70556d2e4a0c7fed98f14ac3",
+              "aoe2hdbets-watcher-direct.zip": "cdfdfbc9180bb403086d98009cb3516f2b81ba05488742fb4f01ea1e2dc694f4",
+              f"AoE2HDBets Watcher-{version}.AppImage": "f53318079f00de092c93a5d3fbf0a747b0dfd520d736dfbddf4fa0629ac58057",
           }
 
           actual = {row["filename"]: row["sha256"] for row in rows}
@@ -156,7 +156,7 @@ jobs:
           gh release create "$TAG" release/* \
             --repo "$GITHUB_REPOSITORY" \
             --title "AoE2HDBets Watcher $VERSION" \
-            --notes "Watcher $VERSION adds capability-negotiated server media shedding so optional watcher-native video yields cleanly to replay live/final transport while older clients remain backward-safe. Windows artifacts are Azure-signed and timestamped. Runtime source: $RUNTIME_SOURCE_SHA."
+            --notes "Watcher $VERSION hardens Windows HD replay-folder recovery for custom Steam installs and adds explicit replay-folder activity diagnostics, while preserving the existing replay-first transport and safety contracts. Windows artifacts are Azure-signed and timestamped. Runtime source: $RUNTIME_SOURCE_SHA."
 
       - name: Verify published release inventory
         env:
