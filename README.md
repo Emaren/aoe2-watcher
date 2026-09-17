@@ -15,11 +15,11 @@ sensitivity: "internal"
 
 # aoe2-watcher
 
-## v1.5.12 release candidate
+## v1.5.12 public release
 
 Watcher 1.5.12 hardens Windows HD replay-folder discovery and diagnostics. Windows now consults Steam registry install roots before reading `libraryfolders.vdf`, so a custom Steam install can still lead the Watcher to the active `Age2HD\SaveGame` / `multi` directory. Heartbeat and ready telemetry also separate structural HD-folder validity from proven replay activity by reporting supported replay count, newest replay metadata, and an activity-proof flag without transmitting the full local path.
 
-The source version is `1.5.12`, but public Windows, macOS, and Linux artifacts remain `1.5.11` until fresh platform builds, Windows signing, artifact hashing, updater-manifest verification, and the five-artifact publication gate all complete.
+Watcher 1.5.12 is the current public release. The five-artifact publication gate completed for Windows Installer, Windows Portable, macOS DMG, macOS Direct ZIP, and Linux AppImage. The immutable `v1.5.12` release and its updater metadata were verified before publication.
 
 ## v1.5.11 release candidate
 
