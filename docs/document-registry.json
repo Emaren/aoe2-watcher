@@ -13,7 +13,7 @@
       "review_interval_days": 60,
       "reviewed_at": "2026-08-08",
       "sensitivity": "internal",
-      "sha256": "30e19adff3f104709f21402d57dce2f534f4d41f9668eda33392817a6db2b828",
+      "sha256": "1deaaf67f3b87b1234cdd11cfbe5655e4d18617aa3ad72586a37079c4fd25457",
       "source_of_truth": "git",
       "status": "active",
       "systems": [
@@ -36,7 +36,7 @@
       "review_interval_days": 0,
       "reviewed_at": "2026-07-26",
       "sensitivity": "internal",
-      "sha256": "c4cb92324d7afb36ced829d8d7a400d7a8f72a28b4a69b4573921c8d425e2cd5",
+      "sha256": "25b1135c7d3094973fb9500039eb8e4bab84ec43456ae499bde9ae17e05f3227",
       "source_of_truth": "generated",
       "status": "generated",
       "systems": [
@@ -48,8 +48,8 @@
   ],
   "generated_at": "2026-08-04T02:09:37Z",
   "implementation_baseline": {
-    "branch": "release/watcher-1.5.11-publish-v1",
-    "commit": "bf6e042265d650638590a229631d60772c9f8c54"
+    "branch": "feature/watcher-hd-folder-discovery-v1",
+    "commit": "e44b341bb5466b63d8722521e2c5d5a64b1a2e15"
   },
   "owner": "aoe2war-watcher",
   "repo": "aoe2-watcher",
