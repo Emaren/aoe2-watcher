@@ -14,6 +14,14 @@ const {
   shouldSwitchReplayFolder,
 } = require("../watcher");
 
+test("live recovery scan is wired to fresh-unknown admission and has no English filename veto", () => {
+  const source = fs.readFileSync(path.join(__dirname, "..", "watcher.js"), "utf8");
+
+  assert.match(source, /freshUnknown = shouldRecoverUnknownReplayCandidate/);
+  assert.match(source, /recent_unknown_replay_on_attach/);
+  assert.doesNotMatch(source, /filePath\.includes\("Out of Sync"\)/);
+});
+
 function temporaryFolder(segment) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "aoe2-watcher-"));
   const folder = path.join(root, ...segment);
