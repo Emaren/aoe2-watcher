@@ -15,13 +15,14 @@ sensitivity: "internal"
 
 # aoe2-watcher
 
-## v1.5.13 release candidate
+## v1.5.13 public release
 
 Watcher 1.5.13 fixes a live-replay admission failure observed simultaneously on Scavanger_Ab and Tekki. A supported HD `.aoe2mpgame` could be present and freshly modified while the Watcher remained connected and attached yet reported no active replay. Two causes were proven: English `Out of Sync` filenames were explicitly rejected, and restart/resume recovery required an unknown replay to grow during one 1.5-second sample before monitoring it.
 
-Replay admission is now filename-language agnostic for every supported extension. Startup/resume recovery adopts the newest fresh unknown replay even when it is quiet during that short sample, while persisted known-final replays keep fingerprint/content-hash short-circuit protection. The server remains authoritative for parse/finality and duplicate handling.
+Watcher 1.5.13 is the current public release. The five-artifact publication gate completed for Windows Installer, Windows Portable, macOS DMG, macOS Direct ZIP, and Linux AppImage. The immutable `v1.5.13` release and its updater metadata were verified before publication.
 
 The source version is `1.5.13`, but public Windows, macOS, and Linux metadata must remain on `1.5.12` until fresh platform builds, Azure Windows signing, artifact hashing, updater-manifest verification, and the five-artifact publication gate all complete.
+
 
 ## v1.5.12 public release
 

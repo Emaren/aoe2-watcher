@@ -19,7 +19,7 @@ Repository ID: `aoe2-watcher`
 
 Documentation owner: `aoe2war-watcher`
 
-Implementation baseline: `fix/watcher-live-recovery-20260921` at `49e1abdda846da592b8b2740e990f71f3e6a8a1d`
+Implementation baseline: `main` at `c7d3b000342bc3a4fcc2f8762207936161b601a2`
 
 The implementation baseline identifies the code commit described by this documentation. Documentation-only commits may follow it without creating a self-referential registry hash.
 

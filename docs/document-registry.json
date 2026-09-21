@@ -13,7 +13,7 @@
       "review_interval_days": 60,
       "reviewed_at": "2026-08-08",
       "sensitivity": "internal",
-      "sha256": "d5dd9fcb156406730cbfedb13f25f2197c31d79396d467eabcb3c49762c125fb",
+      "sha256": "f94f4f1831d8b7f435af6d89f95522a26db5505497cfef83813ec67143e56e49",
       "source_of_truth": "git",
       "status": "active",
       "systems": [
@@ -36,7 +36,7 @@
       "review_interval_days": 0,
       "reviewed_at": "2026-07-26",
       "sensitivity": "internal",
-      "sha256": "3b6e4fc4346a05f0df6c1c4dece2a05361be6b2929147502db27ecea7708bbf4",
+      "sha256": "9a091c7a2130ed7a9008fc85e02759a0cce6a01d334b25e80e132b4885af99a5",
       "source_of_truth": "generated",
       "status": "generated",
       "systems": [
@@ -48,8 +48,8 @@
   ],
   "generated_at": "2026-08-04T02:09:37Z",
   "implementation_baseline": {
-    "branch": "fix/watcher-live-recovery-20260921",
-    "commit": "49e1abdda846da592b8b2740e990f71f3e6a8a1d"
+    "branch": "main",
+    "commit": "c7d3b000342bc3a4fcc2f8762207936161b601a2"
   },
   "owner": "aoe2war-watcher",
   "repo": "aoe2-watcher",
