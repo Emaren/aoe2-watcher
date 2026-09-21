@@ -29,6 +29,10 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Read package version
+        id: package
+        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+
       - name: Lint runtime JavaScript
         run: npm run lint
 
@@ -44,11 +48,11 @@ jobs:
       - name: Upload macOS release
         uses: actions/upload-artifact@v4
         with:
-          name: watcher-macos-1.5.13
+          name: watcher-macos-${{ steps.package.outputs.version }}
           if-no-files-found: error
           path: |
-            dist/AoE2HDBets Watcher-1.5.13-arm64.dmg
-            dist/AoE2HDBets Watcher-1.5.13-arm64.dmg.blockmap
+            dist/AoE2HDBets Watcher-${{ steps.package.outputs.version }}-arm64.dmg
+            dist/AoE2HDBets Watcher-${{ steps.package.outputs.version }}-arm64.dmg.blockmap
             dist/aoe2hdbets-watcher-direct.zip
             dist/latest-mac.yml
 
@@ -69,6 +73,10 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Read package version
+        id: package
+        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+
       - name: Lint runtime JavaScript
         run: npm run lint
 
@@ -83,8 +91,8 @@ jobs:
       - name: Upload Linux release
         uses: actions/upload-artifact@v4
         with:
-          name: watcher-linux-1.5.13
+          name: watcher-linux-${{ steps.package.outputs.version }}
           if-no-files-found: error
           path: |
-            dist/AoE2HDBets Watcher-1.5.13.AppImage
+            dist/AoE2HDBets Watcher-${{ steps.package.outputs.version }}.AppImage
             dist/latest-linux.yml
