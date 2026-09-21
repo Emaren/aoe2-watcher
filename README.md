@@ -15,24 +15,20 @@ sensitivity: "internal"
 
 # aoe2-watcher
 
-## v1.6.0 release candidate
+## v1.6.0 public release
 
 v1.6.0 is the low-footprint lifecycle release. Native `fs.watch` remains the
 primary replay detector; recovery scans and folder-health checks are slower
 failsafes rather than polling engines. Config and replay-folder metadata are
 cached so telemetry does not repeatedly rescan disk state.
 
-The replay engine is now independent from the dashboard renderer. Login starts
-can arm in tray-only background mode with no BrowserWindow alive. Opening the
-dashboard creates the renderer on demand; closing it destroys the renderer
-while replay monitoring continues. Active replays, uploads, historical imports,
-and native streams block updater installation, but an idle armed watcher does
-not.
+Watcher 1.6.0 is the current public release. The five-artifact publication gate completed for Windows Installer, Windows Portable, macOS DMG, macOS Direct ZIP, and Linux AppImage. The immutable `v1.6.0` release and its updater metadata were verified before publication.
 
 The release also bounds dashboard logs, coalesces bursty runtime-event paints,
 uses a sandboxed renderer, removes the unused chokidar dependency, upgrades the
 Electron/build toolchain to security-patched versions, and keeps the v1.5.13
 replay durability and fresh-replay recovery rules intact.
+
 
 
 ## v1.5.13 public release
