@@ -18,14 +18,54 @@ jobs:
     timeout-minutes: 20
 
     env:
-      VERSION: "1.5.13"
-      WINDOWS_RUN_ID: "35552739520"
-      NONWINDOWS_RUN_ID: "35552739589"
-      RUNTIME_SOURCE_SHA: "79c4641e77df26e488c252738ff6f44e89772de6"
+      VERSION: "1.6.0"
+      WINDOWS_RUN_ID: "35634269184"
+      NONWINDOWS_RUN_ID: "35634269169"
+      RUNTIME_SOURCE_SHA: "ee9229009f3b36dc082a1c3aa31305b5fd76a5b7"
+      BUILD_SOURCE_SHA: "52d0a42ee68bb6f1f71db16a6298f32810baeeec"
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Verify certified workflow runs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run view "$WINDOWS_RUN_ID"             --repo "$GITHUB_REPOSITORY"             --json name,event,headSha,conclusion > windows-run.json
+
+          gh run view "$NONWINDOWS_RUN_ID"             --repo "$GITHUB_REPOSITORY"             --json name,event,headSha,conclusion > nonwindows-run.json
+
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          expected = {
+              "windows-run.json": {
+                  "name": "Sign Windows Watcher",
+                  "event": "push",
+                  "headSha": os.environ["BUILD_SOURCE_SHA"],
+                  "conclusion": "success",
+              },
+              "nonwindows-run.json": {
+                  "name": "Build non-Windows Watcher Release",
+                  "event": "push",
+                  "headSha": os.environ["BUILD_SOURCE_SHA"],
+                  "conclusion": "success",
+              },
+          }
+
+          for filename, wanted in expected.items():
+              actual = json.loads(Path(filename).read_text())
+              for key, value in wanted.items():
+                  if actual.get(key) != value:
+                      raise SystemExit(
+                          f"STOP: {filename} {key} mismatch: "
+                          f"{actual.get(key)!r} != {value!r}"
+                      )
+              print(f"certified {filename}: {actual}")
+          PY
 
       - name: Download certified platform artifacts
         env:
@@ -34,20 +74,11 @@ jobs:
           rm -rf staging
           mkdir -p staging/windows staging/macos staging/linux release
 
-          gh run download "$WINDOWS_RUN_ID" \
-            --repo "$GITHUB_REPOSITORY" \
-            --name signed-windows-watcher \
-            --dir staging/windows
+          gh run download "$WINDOWS_RUN_ID"             --repo "$GITHUB_REPOSITORY"             --name signed-windows-watcher             --dir staging/windows
 
-          gh run download "$NONWINDOWS_RUN_ID" \
-            --repo "$GITHUB_REPOSITORY" \
-            --name watcher-macos-1.5.13 \
-            --dir staging/macos
+          gh run download "$NONWINDOWS_RUN_ID"             --repo "$GITHUB_REPOSITORY"             --name "watcher-macos-$VERSION"             --dir staging/macos
 
-          gh run download "$NONWINDOWS_RUN_ID" \
-            --repo "$GITHUB_REPOSITORY" \
-            --name watcher-linux-1.5.13 \
-            --dir staging/linux
+          gh run download "$NONWINDOWS_RUN_ID"             --repo "$GITHUB_REPOSITORY"             --name "watcher-linux-$VERSION"             --dir staging/linux
 
           cp staging/windows/*.exe release/
           cp staging/macos/*.dmg release/
@@ -57,7 +88,7 @@ jobs:
           cp staging/linux/*.AppImage release/
           cp staging/linux/latest-linux.yml release/
 
-      - name: Build signed Windows updater manifest and release receipts
+      - name: Build updater manifest and immutable release receipts
         run: |
           python3 - <<'PY'
           from pathlib import Path
@@ -97,6 +128,38 @@ jobs:
               "latest-linux.yml",
           ]
 
+          actual_names = sorted(
+              path.name for path in root.iterdir() if path.is_file()
+          )
+          if actual_names != sorted(canonical):
+              raise SystemExit(
+                  "STOP: release inventory mismatch before receipts: "
+                  f"{actual_names!r} != {sorted(canonical)!r}"
+              )
+
+          manifest_expectations = {
+              "latest-mac.yml": [
+                  f"version: {version}",
+                  f"path: AoE2HDBets Watcher-{version}-arm64.dmg",
+              ],
+              "latest-linux.yml": [
+                  f"version: {version}",
+                  f"path: AoE2HDBets Watcher-{version}.AppImage",
+              ],
+              "latest.yml": [
+                  f"version: {version}",
+                  f"path: AoE2HDBets Watcher Setup {version}.exe",
+              ],
+          }
+          for filename, needles in manifest_expectations.items():
+              text = (root / filename).read_text()
+              for needle in needles:
+                  if needle not in text:
+                      raise SystemExit(
+                          f"STOP: updater metadata mismatch in {filename}: "
+                          f"missing {needle!r}"
+                      )
+
           rows = []
           for name in canonical:
               path = root / name
@@ -107,37 +170,55 @@ jobs:
                   "sha256": hashlib.sha256(data).hexdigest(),
               })
 
-          (root / f"SHA256SUMS-{version}.txt").write_text(
-              "".join(f"{row['sha256']}  {row['filename']}\n" for row in rows)
-          )
-
-          manifest = {
-              "schema": 1,
-              "release": f"AoE2HDBets Watcher {version}",
-              "version": version,
-              "runtime_source_sha": os.environ["RUNTIME_SOURCE_SHA"],
-              "windows_signing_run_id": int(os.environ["WINDOWS_RUN_ID"]),
-              "nonwindows_build_run_id": int(os.environ["NONWINDOWS_RUN_ID"]),
-              "files": rows,
-          }
-          (root / f"watcher-release-manifest-{version}.json").write_text(
-              json.dumps(manifest, indent=2) + "\n"
-          )
-
           expected = {
-              f"AoE2HDBets Watcher Setup {version}.exe": "73a432687fd3b1989ff4cb5063d9e29589b6471186e277df399b6bb5599a91ec",
-              f"AoE2HDBets Watcher {version}.exe": "4583ce46bebd864a32b2db4d0b57792b6e70d31dfd9c56a414644c857e674248",
-              f"AoE2HDBets Watcher-{version}-arm64.dmg": "87c9545364bab48ee0e45cb7cb3e145a953a52ea480481ba427f0b55cdd4e140",
-              "aoe2hdbets-watcher-direct.zip": "80eea06fc3beec7c905379d59180a04e2cf36303f9712f07397403700a81c142",
-              f"AoE2HDBets Watcher-{version}.AppImage": "823b6a29836dea8caf2953201e68681adbdc4d3855b1b25a5c19bff8d618770e",
+              f"AoE2HDBets Watcher Setup {version}.exe":
+                  "b6fa8b3ed934bb98dfbb5008148fb739575ca138b3dfc74084dd4a2b7d650f89",
+              f"AoE2HDBets Watcher {version}.exe":
+                  "d656b66de13cc594e28c2dc88651dc8df5eefd1b35d0fa5b6792c7dfd1ef173d",
+              f"AoE2HDBets Watcher-{version}-arm64.dmg":
+                  "e128424ca6cecc5ebcf82c57d643e0774380b786780fd8b141190562a50380e3",
+              "aoe2hdbets-watcher-direct.zip":
+                  "44845f98996614bac4c3c8a340b037983edc2de9975e47181db2689a4f8712e0",
+              f"AoE2HDBets Watcher-{version}.AppImage":
+                  "5b35a62b09bab23117e744386c463e2579a3e34d7319094163aaae83d62b1266",
+              f"AoE2HDBets Watcher-{version}-arm64.dmg.blockmap":
+                  "d06e9206b9db50401f7da23624d39ea9bfaf35c097db1cb324075586f2fe5c0a",
+              "latest-mac.yml":
+                  "a75eaead880e6cd7dd139e6a62d3fd5f776bd430fda28f752c23c10ae9327a7e",
+              "latest-linux.yml":
+                  "37926c8fe2e37bbaafd95b4383f0b3b56bb46c8a0cf2b7be536104880fcc2ccf",
           }
 
           actual = {row["filename"]: row["sha256"] for row in rows}
           for name, digest in expected.items():
               if actual.get(name) != digest:
                   raise SystemExit(
-                      f"STOP: certified hash mismatch for {name}: {actual.get(name)} != {digest}"
+                      f"STOP: certified hash mismatch for {name}: "
+                      f"{actual.get(name)} != {digest}"
                   )
+
+          (root / f"SHA256SUMS-{version}.txt").write_text(
+              "".join(
+                  f"{row['sha256']}  {row['filename']}\n"
+                  for row in rows
+              )
+          )
+
+          manifest = {
+              "schema": 2,
+              "release": f"AoE2HDBets Watcher {version}",
+              "version": version,
+              "runtime_source_sha": os.environ["RUNTIME_SOURCE_SHA"],
+              "build_source_sha": os.environ["BUILD_SOURCE_SHA"],
+              "windows_signing_run_id": int(os.environ["WINDOWS_RUN_ID"]),
+              "nonwindows_build_run_id": int(
+                  os.environ["NONWINDOWS_RUN_ID"]
+              ),
+              "files": rows,
+          }
+          (root / f"watcher-release-manifest-{version}.json").write_text(
+              json.dumps(manifest, indent=2) + "\n"
+          )
 
           print(json.dumps(manifest, indent=2))
           PY
@@ -153,15 +234,10 @@ jobs:
             exit 2
           fi
 
-          gh release create "$TAG" release/* \
-            --repo "$GITHUB_REPOSITORY" \
-            --title "AoE2HDBets Watcher $VERSION" \
-            --notes "Watcher $VERSION restores live replay adoption when native file events are missed, removes English-only filename admission, and keeps known-final replay fingerprint/hash duplicate safety intact. Windows artifacts are Azure-signed and timestamped. Runtime source: $RUNTIME_SOURCE_SHA."
+          gh release create "$TAG" release/*             --repo "$GITHUB_REPOSITORY"             --target "$BUILD_SOURCE_SHA"             --title "AoE2HDBets Watcher $VERSION"             --notes "Watcher $VERSION cuts idle resource use by decoupling replay monitoring from the Chromium dashboard, adds tray-only background operation, fixes safe self-update handoff, and preserves the v1.5.13 replay durability/recovery contracts. Windows artifacts are Azure-signed and timestamped. Runtime source: $RUNTIME_SOURCE_SHA. Candidate build source: $BUILD_SOURCE_SHA."
 
       - name: Verify published release inventory
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release view "v$VERSION" \
-            --repo "$GITHUB_REPOSITORY" \
-            --json tagName,name,assets
+          gh release view "v$VERSION"             --repo "$GITHUB_REPOSITORY"             --json tagName,targetCommitish,name,assets
