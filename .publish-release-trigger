@@ -1,5 +1,6 @@
 AoE2HDBets Watcher release publish
-version=1.5.13
-windows_run=35552739520
-nonwindows_run=35552739589
-runtime_source=79c4641e77df26e488c252738ff6f44e89772de6
+version=1.6.0
+windows_run=35634269184
+nonwindows_run=35634269169
+runtime_source=ee9229009f3b36dc082a1c3aa31305b5fd76a5b7
+build_source=52d0a42ee68bb6f1f71db16a6298f32810baeeec
