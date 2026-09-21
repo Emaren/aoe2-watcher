@@ -230,6 +230,8 @@ let statusNotice = null;
 let statusNoticeTimer = null;
 let validateWatchDirToken = 0;
 let keyIsVisible = false;
+let renderFramePending = false;
+const RENDERER_LOG_MAX_LINES = 400;
 
 function setStatus(message, kind = "neutral", { sticky = false } = {}) {
   statusNotice = {
@@ -275,6 +277,9 @@ function addLog(line, level = "info") {
     }`;
   row.textContent = line;
   els.log.appendChild(row);
+  while (els.log.children.length > RENDERER_LOG_MAX_LINES) {
+    els.log.firstElementChild?.remove();
+  }
   els.log.scrollTop = els.log.scrollHeight;
 }
 
@@ -377,7 +382,7 @@ function getReleaseStatus() {
   if (autoUpdate.status === "pending_install") {
     return {
       headline: `${currentVersion} Update Ready`,
-      detail: "Update will install after watching or uploads stop.",
+      detail: "Update will install after active replay, import, or stream work finishes.",
       showUpdate: true,
       showCheck: false,
       updateUrl: "",
@@ -1556,7 +1561,7 @@ function getPrimaryStatus() {
 
     return {
       label: "Watching for new replays",
-      detail: runtimeState.detail || "Leave the watcher open while you play.",
+      detail: runtimeState.detail || "Watcher is armed in the background. You can close this dashboard.",
       kind: "success",
     };
   }
@@ -1954,6 +1959,18 @@ function renderAll() {
   renderNativeStreamState();
 }
 
+function scheduleRenderAll() {
+  if (renderFramePending) {
+    return;
+  }
+
+  renderFramePending = true;
+  window.requestAnimationFrame(() => {
+    renderFramePending = false;
+    renderAll();
+  });
+}
+
 async function validateWatchDir(targetPath = readForm().watchDir) {
   const token = ++validateWatchDirToken;
 
@@ -2082,7 +2099,7 @@ async function openWatcherUpdate() {
       }
 
       if (result?.deferred) {
-        setStatus("Update is ready. It will install when the watcher closes safely.", "warn");
+        setStatus("Update is ready. It will install as soon as active work finishes.", "warn");
         return;
       }
 
@@ -2270,7 +2287,7 @@ function consumeRuntimeEvent(event) {
       return;
   }
 
-  renderAll();
+  scheduleRenderAll();
 }
 
 async function loadInitialData() {

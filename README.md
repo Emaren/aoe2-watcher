@@ -15,6 +15,26 @@ sensitivity: "internal"
 
 # aoe2-watcher
 
+## v1.6.0 release candidate
+
+v1.6.0 is the low-footprint lifecycle release. Native `fs.watch` remains the
+primary replay detector; recovery scans and folder-health checks are slower
+failsafes rather than polling engines. Config and replay-folder metadata are
+cached so telemetry does not repeatedly rescan disk state.
+
+The replay engine is now independent from the dashboard renderer. Login starts
+can arm in tray-only background mode with no BrowserWindow alive. Opening the
+dashboard creates the renderer on demand; closing it destroys the renderer
+while replay monitoring continues. Active replays, uploads, historical imports,
+and native streams block updater installation, but an idle armed watcher does
+not.
+
+The release also bounds dashboard logs, coalesces bursty runtime-event paints,
+uses a sandboxed renderer, removes the unused chokidar dependency, upgrades the
+Electron/build toolchain to security-patched versions, and keeps the v1.5.13
+replay durability and fresh-replay recovery rules intact.
+
+
 ## v1.5.13 public release
 
 Watcher 1.5.13 fixes a live-replay admission failure observed simultaneously on Scavanger_Ab and Tekki. A supported HD `.aoe2mpgame` could be present and freshly modified while the Watcher remained connected and attached yet reported no active replay. Two causes were proven: English `Out of Sync` filenames were explicitly rejected, and restart/resume recovery required an unknown replay to grow during one 1.5-second sample before monitoring it.
@@ -198,6 +218,11 @@ detected match through Steam login and landing the user in the AoE2WAR browser s
 - `AOE2_FINAL_CANDIDATE_COOLDOWN_MS` (default: `45000`)
 - `AOE2_FINAL_CANDIDATE_STABLE_SAMPLES` (default: `2`)
 - `AOE2_FINAL_SETTLE_WINDOW_MS` (default: `180000`)
+- `AOE2_FINAL_SETTLE_POLL_MS` (default: `10000`; low-frequency post-final observation)
+- `AOE2_RECOVERY_SCAN_INTERVAL_MS` (default: `60000`; missed-event safety net)
+- `AOE2_MONITOR_WATCHDOG_MS` (default: `60000`)
+- `AOE2_REPLAY_FOLDER_FRESHNESS_PROBE_MS` (default: `300000`)
+- `AOE2_FOLDER_STATUS_CACHE_MS` (default: `60000`)
 
 Existing watcher installs that saved the retired `aoe2hdbets.com` endpoints migrate those
 settings to `aoe2war.com` on next launch.
