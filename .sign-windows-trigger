@@ -1,4 +1,4 @@
 AoE2HDBets Watcher Windows signing trigger
-version=1.5.13
-runtime_source=merged_main_commit
-reason=release_1.5.13_live_replay_recovery_and_filename_admission
+version=1.6.0
+runtime_source=ee9229009f3b36dc082a1c3aa31305b5fd76a5b7
+reason=release_1.6.0_low_footprint_lifecycle_and_self_update_hardening
