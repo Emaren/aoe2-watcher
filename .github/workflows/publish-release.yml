@@ -223,21 +223,22 @@ jobs:
           print(json.dumps(manifest, indent=2))
           PY
 
-      - name: Publish immutable GitHub release
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Upload certified release bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: certified-watcher-release-${{ env.VERSION }}
+          if-no-files-found: error
+          retention-days: 90
+          path: |
+            release/*
+
+      - name: Owner publication handoff
         run: |
-          TAG="v$VERSION"
-
-          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "STOP: release $TAG already exists" >&2
-            exit 2
-          fi
-
-          gh release create "$TAG" release/*             --repo "$GITHUB_REPOSITORY"             --target "$BUILD_SOURCE_SHA"             --title "AoE2HDBets Watcher $VERSION"             --notes "Watcher $VERSION cuts idle resource use by decoupling replay monitoring from the Chromium dashboard, adds tray-only background operation, fixes safe self-update handoff, and preserves the v1.5.13 replay durability/recovery contracts. Windows artifacts are Azure-signed and timestamped. Runtime source: $RUNTIME_SOURCE_SHA. Candidate build source: $BUILD_SOURCE_SHA."
-
-      - name: Verify published release inventory
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release view "v$VERSION"             --repo "$GITHUB_REPOSITORY"             --json tagName,targetCommitish,name,assets
+          echo "WATCHER_RELEASE_CERTIFIED version=$VERSION"
+          echo "tag=v$VERSION"
+          echo "runtime_source=$RUNTIME_SOURCE_SHA"
+          echo "build_source=$BUILD_SOURCE_SHA"
+          echo "windows_run=$WINDOWS_RUN_ID"
+          echo "nonwindows_run=$NONWINDOWS_RUN_ID"
+          echo "GitHub Actions release creation is intentionally not used because the repository integration is denied release-create permission."
+          echo "An authenticated repository owner must publish the certified bundle against the pre-created v$VERSION tag, then verify the release inventory before advancing app metadata."
