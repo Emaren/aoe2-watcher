@@ -12,8 +12,10 @@ const {
   desktopCapturer,
   dialog,
   ipcMain,
+  Menu,
   powerMonitor,
   shell,
+  Tray,
 } = require("electron");
 const { autoUpdater } = require("electron-updater");
 const { version: WATCHER_VERSION } = require("./package.json");
@@ -21,6 +23,13 @@ const {
   createDurableTelemetryQueue,
   createRuntimeEventCoalescer,
 } = require("./telemetryQueue");
+const {
+  DEFAULT_FOLDER_FRESHNESS_PROBE_MS,
+  DEFAULT_FOLDER_STATUS_CACHE_MS,
+  DEFAULT_MONITOR_WATCHDOG_MS,
+  getUpdateBlocker,
+  shouldLaunchInBackground,
+} = require("./runtimePolicy");
 
 const {
   detectReplayFolder,
@@ -89,7 +98,12 @@ const networkPriorityArbiter =
   createNetworkPriorityArbiter();
 
 let mainWindow = null;
+let tray = null;
+let runtimeInitialized = false;
 let watcherHandle = null;
+let cachedConfig = null;
+let cachedFolderStatus = null;
+let nativeStreamActive = false;
 let watcherSession = 0;
 let importSession = 0;
 let rendererReady = false;
@@ -106,15 +120,24 @@ let monitorWatchdogTimer = null;
 let monitorReattachAttempts = 0;
 let monitorLastReattachAt = 0;
 let lastReplayFolderFreshnessProbeAt = 0;
-const MONITOR_WATCHDOG_MS = Number(process.env.AOE2_MONITOR_WATCHDOG_MS || 30 * 1000);
+const MONITOR_WATCHDOG_MS = Number(
+  process.env.AOE2_MONITOR_WATCHDOG_MS ||
+    DEFAULT_MONITOR_WATCHDOG_MS
+);
 const REPLAY_FOLDER_FRESHNESS_PROBE_MS = Number(
   process.env.AOE2_REPLAY_FOLDER_FRESHNESS_PROBE_MS ||
-    60 * 1000
+    DEFAULT_FOLDER_FRESHNESS_PROBE_MS
+);
+const FOLDER_STATUS_CACHE_MS = Number(
+  process.env.AOE2_FOLDER_STATUS_CACHE_MS ||
+    DEFAULT_FOLDER_STATUS_CACHE_MS
 );
 const MONITOR_REATTACH_LIMIT = Number(process.env.AOE2_MONITOR_REATTACH_LIMIT || 3);
 const MONITOR_REATTACH_COOLDOWN_MS = Number(
   process.env.AOE2_MONITOR_REATTACH_COOLDOWN_MS || 60 * 1000
 );
+const UI_LOG_BUFFER_MAX_ENTRIES = 250;
+const recentUiLogs = [];
 
 
 function createUpdateState(patch = {}) {
@@ -141,8 +164,16 @@ function requiresManualUpdateInstall() {
   return process.platform === "darwin" && !MAC_AUTO_UPDATE_ENABLED;
 }
 
+function getWatcherUpdateBlocker() {
+  return getUpdateBlocker({
+    runtimeStatus: getRuntimeStatus(),
+    importRunning: Boolean(currentImportState?.isRunning),
+    nativeStreamActive,
+  });
+}
+
 function isWatcherUpdateBusy() {
-  return Boolean(watcherHandle || currentImportState?.isRunning);
+  return Boolean(getWatcherUpdateBlocker());
 }
 
 function getManualUpdateUrl() {
@@ -198,9 +229,35 @@ function setManualUpdateState(reason, error = null, info = {}) {
   );
 }
 
+function inspectReplayFolderCached(targetPath, { force = false } = {}) {
+  const normalizedPath = String(targetPath || "").trim();
+  const now = Date.now();
+
+  if (
+    !force &&
+    cachedFolderStatus &&
+    cachedFolderStatus.path === normalizedPath &&
+    now - cachedFolderStatus.checkedAt < FOLDER_STATUS_CACHE_MS
+  ) {
+    return cachedFolderStatus.value;
+  }
+
+  const value = inspectReplayFolder(normalizedPath);
+  cachedFolderStatus = {
+    path: normalizedPath,
+    checkedAt: now,
+    value,
+  };
+  return value;
+}
+
+function invalidateFolderStatusCache() {
+  cachedFolderStatus = null;
+}
+
 function buildRuntimeMetadata(config = loadConfig()) {
   const watcherRuntime = getRuntimeStatus();
-  const folder = inspectReplayFolder(config?.watchDir);
+  const folder = inspectReplayFolderCached(config?.watchDir);
   return {
     appVersion: WATCHER_VERSION,
     platform: process.platform,
@@ -233,7 +290,9 @@ function buildRuntimeMetadata(config = loadConfig()) {
     uploadQueueLength: watcherRuntime.uploadQueueLength,
     repeatedUploadErrors: watcherRuntime.repeatedUploadErrors,
     batchUploadActive: Boolean(currentImportState?.isRunning),
-    streamActive: Boolean(lastStreamHandoff?.streamId && !lastStreamHandoff?.endedAt),
+    streamActive:
+      nativeStreamActive ||
+      Boolean(lastStreamHandoff?.streamId && !lastStreamHandoff?.endedAt),
     watcherVersion: WATCHER_VERSION,
     importRunning: Boolean(currentImportState?.isRunning),
     appPackaged: Boolean(app.isPackaged),
@@ -266,6 +325,7 @@ function setUpdateState(patch = {}, options = {}) {
 
   sendToRenderer("watcher:update-state", updateState);
   sendToRenderer("watcher:app-info", getAppInfo(loadConfig()));
+  refreshTrayMenu();
 
   if (options.logMessage) {
     appendLog(options.logMessage, options.level || "info");
@@ -398,7 +458,7 @@ function configureAutoUpdater() {
         supported: true,
         status: busy ? "pending_install" : "downloaded",
         message: busy
-          ? "Watcher update downloaded. It will install after watching or uploads stop."
+          ? "Watcher update downloaded. It will install after active replay, import, or stream work finishes."
           : "Watcher update downloaded. Installing now.",
         updateVersion: info.version || null,
         downloaded: true,
@@ -410,7 +470,7 @@ function configureAutoUpdater() {
       },
       {
         logMessage: busy
-          ? "Watcher update downloaded. It will install after uploads/watching stop."
+          ? "Watcher update downloaded. It will install after active replay, import, or stream work finishes."
           : "Watcher update downloaded. Installing now.",
         telemetryEvent: "watcher_update_downloaded",
         telemetryPayload: { metadata: { updateInfo: info } },
@@ -656,6 +716,16 @@ async function installDownloadedWatcherUpdate(config = loadConfig(), options = {
       },
     }
   );
+  stopMonitorWatchdog();
+  stopTelemetryHeartbeat();
+
+  if (watcherHandle) {
+    stopCurrentWatcher({
+      quiet: true,
+      allowPendingInstall: false,
+    });
+  }
+
   autoUpdater.quitAndInstall(false, true);
 
   return {
@@ -737,29 +807,38 @@ function migrateLegacyConfig(config) {
 }
 
 function loadConfig() {
+  if (cachedConfig) {
+    return { ...cachedConfig };
+  }
+
   const configPath = getConfigPath();
   const defaults = getDefaultConfig();
 
   try {
     if (!fs.existsSync(configPath)) {
-      return ensureWatcherId(defaults);
+      cachedConfig = ensureWatcherId(defaults);
+      return { ...cachedConfig };
     }
 
     const raw = fs.readFileSync(configPath, "utf8");
     const parsed = JSON.parse(raw);
-    const merged = ensureWatcherId(migrateLegacyConfig({
+    const migratedParsed = migrateLegacyConfig(parsed);
+    const merged = ensureWatcherId({
       ...defaults,
-      ...parsed,
-    }));
+      ...migratedParsed,
+    });
 
-    if (JSON.stringify(parsed) !== JSON.stringify({ ...parsed, ...migrateLegacyConfig(parsed) })) {
+    cachedConfig = merged;
+
+    if (JSON.stringify(parsed) !== JSON.stringify(migratedParsed)) {
       fs.writeFileSync(configPath, JSON.stringify(merged, null, 2), "utf8");
     }
 
-    return merged;
+    return { ...cachedConfig };
   } catch (error) {
     console.error("Failed to load watcher config:", error);
-    return ensureWatcherId(defaults);
+    cachedConfig = ensureWatcherId(defaults);
+    return { ...cachedConfig };
   }
 }
 
@@ -773,8 +852,14 @@ function saveConfig(config) {
 
   fs.mkdirSync(path.dirname(configPath), { recursive: true });
   fs.writeFileSync(configPath, JSON.stringify(merged, null, 2), "utf8");
+  const previousWatchDir = cachedConfig?.watchDir || "";
+  cachedConfig = merged;
 
-  return merged;
+  if (previousWatchDir !== merged.watchDir) {
+    invalidateFolderStatusCache();
+  }
+
+  return { ...merged };
 }
 
 function classifyReplayFolderProblem(folder) {
@@ -974,6 +1059,9 @@ function applyLaunchAtLogin(config = loadConfig()) {
   try {
     app.setLoginItemSettings({
       openAtLogin: requested,
+      ...(process.platform === "win32"
+        ? { args: ["--background"] }
+        : {}),
     });
 
     const current = app.getLoginItemSettings();
@@ -1839,7 +1927,7 @@ function setImportState(nextState, { persist = false } = {}) {
 }
 
 function getWatchDirStatus(targetPath) {
-  return inspectReplayFolder(targetPath);
+  return inspectReplayFolderCached(targetPath, { force: true });
 }
 
 function getAppInfo(config = loadConfig()) {
@@ -1855,7 +1943,7 @@ function getAppInfo(config = loadConfig()) {
     protocolScheme: WATCHER_PAIR_PROTOCOL,
     protocolRegistered: app.isDefaultProtocolClient(WATCHER_PAIR_PROTOCOL),
     supportedReplayExtensions: getSupportedReplayExtensions(),
-    watchDirStatus: getWatchDirStatus(config.watchDir),
+    watchDirStatus: inspectReplayFolderCached(config.watchDir),
     release: releaseState,
     update: updateState,
     autoUpdate: updateState,
@@ -1892,6 +1980,7 @@ function broadcastConfig(config) {
 
 function setWatchingState(isWatching) {
   sendToRenderer("watcher:state", { isWatching });
+  refreshTrayMenu();
 }
 
 function getStreamWebBaseUrl(config = loadConfig()) {
@@ -1942,6 +2031,13 @@ async function postStreamJson(payload = {}) {
       accept: "application/json",
     }),
   });
+
+  if (apiPath === "/api/streams/start" && response?.data?.stream?.id) {
+    nativeStreamActive = true;
+  } else if (/\/end$/.test(apiPath)) {
+    nativeStreamActive = false;
+    maybeInstallPendingWatcherUpdate("native_stream_ended");
+  }
 
   return {
     ok: true,
@@ -2188,18 +2284,30 @@ function updateStreamHandoffFromRuntimeEvent(event) {
   publishStreamHandoff(lastStreamHandoff);
 }
 
+function pushRendererLog(entry) {
+  recentUiLogs.push(entry);
+  if (recentUiLogs.length > UI_LOG_BUFFER_MAX_ENTRIES) {
+    recentUiLogs.splice(
+      0,
+      recentUiLogs.length - UI_LOG_BUFFER_MAX_ENTRIES
+    );
+  }
+  sendToRenderer("watcher:log", entry);
+}
+
 function clearRendererLog() {
+  recentUiLogs.length = 0;
   sendToRenderer("watcher:clear-log", {});
 }
 
 function appendLog(message, level = "info") {
   const line = `[${new Date().toLocaleTimeString()}] ${message}`;
   console[level === "error" ? "error" : level === "warn" ? "warn" : "log"](line);
-  sendToRenderer("watcher:log", { line, level });
+  pushRendererLog({ line, level });
 }
 
 function appendSessionHeader(title) {
-  sendToRenderer("watcher:log", {
+  pushRendererLog({
     line: `\n──────── ${title} ────────`,
     level: "session",
   });
@@ -2363,11 +2471,23 @@ function handleWatcherRuntimeEvent(event) {
   updateStreamHandoffFromRuntimeEvent(event);
   sendToRenderer("watcher:runtime-event", event);
   emitTelemetryForRuntimeEvent(event);
+
+  if (
+    event.type === "monitor-stop" ||
+    event.type === "final-settle-observation-complete"
+  ) {
+    maybeInstallPendingWatcherUpdate(event.type);
+  }
 }
 
 function focusMainWindow() {
   if (!mainWindow || mainWindow.isDestroyed()) {
+    createWindow({ showOnReady: true });
     return;
+  }
+
+  if (process.platform === "darwin" && app.dock) {
+    void app.dock.show();
   }
 
   if (mainWindow.isMinimized()) {
@@ -2689,12 +2809,129 @@ function queuePairingUrl(rawUrl) {
   return processPendingPairingUrl();
 }
 
-function createWindow() {
+function refreshTrayMenu() {
+  if (!tray) {
+    return;
+  }
+
+  const runtime = getRuntimeStatus();
+  const isWatching = Boolean(watcherHandle && runtime.monitorAttached);
+  const updateReady = Boolean(updateState.downloaded);
+
+  tray.setContextMenu(
+    Menu.buildFromTemplate([
+      {
+        label: "Open AoE2HDBets Watcher",
+        click: () => focusMainWindow(),
+      },
+      { type: "separator" },
+      {
+        label: isWatching ? "Watching for replays" : "Start Watching",
+        enabled: !isWatching,
+        click: () => {
+          const config = loadConfig();
+          const blocker = getSetupBlocker(config);
+          if (blocker) {
+            appendLog(blocker, "warn");
+            focusMainWindow();
+            return;
+          }
+          startCurrentWatcher(config, {
+            preserveLog: true,
+            startMessage: "Watcher started from the tray.",
+          });
+        },
+      },
+      {
+        label: "Stop Watching",
+        enabled: isWatching,
+        click: () => stopCurrentWatcher(),
+      },
+      { type: "separator" },
+      {
+        label: updateReady
+          ? "Install Downloaded Update"
+          : "Check for Updates",
+        click: () => {
+          if (updateReady) {
+            void installDownloadedWatcherUpdate(loadConfig());
+          } else {
+            void checkForWatcherUpdates({
+              manual: true,
+              config: loadConfig(),
+            });
+          }
+        },
+      },
+      { type: "separator" },
+      {
+        label: "Quit Watcher",
+        click: () => app.quit(),
+      },
+    ])
+  );
+}
+
+function createTray() {
+  if (tray) {
+    return tray;
+  }
+
+  const iconPath = getWindowIconPath();
+  if (!iconPath) {
+    return null;
+  }
+
+  tray = new Tray(iconPath);
+  tray.setToolTip(APP_NAME);
+  tray.on("click", () => focusMainWindow());
+  refreshTrayMenu();
+  return tray;
+}
+
+function hydrateRenderer() {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    return;
+  }
+
+  rendererReady = true;
+  const config = loadConfig();
+
+  broadcastConfig(config);
+  sendToRenderer("watcher:import-state", currentImportState);
+  sendToRenderer("watcher:update-state", updateState);
+  sendToRenderer("watcher:state", {
+    isWatching: Boolean(watcherHandle),
+  });
+  sendToRenderer("watcher:stream-handoff", lastStreamHandoff);
+
+  sendToRenderer("watcher:clear-log", {});
+  for (const entry of recentUiLogs) {
+    sendToRenderer("watcher:log", entry);
+  }
+
+  processPendingPairingUrl();
+}
+
+function createWindow({ showOnReady = true } = {}) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    if (showOnReady) {
+      mainWindow.show();
+      mainWindow.focus();
+    }
+    return mainWindow;
+  }
+
+  if (process.platform === "darwin" && app.dock && showOnReady) {
+    void app.dock.show();
+  }
+
   mainWindow = new BrowserWindow({
     width: 1320,
     height: 920,
     minWidth: 1180,
     minHeight: 760,
+    show: false,
     title: APP_NAME,
     backgroundColor: "#071119",
     autoHideMenuBar: true,
@@ -2703,20 +2940,123 @@ function createWindow() {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
+      sandbox: true,
+      backgroundThrottling: true,
     },
   });
 
   mainWindow.loadFile(path.join(__dirname, "index.html"));
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url);
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol === "https:") {
+        void shell.openExternal(parsed.toString());
+      }
+    } catch {}
     return { action: "deny" };
   });
 
+  mainWindow.webContents.once("did-finish-load", hydrateRenderer);
+
   mainWindow.once("ready-to-show", () => {
-    mainWindow.show();
+    if (showOnReady && mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.show();
+    }
   });
+
+  mainWindow.once("closed", () => {
+    rendererReady = false;
+    mainWindow = null;
+    nativeStreamActive = false;
+    maybeInstallPendingWatcherUpdate("dashboard_closed");
+
+    if (process.platform === "darwin" && app.dock) {
+      app.dock.hide();
+    }
+  });
+
+  return mainWindow;
+}
+
+function initializeWatcherRuntime() {
+  if (runtimeInitialized) {
+    return loadConfig();
+  }
+
+  runtimeInitialized = true;
+  let config = saveConfig(loadConfig());
+  applyLaunchAtLogin(config);
+
+  currentImportState =
+    createImportStateFromSummary(config.lastImportSummary);
+
+  config = recoverReplayFolderConfig(config, {
+    source: "startup",
+  });
+
+  appendLog(
+    `Runtime initialized: watchDir="${config.watchDir || ""}", watcherKey=${
+      config.uploadApiKey ? "present" : "missing"
+    }`
+  );
+
+  emitWatcherTelemetry(
+    "app_open",
+    {
+      metadata: {
+        launchAtLogin: Boolean(config.launchAtLogin),
+        autoStartWatching: Boolean(config.autoStartWatching),
+        hasWatcherKey: Boolean(config.uploadApiKey),
+        hasWatchDir: Boolean(config.watchDir),
+      },
+    },
+    config
+  );
+  emitWatcherTelemetry(
+    "watcher_started",
+    { metadata: buildRuntimeMetadata(config) },
+    config
+  );
+  emitWatcherTelemetry(
+    "watcher_version_seen",
+    { metadata: buildRuntimeMetadata(config) },
+    config
+  );
+
+  void verifyWatcherAuth(config);
+  void refreshWatcherRelease(config);
+  void checkForWatcherUpdates({ config });
+  startTelemetryHeartbeat();
+  void flushWatcherTelemetryQueue(config);
+  startMonitorWatchdog();
+
+  const setupBlocker = getSetupBlocker(config);
+
+  if (config.autoStartWatching && !setupBlocker) {
+    const started = startCurrentWatcher(config, {
+      preserveLog: true,
+      startMessage: "Background replay watcher armed.",
+    });
+
+    if (!started) {
+      appendLog(
+        "Watcher did not start. Check replay folder and settings.",
+        "error"
+      );
+    }
+  } else if (config.autoStartWatching && setupBlocker) {
+    setWatchingState(false);
+    appendLog(
+      `${setupBlocker} Future launches can auto-start once both are saved.`,
+      "warn"
+    );
+  } else {
+    setWatchingState(false);
+    appendLog("Watcher is idle. Open the dashboard to start watching.");
+  }
+
+  return config;
 }
 
 function bootWatcherApp() {
@@ -2726,8 +3066,8 @@ function bootWatcherApp() {
   }
 
   registerPairingProtocol();
+  createTray();
   configureAutoUpdater();
-  createWindow();
 
   ipcMain.handle("watcher:get-config", async () => {
     return loadConfig();
@@ -2994,85 +3334,51 @@ function bootWatcherApp() {
     return { ok: true };
   });
 
-  let config = saveConfig(loadConfig());
-  const launchState = applyLaunchAtLogin(config);
+  initializeWatcherRuntime();
 
-  currentImportState = createImportStateFromSummary(config.lastImportSummary);
+  const loginState = app.getLoginItemSettings();
+  const launchInBackground =
+    shouldLaunchInBackground({
+      argv: process.argv,
+      wasOpenedAtLogin: Boolean(loginState?.wasOpenedAtLogin),
+    }) &&
+    !pendingPairingUrl;
 
-  mainWindow.webContents.once("did-finish-load", () => {
-    rendererReady = true;
-
-    config =
-      recoverReplayFolderConfig(
-        config,
-        {
-          source: "startup",
-        }
-      );
-
-    broadcastConfig(config);
-    sendToRenderer("watcher:import-state", currentImportState);
-    appendLog("UI loaded.");
-    appendLog(
-      `Initial config loaded: watchDir="${config.watchDir || ""}", apiBaseUrl="${config.apiBaseUrl || ""}", fallback="${config.apiFallbackBaseUrl || ""}", watcherKey=${
-        config.uploadApiKey ? "present" : "missing"
-      }`
-    );
-    emitWatcherTelemetry("app_open", {
-      metadata: {
-        launchAtLogin: Boolean(config.launchAtLogin),
-        autoStartWatching: Boolean(config.autoStartWatching),
-        hasWatcherKey: Boolean(config.uploadApiKey),
-        hasWatchDir: Boolean(config.watchDir),
-      },
-    }, config);
-    emitWatcherTelemetry("watcher_started", {
-      metadata: buildRuntimeMetadata(config),
-    }, config);
-    emitWatcherTelemetry("watcher_version_seen", {
-      metadata: buildRuntimeMetadata(config),
-    }, config);
-    void verifyWatcherAuth(config);
-    void refreshWatcherRelease(config);
-    void checkForWatcherUpdates({ config });
-    startTelemetryHeartbeat();
-    void flushWatcherTelemetryQueue(
-      config
-    );
-    startMonitorWatchdog();
-
-    const pairedFromUrl = processPendingPairingUrl();
-    if (pairedFromUrl) {
-      return;
+  if (launchInBackground) {
+    appendLog("Started in low-resource background mode.");
+    if (process.platform === "darwin" && app.dock) {
+      app.dock.hide();
     }
-
-    const setupBlocker = getSetupBlocker(config);
-
-    if (config.autoStartWatching && !setupBlocker) {
-      appendLog("Auto-start is enabled. Attempting watcher start...");
-      const started = startCurrentWatcher(config);
-      if (!started) {
-        appendLog("Watcher did not start. Check replay folder and settings.", "error");
-      }
-    } else if (config.autoStartWatching && setupBlocker) {
-      setWatchingState(false);
-      appendLog(
-        `${setupBlocker} Future launches can auto-start once both are saved.`,
-        "warn"
-      );
-    } else {
-      setWatchingState(false);
-      appendLog("Watcher is idle. Press Start Watching when ready.");
-    }
-  });
+  } else {
+    createWindow({ showOnReady: true });
+  }
 }
 
 app.on("window-all-closed", () => {
   rendererReady = false;
+  // The replay engine intentionally survives without a BrowserWindow.
+});
+
+app.on("activate", () => {
+  focusMainWindow();
+});
+
+app.on("before-quit", () => {
+  rendererReady = false;
   stopTelemetryHeartbeat();
   stopMonitorWatchdog();
-  stopCurrentWatcher({ quiet: true });
-  app.quit();
+
+  if (watcherHandle) {
+    stopCurrentWatcher({
+      quiet: true,
+      allowPendingInstall: false,
+    });
+  }
+
+  if (tray) {
+    tray.destroy();
+    tray = null;
+  }
 });
 
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
@@ -3121,6 +3427,7 @@ if (!gotSingleInstanceLock) {
   app.on("open-url", (event, rawUrl) => {
     event.preventDefault();
     queuePairingUrl(rawUrl);
+    focusMainWindow();
   });
 
   const startupPairingUrl = getPairingUrlFromArgs(process.argv);

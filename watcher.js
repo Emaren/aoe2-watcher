@@ -5,6 +5,10 @@ const crypto = require("crypto");
 const { execFileSync } = require("child_process");
 const axios = require("axios");
 const FormData = require("form-data");
+const {
+  DEFAULT_FINAL_SETTLE_POLL_MS,
+  DEFAULT_IDLE_RECOVERY_SCAN_MS,
+} = require("./runtimePolicy");
 
 const SUPPORTED_REPLAY_EXTENSIONS = [".aoe2record", ".aoe2mpgame", ".mgz", ".mgx", ".mgl"];
 const IMPORT_STABILITY_CHECK_MS = 1200;
@@ -24,7 +28,7 @@ const RECENT_LIVE_CANDIDATE_MS = Number(
 const LIVE_CANDIDATE_GROWTH_CHECK_MS = Number(
   process.env.AOE2_LIVE_CANDIDATE_GROWTH_CHECK_MS || 1500
 );
-const DEFAULT_RECOVERY_SCAN_INTERVAL_MS = 10 * 1000;
+const DEFAULT_RECOVERY_SCAN_INTERVAL_MS = DEFAULT_IDLE_RECOVERY_SCAN_MS;
 const DEFAULT_VALID_FOLDER_STALE_MS = 3 * 60 * 1000;
 const DEFAULT_ALTERNATE_FOLDER_FRESH_MS = 2 * 60 * 1000;
 const DEFAULT_ALTERNATE_FOLDER_MIN_LEAD_MS = 60 * 1000;
@@ -675,6 +679,13 @@ function buildRuntimeConfig(config = {}) {
     finalCandidateStableSamples: Number(process.env.AOE2_FINAL_CANDIDATE_STABLE_SAMPLES || 2),
     finalSettleWindowMs: Number(
       process.env.AOE2_FINAL_SETTLE_WINDOW_MS || DEFAULT_FINAL_SETTLE_WINDOW_MS
+    ),
+    finalSettlePollMs: Math.max(
+      3000,
+      Number(
+        process.env.AOE2_FINAL_SETTLE_POLL_MS ||
+          DEFAULT_FINAL_SETTLE_POLL_MS
+      )
     ),
     firstBytesTimeoutMs: Number(process.env.AOE2_FIRST_BYTES_TIMEOUT_MS || 15 * 60 * 1000),
     firstBytesPollMs: Number(process.env.AOE2_FIRST_BYTES_POLL_MS || 1000),
@@ -2727,7 +2738,11 @@ async function monitorReplayFile(filePath, runtimeConfig) {
         }
       }
 
-      await sleep(runtimeConfig.stableCheckIntervalMs);
+      await sleep(
+        entry.finalStored
+          ? runtimeConfig.finalSettlePollMs
+          : runtimeConfig.stableCheckIntervalMs
+      );
     }
   } finally {
     entry.monitoring = false;
