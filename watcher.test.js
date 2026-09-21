@@ -16,8 +16,40 @@ const {
   restorePersistedSettlementState,
   signWatcherProvenance,
   shouldRecheckKnownFinalFingerprint,
+  shouldRecoverUnknownReplayCandidate,
+  shouldHandle,
   summarizeUploadResponse,
 } = require("./watcher");
+
+test("admits English and localized out-of-sync MP saves as supported replays", () => {
+  const runtimeConfig = { watchExtensions: new Set([".aoe2mpgame"]) };
+
+  assert.equal(
+    shouldHandle("MP Save - Out of Sync Save - match.aoe2mpgame", runtimeConfig),
+    true,
+  );
+  assert.equal(
+    shouldHandle("MP Save - Enregistrement désynchronisé - match.aoe2mpgame", runtimeConfig),
+    true,
+  );
+});
+
+test("recovery adopts a fresh unknown replay without requiring a lucky growth sample", () => {
+  const now = Date.now();
+
+  assert.equal(
+    shouldRecoverUnknownReplayCandidate(null, { mtimeMs: now - 30_000 }, now),
+    true,
+  );
+  assert.equal(
+    shouldRecoverUnknownReplayCandidate(null, { mtimeMs: now - 11 * 60_000 }, now),
+    false,
+  );
+  assert.equal(
+    shouldRecoverUnknownReplayCandidate(buildEntry(), { mtimeMs: now - 30_000 }, now),
+    false,
+  );
+});
 
 test("signs Watcher provenance over immutable upload identity", () => {
   const signature = signWatcherProvenance({

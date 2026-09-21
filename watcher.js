@@ -1321,7 +1321,6 @@ function formatResponseBody(data) {
 function shouldHandle(filePath, runtimeConfig) {
   const ext = path.extname(filePath).toLowerCase();
   if (!runtimeConfig.watchExtensions.has(ext)) return false;
-  if (filePath.includes("Out of Sync")) return false;
   return true;
 }
 
@@ -2814,6 +2813,15 @@ function shouldRecheckKnownFinalFingerprint(entry, fingerprint) {
   );
 }
 
+function shouldRecoverUnknownReplayCandidate(entry, candidate, nowMs = Date.now()) {
+  if (entry || !candidate || !Number.isFinite(candidate.mtimeMs)) {
+    return false;
+  }
+
+  const ageMs = Math.max(0, nowMs - candidate.mtimeMs);
+  return ageMs <= RECENT_LIVE_CANDIDATE_MS;
+}
+
 
 async function scanRecentGrowingReplay(
   runtimeConfig,
@@ -2930,17 +2938,30 @@ async function scanRecentGrowingReplay(
   // that have no prior in-memory final state.
   //
   for (const candidate of candidates.slice(0, 3)) {
+    const existingEntry = activeUploadState.get(candidate.filePath);
     await sleep(LIVE_CANDIDATE_GROWTH_CHECK_MS);
     try {
       const next = await fs.promises.stat(candidate.filePath);
-      if (next.size > candidate.size || next.mtimeMs > candidate.mtimeMs) {
+      const grew = next.size > candidate.size || next.mtimeMs > candidate.mtimeMs;
+      const freshUnknown = shouldRecoverUnknownReplayCandidate(
+        existingEntry,
+        { mtimeMs: next.mtimeMs },
+      );
+
+      if (grew || freshUnknown) {
         emitRuntimeEvent("midgame-replay-recovered", {
           fileName: path.basename(candidate.filePath),
-          reason: "recent_replay_growing_on_attach",
+          reason: grew
+            ? "recent_replay_growing_on_attach"
+            : "recent_unknown_replay_on_attach",
           fileSizeBytes: next.size,
           mtimeMs: Math.floor(next.mtimeMs),
         });
-        await onFileDetected("initial-scan", candidate.filePath, runtimeConfig);
+        await onFileDetected(
+          grew ? "initial-scan" : "recovery-scan",
+          candidate.filePath,
+          runtimeConfig,
+        );
         return true;
       }
     } catch {
@@ -3769,6 +3790,7 @@ module.exports = {
   buildRuntimeConfig,
   restorePersistedSettlementState,
   shouldRecheckKnownFinalFingerprint,
+  shouldRecoverUnknownReplayCandidate,
   signWatcherProvenance,
   buildReplayReceiptDetail,
   classifyUploadResult,

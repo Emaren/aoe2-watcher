@@ -15,17 +15,25 @@ sensitivity: "internal"
 
 # aoe2-watcher
 
+## v1.5.13 release candidate
+
+Watcher 1.5.13 fixes a live-replay admission failure observed simultaneously on Scavanger_Ab and Tekki. A supported HD `.aoe2mpgame` could be present and freshly modified while the Watcher remained connected and attached yet reported no active replay. Two causes were proven: English `Out of Sync` filenames were explicitly rejected, and restart/resume recovery required an unknown replay to grow during one 1.5-second sample before monitoring it.
+
+Replay admission is now filename-language agnostic for every supported extension. Startup/resume recovery adopts the newest fresh unknown replay even when it is quiet during that short sample, while persisted known-final replays keep fingerprint/content-hash short-circuit protection. The server remains authoritative for parse/finality and duplicate handling.
+
+The source version is `1.5.13`, but public Windows, macOS, and Linux metadata must remain on `1.5.12` until fresh platform builds, Azure Windows signing, artifact hashing, updater-manifest verification, and the five-artifact publication gate all complete.
+
 ## v1.5.12 public release
 
 Watcher 1.5.12 hardens Windows HD replay-folder discovery and diagnostics. Windows now consults Steam registry install roots before reading `libraryfolders.vdf`, so a custom Steam install can still lead the Watcher to the active `Age2HD\SaveGame` / `multi` directory. Heartbeat and ready telemetry also separate structural HD-folder validity from proven replay activity by reporting supported replay count, newest replay metadata, and an activity-proof flag without transmitting the full local path.
 
 Watcher 1.5.12 is the current public release. The five-artifact publication gate completed for Windows Installer, Windows Portable, macOS DMG, macOS Direct ZIP, and Linux AppImage. The immutable `v1.5.12` release and its updater metadata were verified before publication.
 
-## v1.5.11 release candidate
+## v1.5.11 historical release candidate
 
 Watcher 1.5.11 adds capability-negotiated server media shedding for watcher-native video. Updated clients advertise `server-media-shed-v1`; when AoE2WAR returns terminal `STREAM_MEDIA_SHED`, the Watcher stops optional native video cleanly while replay/API transport remains authoritative. Older Watchers do not advertise the capability and therefore keep the prior server behavior during rollout.
 
-The source version is `1.5.11`, but public Windows, macOS, and Linux artifacts remain `1.5.10` until fresh platform builds, Windows signing, artifact hashing, updater-manifest verification, and the five-artifact publication gate all complete.
+At that stage, the source version was `1.5.11` while public artifacts remained `1.5.10` until the five-artifact release gate completed.
 
 ## v1.5.7 upload snapshot contract
 
@@ -37,7 +45,9 @@ Upload queue telemetry now counts one logical live/final upload per replay. Retr
 
 Native filesystem watchers, especially on Windows, may emit many change notifications while the watcher is already monitoring the same growing replay. Those notifications still reach the local runtime journal and UI, but remote `replay_detected_ignored` telemetry with reason `monitoring` is coalesced to at most one event per replay every 30 seconds. Periodic summaries include the raw notification count represented by that event.
 
-Replay detection, upload attempts and receipts, file-growth transitions, final-candidate transitions, and monitor-stop events are never coalesced. The correction changes support telemetry load only; it does not alter the replay polling loop, live-upload cooldown, final-stability checks, or final upload timing. Public artifacts remain `1.5.7` until the next complete release gate.
+Watcher recovery is filename-language agnostic: any supported replay extension can enter monitoring, including HD multiplayer out-of-sync save names. On startup, resume, or monitor reattach, the recovery scan adopts the newest fresh unknown supported replay even if it does not happen to grow during the 1.5-second sampling window. Persisted known-final replays retain fingerprint/content-hash short-circuit protection.
+
+Replay detection, upload attempts and receipts, file-growth transitions, final-candidate transitions, and monitor-stop events are never coalesced. The correction changes support telemetry load only; it does not alter the replay polling loop, live-upload cooldown, final-stability checks, or final upload timing. That telemetry-only change did not advance public artifacts by itself.
 
 
 <!-- AOE2WAR:TERMINAL_RESULT_RECEIPT_SOURCE_V3:START -->
@@ -55,9 +65,7 @@ without a receipt, but a supplied conflicting receipt blocks automatic result
 recovery. Any accepted automatic result is stats-only and cannot authorize a
 market or chain action.
 
-This source commit does not change the advertised desktop version. Public
-Windows, macOS, and Linux artifacts remain `1.5.10` until a separate release
-build, test, signing/staging, manifest-sync, and publication gate is completed.
+That historical source commit did not change the advertised desktop version; it still required a separate build, test, signing/staging, manifest-sync, and publication gate.
 <!-- AOE2WAR:TERMINAL_RESULT_RECEIPT_SOURCE_V3:END -->
 
 ## Post-v1.5.10 live diagnostics hardening
@@ -70,9 +78,7 @@ objects that should themselves expose a `name`. Structural live gaps such as an
 unknown map or an unknown player name still surface immediately, and an
 unresolved winner on a final replay remains diagnostic truth.
 
-This hardening is source-only and does not advance the advertised desktop
-version beyond `1.5.10`; a new public Watcher version still requires the full
-five-artifact release gate.
+That historical hardening was source-only; every public Watcher version still requires the full five-artifact release gate.
 
 ## v1.5.4 reliability contract
 

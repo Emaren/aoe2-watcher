@@ -1,4 +1,4 @@
 AoE2HDBets Watcher non-Windows release build
-version=1.5.12
+version=1.5.13
 runtime_source=merged_main_commit
-reason=coherent_public_release_1.5.12
+reason=coherent_public_release_1.5.13
