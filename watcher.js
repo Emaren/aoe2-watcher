@@ -418,6 +418,8 @@ function replayFolderCandidates() {
 }
 
 function inspectReplayFolder(targetPath) {
+  const inspectionStartedAt =
+    process.hrtime.bigint();
   const normalizedPath = String(targetPath || "").trim();
   const label = normalizedPath ? path.basename(normalizedPath) : null;
   const normalizedLower = normalizedPath.toLowerCase();
@@ -435,18 +437,36 @@ function inspectReplayFolder(targetPath) {
     supportedReplayCount: 0,
     latestReplayBasename: null,
     latestReplayModifiedAt: null,
+    entriesScanned: 0,
+    inspectionDurationMs: 0,
     error: null,
   };
 
-  if (!normalizedPath) return result;
+  const finishInspection = () => {
+    result.inspectionDurationMs =
+      Number(
+        process.hrtime.bigint() -
+          inspectionStartedAt
+      ) /
+      1_000_000;
+    result.inspectionDurationMs =
+      Math.round(
+        result.inspectionDurationMs *
+          100
+      ) / 100;
+    return result;
+  };
+
+  if (!normalizedPath) return finishInspection();
   try {
     const stats = fs.statSync(normalizedPath);
     result.exists = stats.isDirectory();
     result.isDirectory = stats.isDirectory();
-    if (!stats.isDirectory()) return result;
+    if (!stats.isDirectory()) return finishInspection();
     fs.accessSync(normalizedPath, fs.constants.R_OK);
     result.readable = true;
     const entries = fs.readdirSync(normalizedPath, { withFileTypes: true });
+    result.entriesScanned = entries.length;
     for (const entry of entries) {
       if (!entry.isFile() || !SUPPORTED_REPLAY_EXTENSIONS.includes(path.extname(entry.name).toLowerCase())) {
         continue;
@@ -465,10 +485,10 @@ function inspectReplayFolder(targetPath) {
       else if (ageMs <= 30 * 24 * 60 * 60 * 1000) result.score += 10;
     }
     result.valid = result.readable && !appearsDe && (appearsHd || result.supportedReplayCount > 0);
-    return result;
+    return finishInspection();
   } catch (error) {
     result.error = error.message || "Folder is inaccessible.";
-    return result;
+    return finishInspection();
   }
 }
 

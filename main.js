@@ -360,6 +360,8 @@ function buildRuntimeMetadata(config = loadConfig()) {
     folderSupportedReplayCount: folder.supportedReplayCount,
     folderLatestReplayBasename: folder.latestReplayBasename,
     folderLatestReplayModifiedAt: folder.latestReplayModifiedAt,
+    folderEntriesScanned: folder.entriesScanned,
+    folderInspectionDurationMs: folder.inspectionDurationMs,
     folderActivityProven: Boolean(
       folder.supportedReplayCount > 0 && folder.latestReplayModifiedAt
     ),
