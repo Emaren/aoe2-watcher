@@ -22,3 +22,47 @@ test("background watcher is independent from dashboard lifetime", () => {
   assert.doesNotMatch(closeBlock, /app\.quit\(\)/);
   assert.match(closeBlock, /before-quit/);
 });
+
+
+test("runtime journal batches diagnostic disk writes instead of synchronously appending every event", () => {
+  assert.match(
+    mainSource,
+    /RUNTIME_EVENT_JOURNAL_FLUSH_MS/
+  );
+  assert.match(
+    mainSource,
+    /RUNTIME_EVENT_JOURNAL_BUFFER_MAX_BYTES/
+  );
+  assert.match(
+    mainSource,
+    /fs\.promises\.appendFile/
+  );
+
+  const journalStart =
+    mainSource.indexOf(
+      "function appendRuntimeEventJournal"
+    );
+  const journalEnd =
+    mainSource.indexOf(
+      "function handleWatcherRuntimeEvent",
+      journalStart
+    );
+  const journal =
+    mainSource.slice(
+      journalStart,
+      journalEnd
+    );
+
+  assert.doesNotMatch(
+    journal,
+    /fs\.appendFileSync/
+  );
+  assert.match(
+    journal,
+    /scheduleRuntimeEventJournalFlush/
+  );
+  assert.match(
+    mainSource,
+    /flushRuntimeEventJournalSync\(\)/
+  );
+});

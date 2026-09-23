@@ -92,6 +92,21 @@ const RUNTIME_EVENT_JOURNAL_MAX_BYTES = Number(
   process.env.AOE2_RUNTIME_EVENT_JOURNAL_MAX_BYTES ||
     5 * 1024 * 1024
 );
+const RUNTIME_EVENT_JOURNAL_FLUSH_MS = Math.max(
+  250,
+  Number(
+    process.env.AOE2_RUNTIME_EVENT_JOURNAL_FLUSH_MS ||
+      2000
+  )
+);
+const RUNTIME_EVENT_JOURNAL_BUFFER_MAX_BYTES =
+  Math.max(
+    8 * 1024,
+    Number(
+      process.env.AOE2_RUNTIME_EVENT_JOURNAL_BUFFER_MAX_BYTES ||
+        64 * 1024
+    )
+  );
 const RELEASE_CHECK_TIMEOUT_MS = Number(process.env.AOE2_RELEASE_CHECK_TIMEOUT_MS || 5000);
 const AUTO_UPDATE_FEED_URL = process.env.AOE2_UPDATE_FEED_URL || "https://aoe2war.com/downloads";
 const MAC_AUTO_UPDATE_ENABLED = process.env.AOE2_ENABLE_MAC_AUTO_UPDATE === "1";
@@ -158,6 +173,11 @@ const RESOURCE_IDLE_SAMPLE_MS = Math.max(
 );
 const recentUiLogs = [];
 let resourceProfileTimer = null;
+let runtimeEventJournalBuffer = "";
+let runtimeEventJournalBufferBytes = 0;
+let runtimeEventJournalFlushTimer = null;
+let runtimeEventJournalFlushChain =
+  Promise.resolve();
 
 const resourceProfiler =
   createResourceProfiler({
@@ -2508,6 +2528,228 @@ function emitTelemetryForRuntimeEvent(event) {
   }
 }
 
+function getRuntimeEventJournalPath() {
+  return path.join(
+    app.getPath("userData"),
+    "watcher-runtime-events.jsonl"
+  );
+}
+
+async function rotateRuntimeEventJournalIfNeeded(
+  journalPath,
+  incomingBytes = 0
+) {
+  let currentBytes = 0;
+
+  try {
+    currentBytes =
+      (
+        await fs.promises.stat(
+          journalPath
+        )
+      ).size;
+  } catch (error) {
+    if (error?.code !== "ENOENT") {
+      throw error;
+    }
+  }
+
+  if (
+    currentBytes +
+      Math.max(
+        0,
+        Number(incomingBytes) || 0
+      ) <=
+    RUNTIME_EVENT_JOURNAL_MAX_BYTES
+  ) {
+    return false;
+  }
+
+  const rotated =
+    `${journalPath}.1`;
+
+  await fs.promises.rm(
+    rotated,
+    {
+      force: true,
+    }
+  );
+
+  try {
+    await fs.promises.rename(
+      journalPath,
+      rotated
+    );
+  } catch (error) {
+    if (error?.code !== "ENOENT") {
+      throw error;
+    }
+  }
+
+  return true;
+}
+
+function scheduleRuntimeEventJournalFlush() {
+  if (
+    runtimeEventJournalFlushTimer ||
+    !runtimeEventJournalBuffer
+  ) {
+    return;
+  }
+
+  runtimeEventJournalFlushTimer =
+    setTimeout(() => {
+      runtimeEventJournalFlushTimer =
+        null;
+      void flushRuntimeEventJournal();
+    }, RUNTIME_EVENT_JOURNAL_FLUSH_MS);
+}
+
+function flushRuntimeEventJournal() {
+  if (!runtimeEventJournalBuffer) {
+    return runtimeEventJournalFlushChain;
+  }
+
+  const chunk =
+    runtimeEventJournalBuffer;
+  const chunkBytes =
+    runtimeEventJournalBufferBytes;
+
+  runtimeEventJournalBuffer = "";
+  runtimeEventJournalBufferBytes = 0;
+
+  if (runtimeEventJournalFlushTimer) {
+    clearTimeout(
+      runtimeEventJournalFlushTimer
+    );
+    runtimeEventJournalFlushTimer =
+      null;
+  }
+
+  runtimeEventJournalFlushChain =
+    runtimeEventJournalFlushChain
+      .then(async () => {
+        const journalPath =
+          getRuntimeEventJournalPath();
+
+        await fs.promises.mkdir(
+          path.dirname(journalPath),
+          {
+            recursive: true,
+          }
+        );
+
+        await rotateRuntimeEventJournalIfNeeded(
+          journalPath,
+          chunkBytes
+        );
+
+        await fs.promises.appendFile(
+          journalPath,
+          chunk,
+          "utf8"
+        );
+      })
+      .catch((error) => {
+        console.warn(
+          `Watcher runtime journal flush failed: ${
+            error.message || error
+          }`
+        );
+      });
+
+  return runtimeEventJournalFlushChain;
+}
+
+function flushRuntimeEventJournalSync() {
+  if (!runtimeEventJournalBuffer) {
+    return;
+  }
+
+  const chunk =
+    runtimeEventJournalBuffer;
+
+  runtimeEventJournalBuffer = "";
+  runtimeEventJournalBufferBytes = 0;
+
+  if (runtimeEventJournalFlushTimer) {
+    clearTimeout(
+      runtimeEventJournalFlushTimer
+    );
+    runtimeEventJournalFlushTimer =
+      null;
+  }
+
+  try {
+    const journalPath =
+      getRuntimeEventJournalPath();
+
+    fs.mkdirSync(
+      path.dirname(journalPath),
+      {
+        recursive: true,
+      }
+    );
+
+    const incomingBytes =
+      Buffer.byteLength(
+        chunk,
+        "utf8"
+      );
+
+    let currentBytes = 0;
+    try {
+      currentBytes =
+        fs.statSync(
+          journalPath
+        ).size;
+    } catch (error) {
+      if (error?.code !== "ENOENT") {
+        throw error;
+      }
+    }
+
+    if (
+      currentBytes +
+        incomingBytes >
+      RUNTIME_EVENT_JOURNAL_MAX_BYTES
+    ) {
+      const rotated =
+        `${journalPath}.1`;
+
+      fs.rmSync(
+        rotated,
+        {
+          force: true,
+        }
+      );
+
+      try {
+        fs.renameSync(
+          journalPath,
+          rotated
+        );
+      } catch (error) {
+        if (error?.code !== "ENOENT") {
+          throw error;
+        }
+      }
+    }
+
+    fs.appendFileSync(
+      journalPath,
+      chunk,
+      "utf8"
+    );
+  } catch (error) {
+    console.warn(
+      `Watcher runtime journal final flush failed: ${
+        error.message || error
+      }`
+    );
+  }
+}
+
 function appendRuntimeEventJournal(
   event
 ) {
@@ -2519,63 +2761,33 @@ function appendRuntimeEventJournal(
     return;
   }
 
-  try {
-    const journalPath =
-      path.join(
-        app.getPath("userData"),
-        "watcher-runtime-events.jsonl"
-      );
+  const line =
+    `${JSON.stringify({
+      recordedAt:
+        new Date().toISOString(),
+      appVersion:
+        WATCHER_VERSION,
+      sessionId:
+        APP_SESSION_ID,
+      ...event,
+    })}\n`;
 
-    fs.mkdirSync(
-      path.dirname(journalPath),
-      {
-        recursive: true,
-      }
-    );
-
-    if (
-      fs.existsSync(journalPath) &&
-      fs.statSync(journalPath).size >
-        RUNTIME_EVENT_JOURNAL_MAX_BYTES
-    ) {
-      const rotated =
-        `${journalPath}.1`;
-
-      try {
-        fs.rmSync(
-          rotated,
-          {
-            force: true,
-          }
-        );
-      } catch {}
-
-      fs.renameSync(
-        journalPath,
-        rotated
-      );
-    }
-
-    fs.appendFileSync(
-      journalPath,
-      `${JSON.stringify({
-        recordedAt:
-          new Date().toISOString(),
-        appVersion:
-          WATCHER_VERSION,
-        sessionId:
-          APP_SESSION_ID,
-        ...event,
-      })}\n`,
+  runtimeEventJournalBuffer += line;
+  runtimeEventJournalBufferBytes +=
+    Buffer.byteLength(
+      line,
       "utf8"
     );
-  } catch (error) {
-    console.warn(
-      `Watcher runtime journal failed: ${
-        error.message || error
-      }`
-    );
+
+  if (
+    runtimeEventJournalBufferBytes >=
+    RUNTIME_EVENT_JOURNAL_BUFFER_MAX_BYTES
+  ) {
+    void flushRuntimeEventJournal();
+    return;
   }
+
+  scheduleRuntimeEventJournalFlush();
 }
 
 function handleWatcherRuntimeEvent(event) {
@@ -3511,6 +3723,7 @@ app.on("before-quit", () => {
   stopTelemetryHeartbeat();
   stopMonitorWatchdog();
   stopResourceProfiling();
+  flushRuntimeEventJournalSync();
 
   if (watcherHandle) {
     stopCurrentWatcher({
