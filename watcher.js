@@ -907,18 +907,103 @@ async function getFileFingerprint(filePath) {
   return `${stats.size}:${Math.floor(stats.mtimeMs)}`;
 }
 
-async function createReplayUploadSnapshot(filePath) {
+async function createReplayUploadSnapshot(
+  filePath,
+  {
+    storage = "memory",
+  } = {}
+) {
   const sourceStats =
     await fs.promises.stat(filePath);
+
+  const mtimeMs =
+    Math.floor(sourceStats.mtimeMs);
+
+  if (storage === "disk") {
+    const snapshotDirectory =
+      await fs.promises.mkdtemp(
+        path.join(
+          os.tmpdir(),
+          "aoe2-watcher-upload-"
+        )
+      );
+
+    const snapshotPath =
+      path.join(
+        snapshotDirectory,
+        "replay.bin"
+      );
+
+    try {
+      await fs.promises.copyFile(
+        filePath,
+        snapshotPath
+      );
+
+      const [snapshotStats, sourceStatsAfter] =
+        await Promise.all([
+          fs.promises.stat(snapshotPath),
+          fs.promises.stat(filePath),
+        ]);
+
+      const sourceMtimeAfter =
+        Math.floor(
+          sourceStatsAfter.mtimeMs
+        );
+
+      if (
+        sourceStatsAfter.size !==
+          sourceStats.size ||
+        sourceMtimeAfter !==
+          mtimeMs
+      ) {
+        const error =
+          new Error(
+            "Replay changed while creating the historical upload snapshot."
+          );
+        error.code =
+          "AOE2_REPLAY_SNAPSHOT_CHANGED";
+        throw error;
+      }
+
+      const fileSizeBytes =
+        snapshotStats.size;
+
+      const fingerprint =
+        `${fileSizeBytes}:${mtimeMs}`;
+
+      const sha256 =
+        await getReplayContentHash(
+          snapshotPath
+        );
+
+      return {
+        storage: "disk",
+        replayBuffer: null,
+        snapshotDirectory,
+        snapshotPath,
+        fileSizeBytes,
+        mtimeMs,
+        fingerprint,
+        sha256,
+      };
+    } catch (error) {
+      await fs.promises.rm(
+        snapshotDirectory,
+        {
+          recursive: true,
+          force: true,
+        }
+      );
+      throw error;
+    }
+  }
 
   const replayBuffer =
     await fs.promises.readFile(filePath);
 
   const fileSizeBytes =
     replayBuffer.length;
-
-  const mtimeMs =
-    Math.floor(sourceStats.mtimeMs);
 
   const fingerprint =
     `${fileSizeBytes}:${mtimeMs}`;
@@ -929,12 +1014,33 @@ async function createReplayUploadSnapshot(filePath) {
     .digest("hex");
 
   return {
+    storage: "memory",
     replayBuffer,
+    snapshotDirectory: null,
+    snapshotPath: null,
     fileSizeBytes,
     mtimeMs,
     fingerprint,
     sha256,
   };
+}
+
+async function disposeReplayUploadSnapshot(
+  snapshot
+) {
+  if (
+    !snapshot?.snapshotDirectory
+  ) {
+    return;
+  }
+
+  await fs.promises.rm(
+    snapshot.snapshotDirectory,
+    {
+      recursive: true,
+      force: true,
+    }
+  );
 }
 
 function signWatcherProvenance({
@@ -1860,9 +1966,22 @@ async function uploadReplay(
 
   const form = new FormData();
 
+  const replayBody =
+    snapshot.snapshotPath
+      ? fs.createReadStream(
+          snapshot.snapshotPath
+        )
+      : snapshot.replayBuffer;
+
+  if (!replayBody) {
+    throw new Error(
+      "Replay upload snapshot has no readable body."
+    );
+  }
+
   form.append(
     "file",
-    snapshot.replayBuffer,
+    replayBody,
     {
       filename:
         path.basename(filePath),
@@ -2004,7 +2123,12 @@ async function uploadReplay(
   }
 }
 
-function isRetryableUploadError(error) {
+function isRetryableUploadError(
+  error,
+  {
+    allowReplayProgressRetry = true,
+  } = {}
+) {
   const status = error?.response?.status;
   const detail = formatResponseBody(error?.response?.data).toLowerCase();
   const hasValidationDetailArray = Array.isArray(error?.response?.data?.detail);
@@ -2017,7 +2141,9 @@ function isRetryableUploadError(error) {
     status === 422 &&
     (detail.includes("failed to parse replay file") || hasValidationDetailArray)
   ) {
-    return true;
+    return Boolean(
+      allowReplayProgressRetry
+    );
   }
 
   return status === 408 || status === 409 || status === 425 || status === 429 || status >= 500;
@@ -2039,19 +2165,29 @@ async function uploadReplayWithRetry(
   }
 ) {
   const maxAttempts = runtimeConfig.maxUploadRetries + 1;
+  const historicalImport =
+    provenance ===
+    WATCHER_PROVENANCE_HISTORICAL_IMPORT;
   let attemptFingerprint = fingerprint;
   let retrySnapshot = null;
 
-  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-    if (!retrySnapshot) {
-      retrySnapshot =
-        await createReplayUploadSnapshot(
-          filePath
-        );
+  try {
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      if (!retrySnapshot) {
+        retrySnapshot =
+          await createReplayUploadSnapshot(
+            filePath,
+            {
+              storage:
+                historicalImport
+                  ? "disk"
+                  : "memory",
+            }
+          );
 
-      attemptFingerprint =
-        retrySnapshot.fingerprint;
-    }
+        attemptFingerprint =
+          retrySnapshot.fingerprint;
+      }
 
     const retryLabel =
       attempt > 0 ? ` (retry ${attempt}/${runtimeConfig.maxUploadRetries})` : "";
@@ -2297,7 +2433,16 @@ async function uploadReplayWithRetry(
           continue;
         }
 
-        if (!isRetryableUploadError(err) || attempt >= maxAttempts - 1) {
+        if (
+          !isRetryableUploadError(
+            err,
+            {
+              allowReplayProgressRetry:
+                !historicalImport,
+            }
+          ) ||
+          attempt >= maxAttempts - 1
+        ) {
           emitRuntimeEvent("upload-failure", {
             filePath,
             fileName: path.basename(filePath),
@@ -2357,7 +2502,10 @@ async function uploadReplayWithRetry(
           ...parseFingerprintParts(attemptFingerprint),
         });
 
-        if (isReplayFinalizingError(err)) {
+        if (
+          !historicalImport &&
+          isReplayFinalizingError(err)
+        ) {
           await waitForReplayProgress(
             filePath,
             attemptFingerprint,
@@ -2374,10 +2522,15 @@ async function uploadReplayWithRetry(
     }
   }
 
-  return {
-    ok: false,
-    errorMessage: "Upload failed after all retries.",
-  };
+    return {
+      ok: false,
+      errorMessage: "Upload failed after all retries.",
+    };
+  } finally {
+    await disposeReplayUploadSnapshot(
+      retrySnapshot
+    );
+  }
 }
 
 function shouldEmitFinalDeferral(entry, reason, now = Date.now()) {
@@ -3811,6 +3964,7 @@ module.exports = {
   classifyUploadResult,
   classifyReplayAcceptance,
   createReplayUploadSnapshot,
+  disposeReplayUploadSnapshot,
   getDefaultReplayDir,
   getWindowsSteamRoots,
   parseWindowsRegistryStringValue,

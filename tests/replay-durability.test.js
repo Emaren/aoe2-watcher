@@ -137,6 +137,6 @@ test("transport retries reuse one immutable replay snapshot", () => {
 
   assert.match(
     source,
-    /if \(isReplayFinalizingError\(err\)\)[\s\S]*retrySnapshot = null/,
+    /!historicalImport[\s\S]*isReplayFinalizingError\(err\)[\s\S]*retrySnapshot = null/,
   );
 });
