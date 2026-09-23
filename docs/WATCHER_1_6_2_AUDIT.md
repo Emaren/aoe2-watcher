@@ -51,8 +51,10 @@ not how expensive the Watcher itself was. CPU, RAM, processor wakeups and
 Watcher-attributable network rate were absent from the user-facing diagnostics.
 
 **1.6.2 status:** first tranche implemented. The Watcher samples the Electron
-process tree every 15 seconds, keeps a small rolling window, records session peaks,
-and publishes only the compact resource summary through the existing heartbeat.
+process tree every 15 seconds while the dashboard or real work is active, backs off
+to 60 seconds when quietly backgrounded, keeps a small rolling window, records
+session peaks, and publishes only the compact resource summary through the existing
+heartbeat.
 
 ### P1 — power must be measured without pretending
 

@@ -22,9 +22,11 @@ not published yet; it is the accumulation lane for measured resource efficiency,
 cross-machine resilience, telemetry, and update ergonomics before the next
 five-artifact release gate.
 
-The first 1.6.2 tranche adds a low-frequency resource profile built from Electron's
-own process-tree metrics: current/rolling CPU, working-set memory, session peaks,
-processor wakeups, and Watcher-attributable replay/stream network rate. Those
+The first 1.6.2 tranche adds an adaptive low-frequency resource profile built from
+Electron's own process-tree metrics: current/rolling CPU, working-set memory,
+session peaks, processor wakeups, and Watcher-attributable replay/stream network
+rate. It samples every 15 seconds while the dashboard or real work is active and
+backs off to 60 seconds when the Watcher is quietly backgrounded. Those
 figures appear in Diagnostics, support snapshots, and heartbeat metadata. The
 power readout is intentionally a CPU/wakeup **signal**, not invented watts:
 portable per-process watt measurement is not exposed by Electron.
