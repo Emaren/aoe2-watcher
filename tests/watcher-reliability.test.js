@@ -5,6 +5,7 @@ const os = require("node:os");
 const path = require("node:path");
 
 const {
+  closeReplayUploadStream,
   createReplayUploadSnapshot,
   disposeReplayUploadSnapshot,
   detectReplayFolder,
@@ -782,4 +783,83 @@ test("historical import selects disk snapshots and disables replay-progress retr
     source,
     /!historicalImport\s*&&\s*isReplayFinalizingError\(err\)/
   );
+});
+
+
+test("disk-backed upload streams close before snapshot cleanup", async () => {
+  const { root, folder } =
+    temporaryFolder([
+      "Documents",
+      "My Games",
+      "Age of Empires 2 HD",
+      "SaveGame",
+    ]);
+
+  const sourcePath =
+    path.join(
+      folder,
+      "cleanup.aoe2record"
+    );
+
+  let snapshot = null;
+
+  try {
+    fs.writeFileSync(
+      sourcePath,
+      "cleanup-replay-bytes"
+    );
+
+    snapshot =
+      await createReplayUploadSnapshot(
+        sourcePath,
+        {
+          storage: "disk",
+        }
+      );
+
+    const stream =
+      fs.createReadStream(
+        snapshot.snapshotPath
+      );
+
+    await closeReplayUploadStream(
+      stream
+    );
+
+    assert.equal(
+      stream.closed,
+      true
+    );
+
+    const snapshotDirectory =
+      snapshot.snapshotDirectory;
+
+    assert.equal(
+      await disposeReplayUploadSnapshot(
+        snapshot
+      ),
+      true
+    );
+    snapshot = null;
+
+    assert.equal(
+      fs.existsSync(
+        snapshotDirectory
+      ),
+      false
+    );
+  } finally {
+    if (snapshot) {
+      await disposeReplayUploadSnapshot(
+        snapshot
+      );
+    }
+    fs.rmSync(
+      root,
+      {
+        recursive: true,
+        force: true,
+      }
+    );
+  }
 });
