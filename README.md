@@ -36,6 +36,11 @@ existing freshness probe, so an idle Watcher does fewer full directory inspectio
 Each inspection now records its entry count and elapsed time so large replay
 libraries can be measured before any more aggressive optimization is attempted.
 
+Runtime-event diagnostics no longer synchronously append to disk for every event.
+They batch in memory and flush asynchronously after up to two seconds or 64 KiB,
+with one bounded synchronous final flush only when the app quits. The journal
+retains its existing size/rotation boundary while reducing steady-state disk churn.
+
 The working engineering audit and release boundary live in
 [Watcher 1.6.2 Engineering Audit](docs/WATCHER_1_6_2_AUDIT.md).
 

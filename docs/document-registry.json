@@ -5,7 +5,7 @@
   "owner": "aoe2war-watcher",
   "implementation_baseline": {
     "branch": "feature/watcher-1.6.2-tiny-powerful-20260922",
-    "commit": "104da499cee92c772535095e441eda6ad6582035"
+    "commit": "3baf14ca3ca6feea58e408d8ed55816d6cf86833"
   },
   "documents": [
     {
@@ -21,7 +21,7 @@
       "review_interval_days": 0,
       "reviewed_at": "2026-07-26",
       "sensitivity": "internal",
-      "sha256": "7fb9ab5f2856cfe3700679009f3bbdd5e8c3bf845ecda65ebda53fc72ef8dfa7",
+      "sha256": "8d557e3f69407c032c17c26bcc4953254563cb4bb6aff7935c9b3a57193868f5",
       "source_of_truth": "generated",
       "status": "generated",
       "systems": [
@@ -43,7 +43,7 @@
       "review_interval_days": 14,
       "reviewed_at": "2026-09-22",
       "sensitivity": "internal",
-      "sha256": "0ed01c2c05ef547d67e1e870a2a19218419f182194457d38b62a4a3251219a17",
+      "sha256": "d1af4ff2ac36fd4e5f9e9b634e656b4958519fa1d0a10f3ff8848a7874c70f98",
       "source_of_truth": "git",
       "status": "draft",
       "systems": [
@@ -66,7 +66,7 @@
       "review_interval_days": 60,
       "reviewed_at": "2026-09-22",
       "sensitivity": "internal",
-      "sha256": "d311e2b70556d6a3c4f4b185059c78a111ef8e50340c22ba68642da25a9a5ac0",
+      "sha256": "4e93d61185aec7a07f6a9e155b81cca68a577337d75ff5a552327d8797139107",
       "source_of_truth": "git",
       "status": "active",
       "systems": [

@@ -104,6 +104,17 @@ without browser/Finder choreography. Apple signing/notarization and Gatekeeper
 behavior are part of the design constraint; convenience must not weaken release
 provenance.
 
+### P1 — runtime diagnostics should not create avoidable disk churn
+
+The runtime event journal previously performed a synchronous append for every local
+runtime event. That preserved diagnostics, but busy replay activity could turn the
+journal itself into needless filesystem churn.
+
+**1.6.2 status:** runtime events now buffer in memory and flush asynchronously after
+up to two seconds or 64 KiB. The existing bounded journal rotation remains in
+place. A synchronous write is reserved for the final bounded quit flush so useful
+last-event evidence is not casually lost.
+
 ### P2 — repeated whole-replay live uploads are a measurable cost center
 
 Live parsing currently needs complete immutable replay snapshots, so a growing match
