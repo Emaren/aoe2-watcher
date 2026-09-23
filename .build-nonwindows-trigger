@@ -1,4 +1,4 @@
 AoE2HDBets Watcher non-Windows release build
 version=1.6.1
-runtime_source=1a5beb786e57b916a935d7cbfcac891160ac619b
-reason=release_1.6.1_historical_import_memory_and_retry_hotfix
+runtime_source=3f8982d0f9c3f28540ec49adacad5418de065adc
+reason=release_1.6.1_historical_import_memory_windows_cleanup
