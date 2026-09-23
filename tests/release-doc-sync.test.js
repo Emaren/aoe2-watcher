@@ -48,11 +48,22 @@ test("requires the complete five-artifact public inventory", async () => {
 
 test("public release rewrite is idempotent", async () => {
   const { rewriteReadme } = await moduleUnderTest();
-  const actual = require("node:fs").readFileSync(
-    require("node:path").join(__dirname, "..", "README.md"),
-    "utf8",
-  );
-  const once = rewriteReadme(actual, "1.5.12");
-  const twice = rewriteReadme(once, "1.5.12");
+  const source = [
+    "# aoe2-watcher",
+    "",
+    "## v9.9.9 release candidate",
+    "",
+    "Watcher 9.9.9 adds a bounded release behavior.",
+    "",
+    "The source version is `9.9.9`, but public artifacts remain `9.9.8`.",
+    "",
+    "## v9.9.8 public release",
+    "",
+    "Older release.",
+    "",
+  ].join("\n");
+
+  const once = rewriteReadme(source, "9.9.9");
+  const twice = rewriteReadme(once, "9.9.9");
   assert.equal(twice, once);
 });

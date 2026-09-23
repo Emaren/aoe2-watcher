@@ -8,14 +8,14 @@ systems: ["aoe2-watcher","api-prodn"]
 audience: ["developers","operators","ai-agents"]
 source_of_truth: "git"
 authority: "repository-entrypoint"
-reviewed_at: "2026-08-08"
+reviewed_at: "2026-09-22"
 review_interval_days: 60
 sensitivity: "internal"
 ---
 
 # aoe2-watcher
 
-## v1.6.1 hotfix candidate
+## v1.6.1 public release
 
 v1.6.1 bounds historical batch-import memory and retry behavior after a Windows
 1.6.0 field report showed the Watcher reaching roughly 17 GB of memory while
@@ -32,6 +32,14 @@ snapshot and progress-retry contract.
 The historical queue remains serial and oldest-first. No replay is deleted, and
 the hotfix does not change result, betting, settlement, or Wolo authority.
 
+Watcher 1.6.1 is the current public release. The certified release binds runtime
+source `3f8982d0f9c3f28540ec49adacad5418de065adc` to build source
+`eb8c7478575b472273b4400f01c4d401df03e2c5`, Windows signing run
+`35808959038`, macOS/Linux build run `35808958815`, and certified bundle run
+`35809312675`. The public inventory contains the five user-facing platform
+artifacts plus updater/support metadata, `SHA256SUMS-1.6.1.txt`, and
+`watcher-release-manifest-1.6.1.json`.
+
 ## v1.6.0 public release
 
 v1.6.0 is the low-footprint lifecycle release. Native `fs.watch` remains the
@@ -39,7 +47,7 @@ primary replay detector; recovery scans and folder-health checks are slower
 failsafes rather than polling engines. Config and replay-folder metadata are
 cached so telemetry does not repeatedly rescan disk state.
 
-Watcher 1.6.0 is the current public release. The five-artifact publication gate completed for Windows Installer, Windows Portable, macOS DMG, macOS Direct ZIP, and Linux AppImage. The immutable `v1.6.0` release and its updater metadata were verified before publication.
+Watcher 1.6.0 is the previous public release. The five-artifact publication gate completed for Windows Installer, Windows Portable, macOS DMG, macOS Direct ZIP, and Linux AppImage. The immutable `v1.6.0` release and its updater metadata were verified before publication.
 
 The release also bounds dashboard logs, coalesces bursty runtime-event paints,
 uses a sandboxed renderer, removes the unused chokidar dependency, upgrades the
@@ -52,7 +60,7 @@ replay durability and fresh-replay recovery rules intact.
 
 Watcher 1.5.13 fixes a live-replay admission failure observed simultaneously on Scavanger_Ab and Tekki. A supported HD `.aoe2mpgame` could be present and freshly modified while the Watcher remained connected and attached yet reported no active replay. Two causes were proven: English `Out of Sync` filenames were explicitly rejected, and restart/resume recovery required an unknown replay to grow during one 1.5-second sample before monitoring it.
 
-Watcher 1.5.13 is the current public release. The five-artifact publication gate completed for Windows Installer, Windows Portable, macOS DMG, macOS Direct ZIP, and Linux AppImage. The immutable `v1.5.13` release and its updater metadata were verified before publication.
+Watcher 1.5.13 was a prior public release. The five-artifact publication gate completed for Windows Installer, Windows Portable, macOS DMG, macOS Direct ZIP, and Linux AppImage. The immutable `v1.5.13` release and its updater metadata were verified before publication.
 
 The source version is `1.5.13`, but public Windows, macOS, and Linux metadata must remain on `1.5.12` until fresh platform builds, Azure Windows signing, artifact hashing, updater-manifest verification, and the five-artifact publication gate all complete.
 
@@ -61,7 +69,7 @@ The source version is `1.5.13`, but public Windows, macOS, and Linux metadata mu
 
 Watcher 1.5.12 hardens Windows HD replay-folder discovery and diagnostics. Windows now consults Steam registry install roots before reading `libraryfolders.vdf`, so a custom Steam install can still lead the Watcher to the active `Age2HD\SaveGame` / `multi` directory. Heartbeat and ready telemetry also separate structural HD-folder validity from proven replay activity by reporting supported replay count, newest replay metadata, and an activity-proof flag without transmitting the full local path.
 
-Watcher 1.5.12 is the current public release. The five-artifact publication gate completed for Windows Installer, Windows Portable, macOS DMG, macOS Direct ZIP, and Linux AppImage. The immutable `v1.5.12` release and its updater metadata were verified before publication.
+Watcher 1.5.12 was a prior public release. The five-artifact publication gate completed for Windows Installer, Windows Portable, macOS DMG, macOS Direct ZIP, and Linux AppImage. The immutable `v1.5.12` release and its updater metadata were verified before publication.
 
 ## v1.5.11 historical release candidate
 
