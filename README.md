@@ -41,6 +41,12 @@ They batch in memory and flush asynchronously after up to two seconds or 64 KiB,
 with one bounded synchronous final flush only when the app quits. The journal
 retains its existing size/rotation boundary while reducing steady-state disk churn.
 
+Historical scans also stop allocating an in-memory replay-state object merely to
+look at every archived file. Transient failed import state is released after each
+item, settled state is capped to the existing 5,000-entry durability contract, and
+the historical batch writes settlement state once at completion instead of
+rewriting the full state file after every successful replay.
+
 The working engineering audit and release boundary live in
 [Watcher 1.6.2 Engineering Audit](docs/WATCHER_1_6_2_AUDIT.md).
 

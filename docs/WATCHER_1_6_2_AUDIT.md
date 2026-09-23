@@ -115,6 +115,21 @@ up to two seconds or 64 KiB. The existing bounded journal rotation remains in
 place. A synchronous write is reserved for the final bounded quit flush so useful
 last-event evidence is not casually lost.
 
+### P1 — historical state must stay bounded as archives grow
+
+The historical scanner previously called the state-creation helper for every
+supported replay before deciding whether the replay needed work. A large archive
+could therefore grow the in-memory replay-state map simply by being scanned. Each
+successful historical final also rewrote the complete persisted settlement-state
+file immediately.
+
+**1.6.2 status:** scan-only candidates now use lookup without allocation. A state
+entry is created only after a replay is stable and actually needs work; transient
+failed import state is released after the item; settled entries are pruned to the
+existing 5,000-entry durability limit; and historical imports persist the bounded
+settlement snapshot once after the batch rather than once per successful replay.
+Server-side duplicate handling remains the safety net if the app exits mid-import.
+
 ### P2 — repeated whole-replay live uploads are a measurable cost center
 
 Live parsing currently needs complete immutable replay snapshots, so a growing match
