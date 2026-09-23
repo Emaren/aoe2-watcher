@@ -15,6 +15,23 @@ sensitivity: "internal"
 
 # aoe2-watcher
 
+## v1.6.1 hotfix candidate
+
+v1.6.1 bounds historical batch-import memory and retry behavior after a Windows
+1.6.0 field report showed the Watcher reaching roughly 17 GB of memory while
+continuously importing old replays.
+
+Historical imports now use one disk-backed immutable upload snapshot at a time
+instead of retaining each replay body in a Node Buffer. Network/fallback retries
+reuse that disk snapshot and it is removed when the file finishes. Deterministic
+HTTP 422 parser/validation failures from a stable historical replay do not enter
+the live-replay growth retry loop; the importer records the failure and advances
+to the next replay. Live growing-replay uploads keep the existing in-memory
+snapshot and progress-retry contract.
+
+The historical queue remains serial and oldest-first. No replay is deleted, and
+the hotfix does not change result, betting, settlement, or Wolo authority.
+
 ## v1.6.0 public release
 
 v1.6.0 is the low-footprint lifecycle release. Native `fs.watch` remains the
