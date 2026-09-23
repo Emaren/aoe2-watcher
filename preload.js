@@ -42,6 +42,9 @@ contextBridge.exposeInMainWorld("watcherApi", {
   onUpdateState: (callback) => {
     ipcRenderer.on("watcher:update-state", (_event, payload) => callback(payload));
   },
+  onResourceProfile: (callback) => {
+    ipcRenderer.on("watcher:resource-profile", (_event, payload) => callback(payload));
+  },
   onLog: (callback) => {
     ipcRenderer.on("watcher:log", (_event, payload) => callback(payload));
   },

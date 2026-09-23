@@ -9,7 +9,7 @@
   "desktopName": "com.aoe2hdbets.watcher.desktop",
   "scripts": {
     "start": "electron main.js",
-    "lint": "node --check main.js && node --check watcher.js && node --check telemetryQueue.js && node --check networkPriority.js && node --check runtimePolicy.js && node --check runTests.js && node --check renderer.js && node --check preload.js && node --check scripts/sync-release-docs.mjs",
+    "lint": "node --check main.js && node --check watcher.js && node --check telemetryQueue.js && node --check networkPriority.js && node --check runtimePolicy.js && node --check resourceProfile.js && node --check runTests.js && node --check renderer.js && node --check preload.js && node --check scripts/sync-release-docs.mjs",
     "test": "node runTests.js",
     "build": "electron-builder",
     "pack": "electron-builder --dir",
@@ -41,6 +41,7 @@
       "watcher.js",
       "streamHandoff.js",
       "runtimePolicy.js",
+      "resourceProfile.js",
       "preload.js",
       "index.html",
       "renderer.js",

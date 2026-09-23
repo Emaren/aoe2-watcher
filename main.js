@@ -46,6 +46,10 @@ const { buildStreamHandoff } = require("./streamHandoff");
 const {
   createNetworkPriorityArbiter,
 } = require("./networkPriority");
+const {
+  DEFAULT_RESOURCE_SAMPLE_MS,
+  createResourceProfiler,
+} = require("./resourceProfile");
 
 const WATCHER_PAIR_PROTOCOL = "aoe2hd-watcher";
 const APP_NAME = "AoE2HDBets Watcher";
@@ -137,8 +141,88 @@ const MONITOR_REATTACH_COOLDOWN_MS = Number(
   process.env.AOE2_MONITOR_REATTACH_COOLDOWN_MS || 60 * 1000
 );
 const UI_LOG_BUFFER_MAX_ENTRIES = 250;
+const RESOURCE_SAMPLE_MS = Math.max(
+  5000,
+  Number(
+    process.env.AOE2_RESOURCE_SAMPLE_MS ||
+      DEFAULT_RESOURCE_SAMPLE_MS
+  )
+);
 const recentUiLogs = [];
+let resourceProfileTimer = null;
 
+const resourceProfiler =
+  createResourceProfiler({
+    getMetrics: () =>
+      app.isReady()
+        ? app.getAppMetrics()
+        : [],
+    getWorkload: () => {
+      const runtime =
+        getRuntimeStatus();
+
+      return {
+        streamActive:
+          nativeStreamActive ||
+          Boolean(
+            lastStreamHandoff?.streamId &&
+              !lastStreamHandoff?.endedAt
+          ),
+        importRunning:
+          Boolean(
+            currentImportState?.isRunning
+          ),
+        uploadActive:
+          Number(
+            runtime.uploadQueueLength || 0
+          ) > 0,
+        activeReplay:
+          Boolean(runtime.activeReplay),
+      };
+    },
+  });
+
+
+function sampleResourceProfile({
+  publish = true,
+} = {}) {
+  const profile =
+    resourceProfiler.sample();
+
+  if (publish) {
+    sendToRenderer(
+      "watcher:resource-profile",
+      profile
+    );
+  }
+
+  return profile;
+}
+
+function startResourceProfiling() {
+  if (resourceProfileTimer) {
+    clearInterval(
+      resourceProfileTimer
+    );
+    resourceProfileTimer = null;
+  }
+
+  sampleResourceProfile();
+
+  resourceProfileTimer =
+    setInterval(() => {
+      sampleResourceProfile();
+    }, RESOURCE_SAMPLE_MS);
+}
+
+function stopResourceProfiling() {
+  if (resourceProfileTimer) {
+    clearInterval(
+      resourceProfileTimer
+    );
+    resourceProfileTimer = null;
+  }
+}
 
 function createUpdateState(patch = {}) {
   return {
@@ -298,6 +382,8 @@ function buildRuntimeMetadata(config = loadConfig()) {
     appPackaged: Boolean(app.isPackaged),
     updateFeedUrl: AUTO_UPDATE_FEED_URL,
     finalityContractVersion: 2,
+    resourceProfile:
+      resourceProfiler.getSnapshot(),
   };
 }
 
@@ -1947,6 +2033,8 @@ function getAppInfo(config = loadConfig()) {
     release: releaseState,
     update: updateState,
     autoUpdate: updateState,
+    resourceProfile:
+      resourceProfiler.getSnapshot(),
   };
 }
 
@@ -2098,6 +2186,11 @@ async function postStreamChunk(payload = {}) {
   const baseUrl = normalizeBaseUrl(payload.baseUrl || getStreamWebBaseUrl(config));
 
   try {
+    resourceProfiler.recordNetworkBytes(
+      buffer.length,
+      "stream"
+    );
+
     const response = await axios.post(
       `${baseUrl}/api/streams/${streamId}/chunks?sequence=${sequence}`,
       buffer,
@@ -2451,6 +2544,19 @@ function appendRuntimeEventJournal(
 }
 
 function handleWatcherRuntimeEvent(event) {
+  if (
+    event?.type === "upload-start" &&
+    Number.isFinite(
+      Number(event.fileSizeBytes)
+    ) &&
+    Number(event.fileSizeBytes) > 0
+  ) {
+    resourceProfiler.recordNetworkBytes(
+      Number(event.fileSizeBytes),
+      "replay"
+    );
+  }
+
   const priority =
     networkPriorityArbiter
       .handleReplayEvent(event);
@@ -3001,6 +3107,8 @@ function initializeWatcherRuntime() {
     }`
   );
 
+  startResourceProfiling();
+
   emitWatcherTelemetry(
     "app_open",
     {
@@ -3367,6 +3475,7 @@ app.on("before-quit", () => {
   rendererReady = false;
   stopTelemetryHeartbeat();
   stopMonitorWatchdog();
+  stopResourceProfiling();
 
   if (watcherHandle) {
     stopCurrentWatcher({

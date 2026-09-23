@@ -51,6 +51,11 @@ const els = {
   apiHostText: document.getElementById("apiHostText"),
   replayPathDiagText: document.getElementById("replayPathDiagText"),
   supportedExtensionsText: document.getElementById("supportedExtensionsText"),
+  resourceCpuText: document.getElementById("resourceCpuText"),
+  resourceMemoryText: document.getElementById("resourceMemoryText"),
+  resourceWakeupsText: document.getElementById("resourceWakeupsText"),
+  resourceNetworkText: document.getElementById("resourceNetworkText"),
+  resourcePowerText: document.getElementById("resourcePowerText"),
   importPhaseText: document.getElementById("importPhaseText"),
   importDetailText: document.getElementById("importDetailText"),
   importSummaryText: document.getElementById("importSummaryText"),
@@ -165,6 +170,7 @@ const EMPTY_IMPORT_STATE = {
 
 let currentConfig = { ...DEFAULT_CONFIG };
 let appInfo = null;
+let resourceProfile = null;
 let watcherState = { isWatching: false };
 let importState = { ...EMPTY_IMPORT_STATE };
 let updateState = {
@@ -1653,6 +1659,34 @@ function renderStatusBar() {
   }
 }
 
+function formatResourcePercent(value) {
+  const number = Number(value);
+  return Number.isFinite(number)
+    ? `${number.toFixed(1)}%`
+    : "Measuring…";
+}
+
+function formatResourceMb(value) {
+  const number = Number(value);
+  return Number.isFinite(number)
+    ? `${Math.round(number)} MB`
+    : "Measuring…";
+}
+
+function formatResourceWakeups(value) {
+  const number = Number(value);
+  return Number.isFinite(number)
+    ? `${number.toFixed(1)}/s`
+    : "Not reported";
+}
+
+function formatResourceMbps(value) {
+  const number = Number(value);
+  return Number.isFinite(number)
+    ? `${number < 0.01 ? "<0.01" : number.toFixed(2)} Mbps`
+    : "Measuring…";
+}
+
 function renderDiagnostics() {
   const releaseStatus = getReleaseStatus();
 
@@ -1680,6 +1714,53 @@ function renderDiagnostics() {
   els.replayPathDiagText.textContent = shortenPath(readForm().watchDir, "Not chosen yet");
   els.supportedExtensionsText.textContent =
     appInfo?.supportedReplayExtensions?.join(", ") || ".aoe2record, .aoe2mpgame, .mgz, .mgx, .mgl";
+
+  const profile =
+    resourceProfile ||
+    appInfo?.resourceProfile ||
+    null;
+
+  if (els.resourceCpuText) {
+    els.resourceCpuText.textContent =
+      profile
+        ? `${formatResourcePercent(profile.cpuPercent)} · avg ${formatResourcePercent(profile.averageCpuPercent)}`
+        : "Measuring…";
+  }
+
+  if (els.resourceMemoryText) {
+    els.resourceMemoryText.textContent =
+      profile
+        ? `${formatResourceMb(profile.workingSetMb)} · peak ${formatResourceMb(profile.sessionPeakWorkingSetMb)}`
+        : "Measuring…";
+  }
+
+  if (els.resourceWakeupsText) {
+    els.resourceWakeupsText.textContent =
+      profile
+        ? formatResourceWakeups(
+            profile.idleWakeupsPerSecond
+          )
+        : "Measuring…";
+  }
+
+  if (els.resourceNetworkText) {
+    els.resourceNetworkText.textContent =
+      profile
+        ? `${formatResourceMbps(profile.networkMbps)} · avg ${formatResourceMbps(profile.averageNetworkMbps)}`
+        : "Measuring…";
+  }
+
+  if (els.resourcePowerText) {
+    const signal =
+      profile?.powerSignal;
+    els.resourcePowerText.textContent =
+      signal
+        ? `${signal.label} · CPU/wakeup proxy`
+        : "Measuring…";
+    els.resourcePowerText.title =
+      signal?.detail ||
+      "Portable per-process watts are not exposed by Electron; the Watcher reports CPU and processor-wakeup evidence instead.";
+  }
 }
 
 function describeImportPhase() {
@@ -2134,6 +2215,11 @@ function buildSupportSnapshot() {
     `Auto-update status: ${updateState.status || "unknown"}`,
     `Auto-update detail: ${updateState.message || updateState.error || "none"}`,
     `Platform: ${formatPlatform(appInfo?.platform)}`,
+    `CPU: ${resourceProfile ? formatResourcePercent(resourceProfile.cpuPercent) : "measuring"}`,
+    `Memory: ${resourceProfile ? formatResourceMb(resourceProfile.workingSetMb) : "measuring"}`,
+    `Processor wakeups: ${resourceProfile ? formatResourceWakeups(resourceProfile.idleWakeupsPerSecond) : "measuring"}`,
+    `Watcher network: ${resourceProfile ? formatResourceMbps(resourceProfile.networkMbps) : "measuring"}`,
+    `Power signal: ${resourceProfile?.powerSignal?.label || "measuring"} (CPU/wakeup proxy; watts not fabricated)`,
     `Status: ${primaryStatus.label}`,
     `Status detail: ${primaryStatus.detail}`,
     `Watching: ${watcherState.isWatching ? "yes" : "no"}`,
@@ -2301,6 +2387,9 @@ async function loadInitialData() {
     ...config,
   };
   appInfo = info;
+  resourceProfile =
+    info?.resourceProfile ||
+    resourceProfile;
   updateState = info?.autoUpdate || info?.update || updateState;
   writeForm(currentConfig);
   watchDirStatus = info?.watchDirStatus || watchDirStatus;
@@ -2619,6 +2708,9 @@ window.watcherApi.onConfig((config) => {
 
 window.watcherApi.onAppInfo((info) => {
   appInfo = info;
+  resourceProfile =
+    info?.resourceProfile ||
+    resourceProfile;
   if (info?.watchDirStatus) {
     watchDirStatus = info.watchDirStatus;
   }
@@ -2635,6 +2727,15 @@ window.watcherApi.onAppInfo((info) => {
   }
   renderAll();
 });
+
+if (window.watcherApi.onResourceProfile) {
+  window.watcherApi.onResourceProfile((profile) => {
+    resourceProfile =
+      profile ||
+      resourceProfile;
+    renderDiagnostics();
+  });
+}
 
 window.watcherApi.onState(({ isWatching }) => {
   watcherState.isWatching = isWatching;
