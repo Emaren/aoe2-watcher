@@ -24,7 +24,7 @@ export function publicReleaseParagraph(version) {
 export function rewriteReadme(text, version) {
   const heading = `## v${version} release candidate`;
   const publicHeading = `## v${version} public release`;
-  if (text.includes(publicHeading) && text.includes(publicReleaseParagraph(version))) {
+  if (text.includes(publicHeading)) {
     return text;
   }
   const start = text.indexOf(`${heading}\n`);

@@ -36,7 +36,7 @@
       "review_interval_days": 0,
       "reviewed_at": "2026-07-26",
       "sensitivity": "internal",
-      "sha256": "3d4c4aa58aece35fb006358d14c7e6ef4e0311752604117500d79b18ecfd8b76",
+      "sha256": "1b44f9645101f4ea06999d7af1342318e539626d406a2c08736ef147fe7f0b96",
       "source_of_truth": "generated",
       "status": "generated",
       "systems": [
@@ -48,8 +48,8 @@
   ],
   "generated_at": "2026-08-04T02:09:37Z",
   "implementation_baseline": {
-    "branch": "main",
-    "commit": "3f8982d0f9c3f28540ec49adacad5418de065adc"
+    "branch": "fix/release-doc-sync-public-heading-20260922",
+    "commit": "051c1c163d3e1b365539be15499530288dd6da75"
   },
   "owner": "aoe2war-watcher",
   "repo": "aoe2-watcher",
