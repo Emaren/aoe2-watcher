@@ -15,6 +15,29 @@ sensitivity: "internal"
 
 # aoe2-watcher
 
+## v1.6.2 development branch — tiny, powerful, measurable
+
+Watcher 1.6.1 remains the current public release. The 1.6.2 branch is deliberately
+not published yet; it is the accumulation lane for measured resource efficiency,
+cross-machine resilience, telemetry, and update ergonomics before the next
+five-artifact release gate.
+
+The first 1.6.2 tranche adds a low-frequency resource profile built from Electron's
+own process-tree metrics: current/rolling CPU, working-set memory, session peaks,
+processor wakeups, and Watcher-attributable replay/stream network rate. Those
+figures appear in Diagnostics, support snapshots, and heartbeat metadata. The
+power readout is intentionally a CPU/wakeup **signal**, not invented watts:
+portable per-process watt measurement is not exposed by Electron.
+
+Passive replay-folder status caching is also extended to five minutes, matching the
+existing freshness probe, so an idle Watcher does fewer full directory inspections.
+Each inspection now records its entry count and elapsed time so large replay
+libraries can be measured before any more aggressive optimization is attempted.
+
+The working engineering audit and release boundary live in
+[Watcher 1.6.2 Engineering Audit](docs/WATCHER_1_6_2_AUDIT.md).
+
+
 ## v1.6.1 public release
 
 v1.6.1 bounds historical batch-import memory and retry behavior after a Windows
