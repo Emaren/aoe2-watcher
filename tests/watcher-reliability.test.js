@@ -6,9 +6,11 @@ const path = require("node:path");
 
 const {
   createReplayUploadSnapshot,
+  disposeReplayUploadSnapshot,
   detectReplayFolder,
   getWindowsSteamRoots,
   inspectReplayFolder,
+  isRetryableUploadError,
   parseWindowsRegistryStringValue,
   selectPreferredReplayFolder,
   shouldSwitchReplayFolder,
@@ -627,4 +629,157 @@ test("captures immutable replay bytes and matching transport metadata", async ()
       }
     );
   }
+});
+
+
+test("historical upload snapshots are disk-backed and disposable", async () => {
+  const { root, folder } =
+    temporaryFolder([
+      "Documents",
+      "My Games",
+      "Age of Empires 2 HD",
+      "SaveGame",
+    ]);
+
+  const sourcePath =
+    path.join(
+      folder,
+      "historical.aoe2record"
+    );
+
+  let snapshot = null;
+
+  try {
+    fs.writeFileSync(
+      sourcePath,
+      "historical-replay-bytes"
+    );
+
+    snapshot =
+      await createReplayUploadSnapshot(
+        sourcePath,
+        {
+          storage: "disk",
+        }
+      );
+
+    assert.equal(
+      snapshot.storage,
+      "disk"
+    );
+    assert.equal(
+      snapshot.replayBuffer,
+      null
+    );
+    assert.ok(
+      snapshot.snapshotPath
+    );
+    assert.equal(
+      fs.readFileSync(
+        snapshot.snapshotPath,
+        "utf8"
+      ),
+      "historical-replay-bytes"
+    );
+
+    fs.appendFileSync(
+      sourcePath,
+      "-source-can-change-after-snapshot"
+    );
+
+    assert.equal(
+      fs.readFileSync(
+        snapshot.snapshotPath,
+        "utf8"
+      ),
+      "historical-replay-bytes"
+    );
+
+    const snapshotDirectory =
+      snapshot.snapshotDirectory;
+
+    await disposeReplayUploadSnapshot(
+      snapshot
+    );
+    snapshot = null;
+
+    assert.equal(
+      fs.existsSync(
+        snapshotDirectory
+      ),
+      false
+    );
+  } finally {
+    if (snapshot) {
+      await disposeReplayUploadSnapshot(
+        snapshot
+      );
+    }
+    fs.rmSync(
+      root,
+      {
+        recursive: true,
+        force: true,
+      }
+    );
+  }
+});
+
+test("historical parser failures do not enter live replay growth retry loops", () => {
+  const error = {
+    response: {
+      status: 422,
+      data: {
+        detail:
+          "Failed to parse replay file",
+      },
+    },
+  };
+
+  assert.equal(
+    isRetryableUploadError(
+      error
+    ),
+    true
+  );
+
+  assert.equal(
+    isRetryableUploadError(
+      error,
+      {
+        allowReplayProgressRetry:
+          false,
+      }
+    ),
+    false
+  );
+});
+
+test("historical import selects disk snapshots and disables replay-progress retry semantics", () => {
+  const source =
+    fs.readFileSync(
+      path.join(
+        __dirname,
+        "..",
+        "watcher.js"
+      ),
+      "utf8"
+    );
+
+  assert.match(
+    source,
+    /historicalImport\s*=\s*[\s\S]*WATCHER_PROVENANCE_HISTORICAL_IMPORT/
+  );
+  assert.match(
+    source,
+    /storage:\s*historicalImport[\s\S]*\? "disk"[\s\S]*: "memory"/
+  );
+  assert.match(
+    source,
+    /allowReplayProgressRetry:\s*!historicalImport/
+  );
+  assert.match(
+    source,
+    /!historicalImport\s*&&\s*isReplayFinalizingError\(err\)/
+  );
 });
