@@ -1205,6 +1205,77 @@ function shouldPersistSettlementEntry(
   );
 }
 
+function pruneSettledUploadState(
+  stateMap = activeUploadState,
+  maxEntries =
+    SETTLEMENT_STATE_MAX_ENTRIES
+) {
+  const limit =
+    Math.max(
+      0,
+      Math.floor(
+        Number(maxEntries) || 0
+      )
+    );
+
+  const settled = [];
+
+  for (
+    const [filePath, entry] of stateMap
+  ) {
+    if (
+      shouldPersistSettlementEntry(
+        entry
+      )
+    ) {
+      settled.push({
+        filePath,
+        entry,
+      });
+    }
+  }
+
+  settled.sort(
+    (left, right) =>
+      Number(
+        right.entry.lastFinalUploadAt ||
+          0
+      ) -
+      Number(
+        left.entry.lastFinalUploadAt ||
+          0
+      )
+  );
+
+  let removed = 0;
+
+  for (
+    const candidate of
+      settled.slice(limit)
+  ) {
+    if (
+      candidate.entry.monitoring ||
+      candidate.entry.importing
+    ) {
+      continue;
+    }
+
+    if (
+      stateMap.delete(
+        candidate.filePath
+      )
+    ) {
+      removed += 1;
+    }
+  }
+
+  return {
+    removed,
+    retained:
+      stateMap.size,
+  };
+}
+
 function buildPersistedSettlementState(
   stateMap = activeUploadState,
   now = Date.now()
@@ -2394,7 +2465,10 @@ async function uploadReplayWithRetry(
           attemptFingerprint
         );
 
-        if (finalStored) {
+        if (
+          finalStored &&
+          !historicalImport
+        ) {
           persistSettlementState();
         }
 
@@ -3601,9 +3675,12 @@ async function importHistoricalReplays(config = {}, options = {}, hooks = {}) {
 
   const queue = [];
   for (const candidate of supportedFiles) {
-    const entry = getStateEntry(candidate.filePath);
+    const entry =
+      activeUploadState.get(
+        candidate.filePath
+      );
 
-    if (entry.monitoring) {
+    if (entry?.monitoring) {
       state.skipped += 1;
       const detail = "Already being watched live. Let the watcher finish the current replay.";
       pushImportItem(state.skippedItems, createImportItem(candidate.filePath, "skipped", detail));
@@ -3614,7 +3691,7 @@ async function importHistoricalReplays(config = {}, options = {}, hooks = {}) {
       continue;
     }
 
-    if (entry.importing) {
+    if (entry?.importing) {
       state.skipped += 1;
       const detail = "Already queued for import in this session.";
       pushImportItem(state.skippedItems, createImportItem(candidate.filePath, "skipped", detail));
@@ -3662,7 +3739,10 @@ async function importHistoricalReplays(config = {}, options = {}, hooks = {}) {
 
   for (let index = 0; index < queue.length; index += 1) {
     const candidate = queue[index];
-    const entry = getStateEntry(candidate.filePath);
+    const existingEntry =
+      activeUploadState.get(
+        candidate.filePath
+      );
 
     state.currentIndex = index + 1;
     state.currentFile = candidate.fileName;
@@ -3704,8 +3784,13 @@ async function importHistoricalReplays(config = {}, options = {}, hooks = {}) {
     });
 
     if (
-      (entry.finalAccepted || entry.finalStored) &&
-      entry.lastFinalUploadedFingerprint === stability.fingerprint
+      (
+        existingEntry?.finalAccepted ||
+        existingEntry?.finalStored
+      ) &&
+      existingEntry
+        .lastFinalUploadedFingerprint ===
+        stability.fingerprint
     ) {
       state.skipped += 1;
       const detail = "Already imported in this app session.";
@@ -3722,6 +3807,14 @@ async function importHistoricalReplays(config = {}, options = {}, hooks = {}) {
       emitImportProgress(state, hooks);
       continue;
     }
+
+    const entry =
+      existingEntry ||
+      getStateEntry(
+        candidate.filePath
+      );
+    const transientImportEntry =
+      !existingEntry;
 
     entry.importing = true;
 
@@ -3811,10 +3904,38 @@ async function importHistoricalReplays(config = {}, options = {}, hooks = {}) {
       });
     } finally {
       entry.importing = false;
+
+      if (
+        transientImportEntry &&
+        !entry.monitoring &&
+        !shouldPersistSettlementEntry(
+          entry
+        )
+      ) {
+        activeUploadState.delete(
+          candidate.filePath
+        );
+      }
+
       state.currentFile = "";
       updateImportPercent(state);
       emitImportProgress(state, hooks);
     }
+  }
+
+  const statePrune =
+    pruneSettledUploadState();
+
+  persistSettlementState();
+
+  if (statePrune.removed > 0) {
+    log(
+      `Pruned ${statePrune.removed} older settled replay state entr${
+        statePrune.removed === 1
+          ? "y"
+          : "ies"
+      } after historical import.`
+    );
   }
 
   state.isRunning = false;
@@ -4045,6 +4166,7 @@ module.exports = {
   getDefaultReplayDir,
   getWindowsSteamRoots,
   parseWindowsRegistryStringValue,
+  pruneSettledUploadState,
   readWindowsSteamRegistryRoots,
   detectReplayFolder,
   detectUnknownParseFields,

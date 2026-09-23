@@ -13,6 +13,7 @@ const {
   inspectReplayFolder,
   isRetryableUploadError,
   parseWindowsRegistryStringValue,
+  pruneSettledUploadState,
   selectPreferredReplayFolder,
   shouldSwitchReplayFolder,
 } = require("../watcher");
@@ -862,4 +863,118 @@ test("disk-backed upload streams close before snapshot cleanup", async () => {
       }
     );
   }
+});
+
+
+test("settled replay runtime state is bounded to the newest entries", () => {
+  const state = new Map([
+    [
+      "old.aoe2record",
+      {
+        finalStored: true,
+        finalAccepted: false,
+        lastFinalUploadedFingerprint: "10:1",
+        lastFinalReplayHash: "old",
+        lastFinalUploadAt: 100,
+        monitoring: false,
+        importing: false,
+      },
+    ],
+    [
+      "new.aoe2record",
+      {
+        finalStored: true,
+        finalAccepted: true,
+        lastFinalUploadedFingerprint: "20:2",
+        lastFinalReplayHash: "new",
+        lastFinalUploadAt: 300,
+        monitoring: false,
+        importing: false,
+      },
+    ],
+    [
+      "middle.aoe2record",
+      {
+        finalStored: true,
+        finalAccepted: false,
+        lastFinalUploadedFingerprint: "15:2",
+        lastFinalReplayHash: "middle",
+        lastFinalUploadAt: 200,
+        monitoring: false,
+        importing: false,
+      },
+    ],
+  ]);
+
+  const result =
+    pruneSettledUploadState(
+      state,
+      2
+    );
+
+  assert.equal(result.removed, 1);
+  assert.equal(state.size, 2);
+  assert.equal(
+    state.has("old.aoe2record"),
+    false
+  );
+  assert.equal(
+    state.has("new.aoe2record"),
+    true
+  );
+  assert.equal(
+    state.has("middle.aoe2record"),
+    true
+  );
+});
+
+test("historical scan does not allocate replay state for every file and persists once after the batch", () => {
+  const source =
+    fs.readFileSync(
+      path.join(
+        __dirname,
+        "..",
+        "watcher.js"
+      ),
+      "utf8"
+    );
+
+  const scanStart =
+    source.indexOf(
+      "const queue = [];"
+    );
+  const processStart =
+    source.indexOf(
+      "for (let index = 0; index < queue.length",
+      scanStart
+    );
+  const scanBlock =
+    source.slice(
+      scanStart,
+      processStart
+    );
+
+  assert.match(
+    scanBlock,
+    /activeUploadState\.get/
+  );
+  assert.doesNotMatch(
+    scanBlock,
+    /getStateEntry/
+  );
+
+  assert.match(
+    source,
+    /finalStored\s*&&\s*!historicalImport[\s\S]*persistSettlementState/
+  );
+
+  assert.match(
+    source,
+    /const statePrune =\s*pruneSettledUploadState\(\);[\s\S]*persistSettlementState\(\);/
+  );
+
+  assert.match(
+    source,
+    /transientImportEntry[\s\S]*activeUploadState\.delete/
+  );
 });
