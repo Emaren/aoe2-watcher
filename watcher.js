@@ -1031,16 +1031,64 @@ async function disposeReplayUploadSnapshot(
   if (
     !snapshot?.snapshotDirectory
   ) {
+    return true;
+  }
+
+  try {
+    await fs.promises.rm(
+      snapshot.snapshotDirectory,
+      {
+        recursive: true,
+        force: true,
+        maxRetries: 4,
+        retryDelay: 50,
+      }
+    );
+    return true;
+  } catch (error) {
+    log(
+      `Unable to remove temporary replay upload snapshot for ${
+        path.basename(
+          snapshot.snapshotPath ||
+            snapshot.snapshotDirectory
+        )
+      }: ${error.message || error}`,
+      "warn"
+    );
+    return false;
+  }
+}
+
+async function closeReplayUploadStream(
+  stream
+) {
+  if (
+    !stream ||
+    typeof stream.destroy !== "function" ||
+    stream.closed
+  ) {
     return;
   }
 
-  await fs.promises.rm(
-    snapshot.snapshotDirectory,
-    {
-      recursive: true,
-      force: true,
+  await new Promise((resolve) => {
+    let settled = false;
+
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      stream.off("close", finish);
+      stream.off("error", finish);
+      resolve();
+    };
+
+    stream.once("close", finish);
+    stream.once("error", finish);
+    stream.destroy();
+
+    if (stream.closed) {
+      finish();
     }
-  );
+  });
 }
 
 function signWatcherProvenance({
@@ -1966,12 +2014,16 @@ async function uploadReplay(
 
   const form = new FormData();
 
-  const replayBody =
+  const replayStream =
     snapshot.snapshotPath
       ? fs.createReadStream(
           snapshot.snapshotPath
         )
-      : snapshot.replayBuffer;
+      : null;
+
+  const replayBody =
+    replayStream ||
+    snapshot.replayBuffer;
 
   if (!replayBody) {
     throw new Error(
@@ -2120,6 +2172,10 @@ async function uploadReplay(
     }
 
     throw error;
+  } finally {
+    await closeReplayUploadStream(
+      replayStream
+    );
   }
 }
 
@@ -3963,6 +4019,7 @@ module.exports = {
   buildReplayReceiptDetail,
   classifyUploadResult,
   classifyReplayAcceptance,
+  closeReplayUploadStream,
   createReplayUploadSnapshot,
   disposeReplayUploadSnapshot,
   getDefaultReplayDir,
