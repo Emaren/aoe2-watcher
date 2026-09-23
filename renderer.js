@@ -1673,7 +1673,11 @@ function formatResourceMb(value) {
     : "Measuring…";
 }
 
-function formatResourceWakeups(value) {
+function formatResourceWakeups(value, available = true) {
+  if (!available) {
+    return "Not reported";
+  }
+
   const number = Number(value);
   return Number.isFinite(number)
     ? `${number.toFixed(1)}/s`
@@ -1738,7 +1742,8 @@ function renderDiagnostics() {
     els.resourceWakeupsText.textContent =
       profile
         ? formatResourceWakeups(
-            profile.idleWakeupsPerSecond
+            profile.idleWakeupsPerSecond,
+            profile.idleWakeupsAvailable
           )
         : "Measuring…";
   }
@@ -2217,7 +2222,7 @@ function buildSupportSnapshot() {
     `Platform: ${formatPlatform(appInfo?.platform)}`,
     `CPU: ${resourceProfile ? formatResourcePercent(resourceProfile.cpuPercent) : "measuring"}`,
     `Memory: ${resourceProfile ? formatResourceMb(resourceProfile.workingSetMb) : "measuring"}`,
-    `Processor wakeups: ${resourceProfile ? formatResourceWakeups(resourceProfile.idleWakeupsPerSecond) : "measuring"}`,
+    `Processor wakeups: ${resourceProfile ? formatResourceWakeups(resourceProfile.idleWakeupsPerSecond, resourceProfile.idleWakeupsAvailable) : "measuring"}`,
     `Watcher network: ${resourceProfile ? formatResourceMbps(resourceProfile.networkMbps) : "measuring"}`,
     `Power signal: ${resourceProfile?.powerSignal?.label || "measuring"} (CPU/wakeup proxy; watts not fabricated)`,
     `Status: ${primaryStatus.label}`,

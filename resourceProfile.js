@@ -1,6 +1,7 @@
 "use strict";
 
 const DEFAULT_RESOURCE_SAMPLE_MS = 15 * 1000;
+const DEFAULT_RESOURCE_IDLE_SAMPLE_MS = 60 * 1000;
 const DEFAULT_RESOURCE_WINDOW_SAMPLES = 8;
 
 function finiteNumber(value, fallback = 0) {
@@ -21,6 +22,7 @@ function summarizeAppMetrics(metrics = []) {
     privateMemoryMb: 0,
     peakWorkingSetMb: 0,
     idleWakeupsPerSecond: 0,
+    idleWakeupsAvailable: false,
     processTypes: {},
   };
 
@@ -34,8 +36,26 @@ function summarizeAppMetrics(metrics = []) {
 
     summary.cpuPercent +=
       finiteNumber(metric.cpu?.percentCPUUsage);
-    summary.idleWakeupsPerSecond +=
-      finiteNumber(metric.cpu?.idleWakeupsPerSecond);
+    if (
+      metric.cpu?.idleWakeupsPerSecond !==
+        null &&
+      metric.cpu?.idleWakeupsPerSecond !==
+        undefined &&
+      Number.isFinite(
+        Number(
+          metric.cpu
+            .idleWakeupsPerSecond
+        )
+      )
+    ) {
+      summary.idleWakeupsAvailable =
+        true;
+      summary.idleWakeupsPerSecond +=
+        Number(
+          metric.cpu
+            .idleWakeupsPerSecond
+        );
+    }
 
     // Electron reports these memory values in KiB.
     summary.workingSetMb +=
@@ -343,6 +363,7 @@ function createResourceProfiler({
 }
 
 module.exports = {
+  DEFAULT_RESOURCE_IDLE_SAMPLE_MS,
   DEFAULT_RESOURCE_SAMPLE_MS,
   DEFAULT_RESOURCE_WINDOW_SAMPLES,
   classifyPowerSignal,

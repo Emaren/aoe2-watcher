@@ -47,6 +47,7 @@ const {
   createNetworkPriorityArbiter,
 } = require("./networkPriority");
 const {
+  DEFAULT_RESOURCE_IDLE_SAMPLE_MS,
   DEFAULT_RESOURCE_SAMPLE_MS,
   createResourceProfiler,
 } = require("./resourceProfile");
@@ -148,6 +149,13 @@ const RESOURCE_SAMPLE_MS = Math.max(
       DEFAULT_RESOURCE_SAMPLE_MS
   )
 );
+const RESOURCE_IDLE_SAMPLE_MS = Math.max(
+  RESOURCE_SAMPLE_MS,
+  Number(
+    process.env.AOE2_RESOURCE_IDLE_SAMPLE_MS ||
+      DEFAULT_RESOURCE_IDLE_SAMPLE_MS
+  )
+);
 const recentUiLogs = [];
 let resourceProfileTimer = null;
 
@@ -199,25 +207,50 @@ function sampleResourceProfile({
   return profile;
 }
 
-function startResourceProfiling() {
+function getResourceSampleIntervalMs() {
+  const runtime =
+    getRuntimeStatus();
+
+  const active =
+    rendererReady ||
+    nativeStreamActive ||
+    Boolean(
+      currentImportState?.isRunning
+    ) ||
+    Boolean(runtime.activeReplay) ||
+    Number(
+      runtime.uploadQueueLength || 0
+    ) > 0;
+
+  return active
+    ? RESOURCE_SAMPLE_MS
+    : RESOURCE_IDLE_SAMPLE_MS;
+}
+
+function scheduleResourceProfileSample() {
   if (resourceProfileTimer) {
-    clearInterval(
+    clearTimeout(
       resourceProfileTimer
     );
-    resourceProfileTimer = null;
   }
 
-  sampleResourceProfile();
-
   resourceProfileTimer =
-    setInterval(() => {
+    setTimeout(() => {
+      resourceProfileTimer = null;
       sampleResourceProfile();
-    }, RESOURCE_SAMPLE_MS);
+      scheduleResourceProfileSample();
+    }, getResourceSampleIntervalMs());
+}
+
+function startResourceProfiling() {
+  stopResourceProfiling();
+  sampleResourceProfile();
+  scheduleResourceProfileSample();
 }
 
 function stopResourceProfiling() {
   if (resourceProfileTimer) {
-    clearInterval(
+    clearTimeout(
       resourceProfileTimer
     );
     resourceProfileTimer = null;
