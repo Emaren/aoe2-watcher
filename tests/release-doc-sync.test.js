@@ -26,6 +26,24 @@ test("promotes the current candidate section to a public release", async () => {
   assert.ok(updated.includes(publicReleaseParagraph("1.5.12")));
   assert.match(updated, /## v1\.5\.11 release candidate/);
 });
+test("an already-public release stays current even with richer release prose", async () => {
+  const { rewriteReadme } = await moduleUnderTest();
+  const source = [
+    "# aoe2-watcher",
+    "",
+    "## v1.6.1 public release",
+    "",
+    "Watcher 1.6.1 is public with richer provenance and hotfix detail.",
+    "",
+    "## v1.6.0 public release",
+    "",
+    "Previous release.",
+    "",
+  ].join("\n");
+
+  assert.equal(rewriteReadme(source, "1.6.1"), source);
+});
+
 test("requires the complete five-artifact public inventory", async () => {
   const { canonicalAssets, releaseInventoryComplete } = await moduleUnderTest();
   const version = "1.5.12";
