@@ -121,6 +121,19 @@ quit drain complete first, so diagnostic durability cannot accidentally intercep
 the installer shutdown sequence. This preserves the IO reduction without making the
 last diagnostic events race application shutdown.
 
+### P1 — durable telemetry retries should be durable, not chatty
+
+The telemetry retry queue is needed when the event endpoint is temporarily
+unavailable, but a healthy empty queue should not create a minute-by-minute disk
+write just because the heartbeat asks whether anything is pending. Likewise, a
+retryable failure that made zero queue progress does not need to atomically rewrite
+the same durable JSON bytes.
+
+**1.6.2 status:** an empty flush leaves no queue file behind; draining the final
+entry removes the file instead of persisting `[]`; and a retryable no-progress
+flush keeps the existing durable file untouched. Enqueue still seals retryable
+telemetry failures immediately, so crash durability is not traded for lower IO.
+
 ### P1 — historical state must stay bounded as archives grow
 
 The historical scanner previously called the state-creation helper for every
