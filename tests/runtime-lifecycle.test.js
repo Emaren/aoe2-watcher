@@ -66,3 +66,20 @@ test("runtime journal batches diagnostic disk writes instead of synchronously ap
     /flushRuntimeEventJournalSync\(\)/
   );
 });
+
+test("graceful quit drains queued journal writes before the final watcher stop flush", () => {
+  const quitStart = source.indexOf('app.on("before-quit"');
+  const quitEnd = source.indexOf("const gotSingleInstanceLock", quitStart);
+  const quitBlock = source.slice(quitStart, quitEnd);
+
+  assert.match(quitBlock, /event\.preventDefault\(\)/);
+  assert.match(quitBlock, /flushRuntimeEventJournal\(\)/);
+  assert.match(quitBlock, /runtimeJournalQuitDrainComplete = true/);
+  assert.match(quitBlock, /app\.quit\(\)/);
+
+  const stop = quitBlock.indexOf("stopCurrentWatcher");
+  const finalFlush = quitBlock.indexOf("flushRuntimeEventJournalSync");
+  assert.ok(stop >= 0);
+  assert.ok(finalFlush > stop);
+});
+
