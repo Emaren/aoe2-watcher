@@ -77,6 +77,34 @@ function summarizeAppMetrics(metrics = []) {
   return summary;
 }
 
+function selectResourceSampleInterval({
+  streamActive = false,
+  importRunning = false,
+  uploadActive = false,
+  activeReplay = false,
+  activeMs = DEFAULT_RESOURCE_SAMPLE_MS,
+  idleMs = DEFAULT_RESOURCE_IDLE_SAMPLE_MS,
+} = {}) {
+  const activeInterval = Math.max(
+    1000,
+    Math.floor(finiteNumber(activeMs, DEFAULT_RESOURCE_SAMPLE_MS))
+  );
+  const idleInterval = Math.max(
+    activeInterval,
+    Math.floor(finiteNumber(idleMs, DEFAULT_RESOURCE_IDLE_SAMPLE_MS))
+  );
+
+  return (
+    streamActive ||
+    importRunning ||
+    uploadActive ||
+    activeReplay
+  )
+    ? activeInterval
+    : idleInterval;
+}
+
+
 function classifyPowerSignal({
   cpuPercent = 0,
   idleWakeupsPerSecond = 0,
@@ -368,5 +396,6 @@ module.exports = {
   DEFAULT_RESOURCE_WINDOW_SAMPLES,
   classifyPowerSignal,
   createResourceProfiler,
+  selectResourceSampleInterval,
   summarizeAppMetrics,
 };
