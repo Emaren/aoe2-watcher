@@ -909,7 +909,8 @@ test("settled replay runtime state is bounded to the newest entries", () => {
   const result =
     pruneSettledUploadState(
       state,
-      2
+      2,
+      400
     );
 
   assert.equal(result.removed, 1);
