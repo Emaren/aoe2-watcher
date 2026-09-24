@@ -50,6 +50,7 @@ const {
   DEFAULT_RESOURCE_IDLE_SAMPLE_MS,
   DEFAULT_RESOURCE_SAMPLE_MS,
   createResourceProfiler,
+  selectResourceSampleInterval,
 } = require("./resourceProfile");
 
 const WATCHER_PAIR_PROTOCOL = "aoe2hd-watcher";
@@ -231,20 +232,26 @@ function getResourceSampleIntervalMs() {
   const runtime =
     getRuntimeStatus();
 
-  const active =
-    rendererReady ||
-    nativeStreamActive ||
-    Boolean(
-      currentImportState?.isRunning
-    ) ||
-    Boolean(runtime.activeReplay) ||
-    Number(
-      runtime.uploadQueueLength || 0
-    ) > 0;
-
-  return active
-    ? RESOURCE_SAMPLE_MS
-    : RESOURCE_IDLE_SAMPLE_MS;
+  return selectResourceSampleInterval({
+    streamActive:
+      nativeStreamActive ||
+      Boolean(
+        lastStreamHandoff?.streamId &&
+          !lastStreamHandoff?.endedAt
+      ),
+    importRunning:
+      Boolean(
+        currentImportState?.isRunning
+      ),
+    uploadActive:
+      Number(
+        runtime.uploadQueueLength || 0
+      ) > 0,
+    activeReplay:
+      Boolean(runtime.activeReplay),
+    activeMs: RESOURCE_SAMPLE_MS,
+    idleMs: RESOURCE_IDLE_SAMPLE_MS,
+  });
 }
 
 function scheduleResourceProfileSample() {
