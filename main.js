@@ -3749,14 +3749,16 @@ app.on("before-quit", (event) => {
     return;
   }
 
-  flushRuntimeEventJournalSync();
-
   if (watcherHandle) {
     stopCurrentWatcher({
       quiet: true,
       allowPendingInstall: false,
     });
   }
+
+  // stopCurrentWatcher emits the final watcher_stopped telemetry event.
+  // Flush only after that event is journaled so graceful quit cannot drop it.
+  flushRuntimeEventJournalSync();
 
   if (tray) {
     tray.destroy();
