@@ -175,6 +175,51 @@ test(
 );
 
 test(
+  "flush retires a legacy queue file containing only expired entries",
+  async () => {
+    const { filePath } = tempQueue();
+
+    fs.writeFileSync(
+      filePath,
+      JSON.stringify([
+        {
+          eventType: "old",
+          queuedAtMs: 1,
+          payload: {
+            event_type: "old",
+          },
+        },
+      ]),
+      "utf8"
+    );
+
+    const queue =
+      createDurableTelemetryQueue({
+        filePath,
+        maxAgeMs: 1000,
+      });
+
+    const originalNow = Date.now;
+    Date.now = () => 10_000;
+    try {
+      const result =
+        await queue.flush(async () => ({
+          ok: true,
+        }));
+
+      assert.equal(result.attempted, 0);
+      assert.equal(result.remaining, 0);
+      assert.equal(
+        fs.existsSync(filePath),
+        false
+      );
+    } finally {
+      Date.now = originalNow;
+    }
+  }
+);
+
+test(
   "retryable telemetry failure preserves the durable queue without rewriting it",
   async () => {
     const { filePath } = tempQueue();
