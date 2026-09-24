@@ -5,7 +5,7 @@
   "owner": "aoe2war-watcher",
   "implementation_baseline": {
     "branch": "feature/watcher-1.6.2-tiny-powerful-20260922",
-    "commit": "08e4d175d4c3912ea809710f82f1cfaef5157048"
+    "commit": "b4938c410573f1fb64054d204f103ae04f19e723"
   },
   "documents": [
     {
@@ -21,7 +21,7 @@
       "review_interval_days": 0,
       "reviewed_at": "2026-07-26",
       "sensitivity": "internal",
-      "sha256": "05859b0912289d253dd904fc7600296a029dbdf0641cbe961eb581939bb5aefb",
+      "sha256": "9fe95d56542592eff97d11f879edac977d1a9ea0fb316fd90256b6ac69402c1a",
       "source_of_truth": "generated",
       "status": "generated",
       "systems": [
@@ -43,7 +43,7 @@
       "review_interval_days": 14,
       "reviewed_at": "2026-09-22",
       "sensitivity": "internal",
-      "sha256": "97d5ce07b758bf627af62f335604d97696f3148e373defb294da409790b60e5e",
+      "sha256": "9e1204ce0c0e708d7cd0dd90883554b68da6a42fc91f8ad4a505f613a608ce83",
       "source_of_truth": "git",
       "status": "draft",
       "systems": [
