@@ -876,6 +876,14 @@ async function installDownloadedWatcherUpdate(config = loadConfig(), options = {
     });
   }
 
+  // Do not let the generic before-quit drain interrupt Electron's updater
+  // shutdown sequence. The watcher is already stopped, so drain all journal
+  // evidence first and mark the quit path safe before handing control to
+  // quitAndInstall.
+  await flushRuntimeEventJournal();
+  flushRuntimeEventJournalSync();
+  runtimeJournalQuitDrainComplete = true;
+
   autoUpdater.quitAndInstall(false, true);
 
   return {
