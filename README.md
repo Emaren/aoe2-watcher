@@ -15,6 +15,42 @@ sensitivity: "internal"
 
 # aoe2-watcher
 
+## v1.6.2 development branch — tiny, powerful, measurable
+
+Watcher 1.6.1 remains the current public release. The 1.6.2 branch is deliberately
+not published yet; it is the accumulation lane for measured resource efficiency,
+cross-machine resilience, telemetry, and update ergonomics before the next
+five-artifact release gate.
+
+The first 1.6.2 tranche adds an adaptive low-frequency resource profile built from
+Electron's own process-tree metrics: current/rolling CPU, working-set memory,
+session peaks, processor wakeups, and Watcher-attributable replay/stream network
+rate. It samples every 15 seconds while the dashboard or real work is active and
+backs off to 60 seconds when the Watcher is quietly backgrounded. Those
+figures appear in Diagnostics, support snapshots, and heartbeat metadata. The
+power readout is intentionally a CPU/wakeup **signal**, not invented watts:
+portable per-process watt measurement is not exposed by Electron.
+
+Passive replay-folder status caching is also extended to five minutes, matching the
+existing freshness probe, so an idle Watcher does fewer full directory inspections.
+Each inspection now records its entry count and elapsed time so large replay
+libraries can be measured before any more aggressive optimization is attempted.
+
+Runtime-event diagnostics no longer synchronously append to disk for every event.
+They batch in memory and flush asynchronously after up to two seconds or 64 KiB,
+with one bounded synchronous final flush only when the app quits. The journal
+retains its existing size/rotation boundary while reducing steady-state disk churn.
+
+Historical scans also stop allocating an in-memory replay-state object merely to
+look at every archived file. Transient failed import state is released after each
+item, settled state is capped to the existing 5,000-entry durability contract, and
+the historical batch writes settlement state once at completion instead of
+rewriting the full state file after every successful replay.
+
+The working engineering audit and release boundary live in
+[Watcher 1.6.2 Engineering Audit](docs/WATCHER_1_6_2_AUDIT.md).
+
+
 ## v1.6.1 public release
 
 v1.6.1 bounds historical batch-import memory and retry behavior after a Windows

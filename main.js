@@ -46,6 +46,12 @@ const { buildStreamHandoff } = require("./streamHandoff");
 const {
   createNetworkPriorityArbiter,
 } = require("./networkPriority");
+const {
+  DEFAULT_RESOURCE_IDLE_SAMPLE_MS,
+  DEFAULT_RESOURCE_SAMPLE_MS,
+  createResourceProfiler,
+  selectResourceSampleInterval,
+} = require("./resourceProfile");
 
 const WATCHER_PAIR_PROTOCOL = "aoe2hd-watcher";
 const APP_NAME = "AoE2HDBets Watcher";
@@ -87,6 +93,21 @@ const RUNTIME_EVENT_JOURNAL_MAX_BYTES = Number(
   process.env.AOE2_RUNTIME_EVENT_JOURNAL_MAX_BYTES ||
     5 * 1024 * 1024
 );
+const RUNTIME_EVENT_JOURNAL_FLUSH_MS = Math.max(
+  250,
+  Number(
+    process.env.AOE2_RUNTIME_EVENT_JOURNAL_FLUSH_MS ||
+      2000
+  )
+);
+const RUNTIME_EVENT_JOURNAL_BUFFER_MAX_BYTES =
+  Math.max(
+    8 * 1024,
+    Number(
+      process.env.AOE2_RUNTIME_EVENT_JOURNAL_BUFFER_MAX_BYTES ||
+        64 * 1024
+    )
+  );
 const RELEASE_CHECK_TIMEOUT_MS = Number(process.env.AOE2_RELEASE_CHECK_TIMEOUT_MS || 5000);
 const AUTO_UPDATE_FEED_URL = process.env.AOE2_UPDATE_FEED_URL || "https://aoe2war.com/downloads";
 const MAC_AUTO_UPDATE_ENABLED = process.env.AOE2_ENABLE_MAC_AUTO_UPDATE === "1";
@@ -137,8 +158,133 @@ const MONITOR_REATTACH_COOLDOWN_MS = Number(
   process.env.AOE2_MONITOR_REATTACH_COOLDOWN_MS || 60 * 1000
 );
 const UI_LOG_BUFFER_MAX_ENTRIES = 250;
+const RESOURCE_SAMPLE_MS = Math.max(
+  5000,
+  Number(
+    process.env.AOE2_RESOURCE_SAMPLE_MS ||
+      DEFAULT_RESOURCE_SAMPLE_MS
+  )
+);
+const RESOURCE_IDLE_SAMPLE_MS = Math.max(
+  RESOURCE_SAMPLE_MS,
+  Number(
+    process.env.AOE2_RESOURCE_IDLE_SAMPLE_MS ||
+      DEFAULT_RESOURCE_IDLE_SAMPLE_MS
+  )
+);
 const recentUiLogs = [];
+let resourceProfileTimer = null;
+let runtimeEventJournalBuffer = "";
+let runtimeEventJournalBufferBytes = 0;
+let runtimeEventJournalFlushTimer = null;
+let runtimeEventJournalFlushChain =
+  Promise.resolve();
+let runtimeJournalQuitDrainStarted = false;
+let runtimeJournalQuitDrainComplete = false;
 
+const resourceProfiler =
+  createResourceProfiler({
+    getMetrics: () =>
+      app.isReady()
+        ? app.getAppMetrics()
+        : [],
+    getWorkload: () => {
+      const runtime =
+        getRuntimeStatus();
+
+      return {
+        streamActive:
+          nativeStreamActive ||
+          Boolean(
+            lastStreamHandoff?.streamId &&
+              !lastStreamHandoff?.endedAt
+          ),
+        importRunning:
+          Boolean(
+            currentImportState?.isRunning
+          ),
+        uploadActive:
+          Number(
+            runtime.uploadQueueLength || 0
+          ) > 0,
+        activeReplay:
+          Boolean(runtime.activeReplay),
+      };
+    },
+  });
+
+
+function sampleResourceProfile({
+  publish = true,
+} = {}) {
+  const profile =
+    resourceProfiler.sample();
+
+  if (publish) {
+    sendToRenderer(
+      "watcher:resource-profile",
+      profile
+    );
+  }
+
+  return profile;
+}
+
+function getResourceSampleIntervalMs() {
+  const runtime =
+    getRuntimeStatus();
+
+  return selectResourceSampleInterval({
+    streamActive:
+      nativeStreamActive ||
+      Boolean(
+        lastStreamHandoff?.streamId &&
+          !lastStreamHandoff?.endedAt
+      ),
+    importRunning:
+      Boolean(
+        currentImportState?.isRunning
+      ),
+    uploadActive:
+      Number(
+        runtime.uploadQueueLength || 0
+      ) > 0,
+    activeReplay:
+      Boolean(runtime.activeReplay),
+    activeMs: RESOURCE_SAMPLE_MS,
+    idleMs: RESOURCE_IDLE_SAMPLE_MS,
+  });
+}
+
+function scheduleResourceProfileSample() {
+  if (resourceProfileTimer) {
+    clearTimeout(
+      resourceProfileTimer
+    );
+  }
+
+  resourceProfileTimer =
+    setTimeout(() => {
+      resourceProfileTimer = null;
+      sampleResourceProfile();
+      scheduleResourceProfileSample();
+    }, getResourceSampleIntervalMs());
+}
+
+function startResourceProfiling() {
+  stopResourceProfiling();
+  sampleResourceProfile();
+  scheduleResourceProfileSample();
+}
+
+function stopResourceProfiling() {
+  if (resourceProfileTimer) {
+    clearTimeout(
+      resourceProfileTimer
+    );
+    resourceProfileTimer = null;
+  }
+}
 
 function createUpdateState(patch = {}) {
   return {
@@ -276,6 +422,8 @@ function buildRuntimeMetadata(config = loadConfig()) {
     folderSupportedReplayCount: folder.supportedReplayCount,
     folderLatestReplayBasename: folder.latestReplayBasename,
     folderLatestReplayModifiedAt: folder.latestReplayModifiedAt,
+    folderEntriesScanned: folder.entriesScanned,
+    folderInspectionDurationMs: folder.inspectionDurationMs,
     folderActivityProven: Boolean(
       folder.supportedReplayCount > 0 && folder.latestReplayModifiedAt
     ),
@@ -298,6 +446,8 @@ function buildRuntimeMetadata(config = loadConfig()) {
     appPackaged: Boolean(app.isPackaged),
     updateFeedUrl: AUTO_UPDATE_FEED_URL,
     finalityContractVersion: 2,
+    resourceProfile:
+      resourceProfiler.getSnapshot(),
   };
 }
 
@@ -725,6 +875,14 @@ async function installDownloadedWatcherUpdate(config = loadConfig(), options = {
       allowPendingInstall: false,
     });
   }
+
+  // Do not let the generic before-quit drain interrupt Electron's updater
+  // shutdown sequence. The watcher is already stopped, so drain all journal
+  // evidence first and mark the quit path safe before handing control to
+  // quitAndInstall.
+  await flushRuntimeEventJournal();
+  flushRuntimeEventJournalSync();
+  runtimeJournalQuitDrainComplete = true;
 
   autoUpdater.quitAndInstall(false, true);
 
@@ -1947,6 +2105,8 @@ function getAppInfo(config = loadConfig()) {
     release: releaseState,
     update: updateState,
     autoUpdate: updateState,
+    resourceProfile:
+      resourceProfiler.getSnapshot(),
   };
 }
 
@@ -2098,6 +2258,11 @@ async function postStreamChunk(payload = {}) {
   const baseUrl = normalizeBaseUrl(payload.baseUrl || getStreamWebBaseUrl(config));
 
   try {
+    resourceProfiler.recordNetworkBytes(
+      buffer.length,
+      "stream"
+    );
+
     const response = await axios.post(
       `${baseUrl}/api/streams/${streamId}/chunks?sequence=${sequence}`,
       buffer,
@@ -2380,6 +2545,228 @@ function emitTelemetryForRuntimeEvent(event) {
   }
 }
 
+function getRuntimeEventJournalPath() {
+  return path.join(
+    app.getPath("userData"),
+    "watcher-runtime-events.jsonl"
+  );
+}
+
+async function rotateRuntimeEventJournalIfNeeded(
+  journalPath,
+  incomingBytes = 0
+) {
+  let currentBytes = 0;
+
+  try {
+    currentBytes =
+      (
+        await fs.promises.stat(
+          journalPath
+        )
+      ).size;
+  } catch (error) {
+    if (error?.code !== "ENOENT") {
+      throw error;
+    }
+  }
+
+  if (
+    currentBytes +
+      Math.max(
+        0,
+        Number(incomingBytes) || 0
+      ) <=
+    RUNTIME_EVENT_JOURNAL_MAX_BYTES
+  ) {
+    return false;
+  }
+
+  const rotated =
+    `${journalPath}.1`;
+
+  await fs.promises.rm(
+    rotated,
+    {
+      force: true,
+    }
+  );
+
+  try {
+    await fs.promises.rename(
+      journalPath,
+      rotated
+    );
+  } catch (error) {
+    if (error?.code !== "ENOENT") {
+      throw error;
+    }
+  }
+
+  return true;
+}
+
+function scheduleRuntimeEventJournalFlush() {
+  if (
+    runtimeEventJournalFlushTimer ||
+    !runtimeEventJournalBuffer
+  ) {
+    return;
+  }
+
+  runtimeEventJournalFlushTimer =
+    setTimeout(() => {
+      runtimeEventJournalFlushTimer =
+        null;
+      void flushRuntimeEventJournal();
+    }, RUNTIME_EVENT_JOURNAL_FLUSH_MS);
+}
+
+function flushRuntimeEventJournal() {
+  if (!runtimeEventJournalBuffer) {
+    return runtimeEventJournalFlushChain;
+  }
+
+  const chunk =
+    runtimeEventJournalBuffer;
+  const chunkBytes =
+    runtimeEventJournalBufferBytes;
+
+  runtimeEventJournalBuffer = "";
+  runtimeEventJournalBufferBytes = 0;
+
+  if (runtimeEventJournalFlushTimer) {
+    clearTimeout(
+      runtimeEventJournalFlushTimer
+    );
+    runtimeEventJournalFlushTimer =
+      null;
+  }
+
+  runtimeEventJournalFlushChain =
+    runtimeEventJournalFlushChain
+      .then(async () => {
+        const journalPath =
+          getRuntimeEventJournalPath();
+
+        await fs.promises.mkdir(
+          path.dirname(journalPath),
+          {
+            recursive: true,
+          }
+        );
+
+        await rotateRuntimeEventJournalIfNeeded(
+          journalPath,
+          chunkBytes
+        );
+
+        await fs.promises.appendFile(
+          journalPath,
+          chunk,
+          "utf8"
+        );
+      })
+      .catch((error) => {
+        console.warn(
+          `Watcher runtime journal flush failed: ${
+            error.message || error
+          }`
+        );
+      });
+
+  return runtimeEventJournalFlushChain;
+}
+
+function flushRuntimeEventJournalSync() {
+  if (!runtimeEventJournalBuffer) {
+    return;
+  }
+
+  const chunk =
+    runtimeEventJournalBuffer;
+
+  runtimeEventJournalBuffer = "";
+  runtimeEventJournalBufferBytes = 0;
+
+  if (runtimeEventJournalFlushTimer) {
+    clearTimeout(
+      runtimeEventJournalFlushTimer
+    );
+    runtimeEventJournalFlushTimer =
+      null;
+  }
+
+  try {
+    const journalPath =
+      getRuntimeEventJournalPath();
+
+    fs.mkdirSync(
+      path.dirname(journalPath),
+      {
+        recursive: true,
+      }
+    );
+
+    const incomingBytes =
+      Buffer.byteLength(
+        chunk,
+        "utf8"
+      );
+
+    let currentBytes = 0;
+    try {
+      currentBytes =
+        fs.statSync(
+          journalPath
+        ).size;
+    } catch (error) {
+      if (error?.code !== "ENOENT") {
+        throw error;
+      }
+    }
+
+    if (
+      currentBytes +
+        incomingBytes >
+      RUNTIME_EVENT_JOURNAL_MAX_BYTES
+    ) {
+      const rotated =
+        `${journalPath}.1`;
+
+      fs.rmSync(
+        rotated,
+        {
+          force: true,
+        }
+      );
+
+      try {
+        fs.renameSync(
+          journalPath,
+          rotated
+        );
+      } catch (error) {
+        if (error?.code !== "ENOENT") {
+          throw error;
+        }
+      }
+    }
+
+    fs.appendFileSync(
+      journalPath,
+      chunk,
+      "utf8"
+    );
+  } catch (error) {
+    console.warn(
+      `Watcher runtime journal final flush failed: ${
+        error.message || error
+      }`
+    );
+  }
+}
+
 function appendRuntimeEventJournal(
   event
 ) {
@@ -2391,66 +2778,49 @@ function appendRuntimeEventJournal(
     return;
   }
 
-  try {
-    const journalPath =
-      path.join(
-        app.getPath("userData"),
-        "watcher-runtime-events.jsonl"
-      );
+  const line =
+    `${JSON.stringify({
+      recordedAt:
+        new Date().toISOString(),
+      appVersion:
+        WATCHER_VERSION,
+      sessionId:
+        APP_SESSION_ID,
+      ...event,
+    })}\n`;
 
-    fs.mkdirSync(
-      path.dirname(journalPath),
-      {
-        recursive: true,
-      }
-    );
-
-    if (
-      fs.existsSync(journalPath) &&
-      fs.statSync(journalPath).size >
-        RUNTIME_EVENT_JOURNAL_MAX_BYTES
-    ) {
-      const rotated =
-        `${journalPath}.1`;
-
-      try {
-        fs.rmSync(
-          rotated,
-          {
-            force: true,
-          }
-        );
-      } catch {}
-
-      fs.renameSync(
-        journalPath,
-        rotated
-      );
-    }
-
-    fs.appendFileSync(
-      journalPath,
-      `${JSON.stringify({
-        recordedAt:
-          new Date().toISOString(),
-        appVersion:
-          WATCHER_VERSION,
-        sessionId:
-          APP_SESSION_ID,
-        ...event,
-      })}\n`,
+  runtimeEventJournalBuffer += line;
+  runtimeEventJournalBufferBytes +=
+    Buffer.byteLength(
+      line,
       "utf8"
     );
-  } catch (error) {
-    console.warn(
-      `Watcher runtime journal failed: ${
-        error.message || error
-      }`
-    );
+
+  if (
+    runtimeEventJournalBufferBytes >=
+    RUNTIME_EVENT_JOURNAL_BUFFER_MAX_BYTES
+  ) {
+    void flushRuntimeEventJournal();
+    return;
   }
+
+  scheduleRuntimeEventJournalFlush();
 }
 
 function handleWatcherRuntimeEvent(event) {
+  if (
+    event?.type === "upload-start" &&
+    Number.isFinite(
+      Number(event.fileSizeBytes)
+    ) &&
+    Number(event.fileSizeBytes) > 0
+  ) {
+    resourceProfiler.recordNetworkBytes(
+      Number(event.fileSizeBytes),
+      "replay"
+    );
+  }
+
   const priority =
     networkPriorityArbiter
       .handleReplayEvent(event);
@@ -3001,6 +3371,8 @@ function initializeWatcherRuntime() {
     }`
   );
 
+  startResourceProfiling();
+
   emitWatcherTelemetry(
     "app_open",
     {
@@ -3363,10 +3735,27 @@ app.on("activate", () => {
   focusMainWindow();
 });
 
-app.on("before-quit", () => {
+app.on("before-quit", (event) => {
   rendererReady = false;
   stopTelemetryHeartbeat();
   stopMonitorWatchdog();
+  stopResourceProfiling();
+
+  if (!runtimeJournalQuitDrainComplete) {
+    event.preventDefault();
+
+    if (!runtimeJournalQuitDrainStarted) {
+      runtimeJournalQuitDrainStarted = true;
+
+      void flushRuntimeEventJournal()
+        .finally(() => {
+          runtimeJournalQuitDrainComplete = true;
+          app.quit();
+        });
+    }
+
+    return;
+  }
 
   if (watcherHandle) {
     stopCurrentWatcher({
@@ -3374,6 +3763,10 @@ app.on("before-quit", () => {
       allowPendingInstall: false,
     });
   }
+
+  // stopCurrentWatcher emits the final watcher_stopped telemetry event.
+  // Flush only after that event is journaled so graceful quit cannot drop it.
+  flushRuntimeEventJournalSync();
 
   if (tray) {
     tray.destroy();

@@ -4,6 +4,7 @@ const assert = require("node:assert/strict");
 const {
   DEFAULT_FINAL_SETTLE_POLL_MS,
   DEFAULT_FOLDER_FRESHNESS_PROBE_MS,
+  DEFAULT_FOLDER_STATUS_CACHE_MS,
   DEFAULT_IDLE_RECOVERY_SCAN_MS,
   DEFAULT_MONITOR_WATCHDOG_MS,
   getUpdateBlocker,
@@ -65,5 +66,18 @@ test("idle safety nets are deliberately low-frequency", () => {
   assert.ok(DEFAULT_IDLE_RECOVERY_SCAN_MS >= 60_000);
   assert.ok(DEFAULT_MONITOR_WATCHDOG_MS >= 60_000);
   assert.ok(DEFAULT_FOLDER_FRESHNESS_PROBE_MS >= 300_000);
+  assert.ok(DEFAULT_FOLDER_STATUS_CACHE_MS >= 300_000);
   assert.ok(DEFAULT_FINAL_SETTLE_POLL_MS >= 10_000);
+});
+
+
+test("folder inspection reports bounded cost evidence for power audits", () => {
+  const watcherSource = require("node:fs").readFileSync(
+    require("node:path").join(__dirname, "..", "watcher.js"),
+    "utf8"
+  );
+
+  assert.match(watcherSource, /entriesScanned/);
+  assert.match(watcherSource, /inspectionDurationMs/);
+  assert.match(watcherSource, /process\.hrtime\.bigint\(\)/);
 });
