@@ -207,6 +207,25 @@ function createDurableTelemetryQueue({
           maxAgeMs
         );
 
+        if (entries.length === 0) {
+          if (
+            filePath &&
+            fs.existsSync(filePath)
+          ) {
+            writeQueueFile(
+              filePath,
+              []
+            );
+          }
+
+          return {
+            attempted: 0,
+            delivered: 0,
+            dropped: 0,
+            remaining: 0,
+          };
+        }
+
         const remaining = [];
 
         let attempted = 0;
