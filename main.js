@@ -179,6 +179,8 @@ let runtimeEventJournalBufferBytes = 0;
 let runtimeEventJournalFlushTimer = null;
 let runtimeEventJournalFlushChain =
   Promise.resolve();
+let runtimeJournalQuitDrainStarted = false;
+let runtimeJournalQuitDrainComplete = false;
 
 const resourceProfiler =
   createResourceProfiler({
@@ -3725,11 +3727,28 @@ app.on("activate", () => {
   focusMainWindow();
 });
 
-app.on("before-quit", () => {
+app.on("before-quit", (event) => {
   rendererReady = false;
   stopTelemetryHeartbeat();
   stopMonitorWatchdog();
   stopResourceProfiling();
+
+  if (!runtimeJournalQuitDrainComplete) {
+    event.preventDefault();
+
+    if (!runtimeJournalQuitDrainStarted) {
+      runtimeJournalQuitDrainStarted = true;
+
+      void flushRuntimeEventJournal()
+        .finally(() => {
+          runtimeJournalQuitDrainComplete = true;
+          app.quit();
+        });
+    }
+
+    return;
+  }
+
   flushRuntimeEventJournalSync();
 
   if (watcherHandle) {
