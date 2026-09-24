@@ -2223,7 +2223,7 @@ function buildSupportSnapshot() {
     `CPU: ${resourceProfile ? formatResourcePercent(resourceProfile.cpuPercent) : "measuring"}`,
     `Memory: ${resourceProfile ? formatResourceMb(resourceProfile.workingSetMb) : "measuring"}`,
     `Processor wakeups: ${resourceProfile ? formatResourceWakeups(resourceProfile.idleWakeupsPerSecond, resourceProfile.idleWakeupsAvailable) : "measuring"}`,
-    `Watcher network: ${resourceProfile ? formatResourceMbps(resourceProfile.networkMbps) : "measuring"}`,
+    `Payload attempt rate: ${resourceProfile ? formatResourceMbps(resourceProfile.networkMbps) : "measuring"}`,
     `Power signal: ${resourceProfile?.powerSignal?.label || "measuring"} (CPU/wakeup proxy; watts not fabricated)`,
     `Status: ${primaryStatus.label}`,
     `Status detail: ${primaryStatus.detail}`,
