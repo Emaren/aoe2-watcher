@@ -113,8 +113,10 @@ journal itself into needless filesystem churn.
 
 **1.6.2 status:** runtime events now buffer in memory and flush asynchronously after
 up to two seconds or 64 KiB. The existing bounded journal rotation remains in
-place. A synchronous write is reserved for the final bounded quit flush so useful
-last-event evidence is not casually lost.
+place. Graceful quit now prevents process exit until the already-queued async
+journal chain has drained, then stops the watcher, records its final stop telemetry,
+and performs one bounded synchronous final-buffer flush. This preserves the IO
+reduction without making the last diagnostic events race application shutdown.
 
 ### P1 — historical state must stay bounded as archives grow
 
