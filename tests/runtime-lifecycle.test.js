@@ -83,3 +83,27 @@ test("graceful quit drains queued journal writes before the final watcher stop f
   assert.ok(finalFlush > stop);
 });
 
+test("update installation drains the journal before quitAndInstall", () => {
+  const installStart = source.indexOf(
+    "async function installDownloadedWatcherUpdate"
+  );
+  const installEnd = source.indexOf(
+    "function maybeInstallPendingWatcherUpdate",
+    installStart
+  );
+  const block = source.slice(installStart, installEnd);
+
+  const stop = block.lastIndexOf("stopCurrentWatcher");
+  const drain = block.indexOf("await flushRuntimeEventJournal()", stop);
+  const markSafe = block.indexOf(
+    "runtimeJournalQuitDrainComplete = true",
+    drain
+  );
+  const install = block.indexOf("autoUpdater.quitAndInstall", markSafe);
+
+  assert.ok(stop >= 0);
+  assert.ok(drain > stop);
+  assert.ok(markSafe > drain);
+  assert.ok(install > markSafe);
+});
+
