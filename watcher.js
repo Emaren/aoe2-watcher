@@ -1208,7 +1208,8 @@ function shouldPersistSettlementEntry(
 function pruneSettledUploadState(
   stateMap = activeUploadState,
   maxEntries =
-    SETTLEMENT_STATE_MAX_ENTRIES
+    SETTLEMENT_STATE_MAX_ENTRIES,
+  now = Date.now()
 ) {
   const limit =
     Math.max(
@@ -1217,22 +1218,44 @@ function pruneSettledUploadState(
         Number(maxEntries) || 0
       )
     );
+  const cutoff =
+    Number(now) -
+    SETTLEMENT_STATE_MAX_AGE_MS;
 
   const settled = [];
+  let removedExpired = 0;
 
   for (
     const [filePath, entry] of stateMap
   ) {
     if (
-      shouldPersistSettlementEntry(
+      !shouldPersistSettlementEntry(
         entry
       )
     ) {
-      settled.push({
-        filePath,
-        entry,
-      });
+      continue;
     }
+
+    const lastFinalUploadAt =
+      Number(
+        entry.lastFinalUploadAt || 0
+      );
+
+    if (
+      lastFinalUploadAt < cutoff &&
+      !entry.monitoring &&
+      !entry.importing
+    ) {
+      if (stateMap.delete(filePath)) {
+        removedExpired += 1;
+      }
+      continue;
+    }
+
+    settled.push({
+      filePath,
+      entry,
+    });
   }
 
   settled.sort(
@@ -1247,7 +1270,7 @@ function pruneSettledUploadState(
       )
   );
 
-  let removed = 0;
+  let removedOverflow = 0;
 
   for (
     const candidate of
@@ -1265,12 +1288,16 @@ function pruneSettledUploadState(
         candidate.filePath
       )
     ) {
-      removed += 1;
+      removedOverflow += 1;
     }
   }
 
   return {
-    removed,
+    removed:
+      removedExpired +
+      removedOverflow,
+    removedExpired,
+    removedOverflow,
     retained:
       stateMap.size,
   };
