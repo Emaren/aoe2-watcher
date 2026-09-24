@@ -135,6 +135,13 @@ function writeQueueFile(filePath, entries) {
     return;
   }
 
+  if (!Array.isArray(entries) || entries.length === 0) {
+    fs.rmSync(filePath, {
+      force: true,
+    });
+    return;
+  }
+
   fs.mkdirSync(path.dirname(filePath), {
     recursive: true,
   });
@@ -251,10 +258,17 @@ function createDurableTelemetryQueue({
           break;
         }
 
-        writeQueueFile(
-          filePath,
-          remaining
-        );
+        const queueChanged =
+          delivered > 0 ||
+          dropped > 0 ||
+          remaining.length !== entries.length;
+
+        if (queueChanged) {
+          writeQueueFile(
+            filePath,
+            remaining
+          );
+        }
 
         return {
           attempted,
