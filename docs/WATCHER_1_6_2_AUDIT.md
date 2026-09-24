@@ -115,8 +115,11 @@ journal itself into needless filesystem churn.
 up to two seconds or 64 KiB. The existing bounded journal rotation remains in
 place. Graceful quit now prevents process exit until the already-queued async
 journal chain has drained, then stops the watcher, records its final stop telemetry,
-and performs one bounded synchronous final-buffer flush. This preserves the IO
-reduction without making the last diagnostic events race application shutdown.
+and performs one bounded synchronous final-buffer flush. The updater path drains
+that same journal before calling Electron's `quitAndInstall` and marks the generic
+quit drain complete first, so diagnostic durability cannot accidentally intercept
+the installer shutdown sequence. This preserves the IO reduction without making the
+last diagnostic events race application shutdown.
 
 ### P1 — historical state must stay bounded as archives grow
 
