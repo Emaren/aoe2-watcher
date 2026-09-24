@@ -182,8 +182,9 @@ numbers:
 2. **Memory** — current working set and session peak.
 3. **Processor wakeups** — a useful power-efficiency signal where Electron/Chromium
    reports it.
-4. **Watcher network** — current and rolling Watcher-attributable replay/stream
-   payload rate.
+4. **Payload attempt rate** — current and rolling replay/stream payload bytes
+   offered to transport. This intentionally includes retries/fallback attempts and
+   is not presented as exact successful wire bytes.
 5. **Power signal** — Gentle / Light / Active / High / Streaming, derived from
    measured CPU/wakeups and explicit workload state, never represented as watts.
 
