@@ -16,11 +16,13 @@ test("background watcher is independent from dashboard lifetime", () => {
   assert.match(source, /backgroundThrottling: true/);
 
   const start = source.indexOf('app.on("window-all-closed"');
-  const end = source.indexOf("const gotSingleInstanceLock", start);
+  const end = source.indexOf('app.on("activate"', start);
   assert.ok(start >= 0 && end > start);
   const closeBlock = source.slice(start, end);
   assert.doesNotMatch(closeBlock, /app\.quit\(\)/);
-  assert.match(closeBlock, /before-quit/);
+
+  const beforeQuit = source.indexOf('app.on("before-quit"', end);
+  assert.ok(beforeQuit > end);
 });
 
 
