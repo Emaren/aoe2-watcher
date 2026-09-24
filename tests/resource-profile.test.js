@@ -6,6 +6,7 @@ const test = require("node:test");
 const {
   classifyPowerSignal,
   createResourceProfiler,
+  selectResourceSampleInterval,
   summarizeAppMetrics,
 } = require("../resourceProfile");
 
@@ -47,6 +48,32 @@ test("summarizeAppMetrics combines the Electron process tree", () => {
     Browser: 1,
     Tab: 1,
   });
+});
+
+test("resource sampling backs off when the Watcher is truly idle", () => {
+  assert.equal(
+    selectResourceSampleInterval({
+      activeMs: 15_000,
+      idleMs: 60_000,
+    }),
+    60_000
+  );
+
+  for (const workload of [
+    { streamActive: true },
+    { importRunning: true },
+    { uploadActive: true },
+    { activeReplay: true },
+  ]) {
+    assert.equal(
+      selectResourceSampleInterval({
+        ...workload,
+        activeMs: 15_000,
+        idleMs: 60_000,
+      }),
+      15_000
+    );
+  }
 });
 
 test("power signal never pretends to be watts", () => {
