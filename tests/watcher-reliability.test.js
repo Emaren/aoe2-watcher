@@ -928,6 +928,62 @@ test("settled replay runtime state is bounded to the newest entries", () => {
   );
 });
 
+test("settled replay runtime state drops expired inactive entries", () => {
+  const day = 24 * 60 * 60 * 1000;
+  const now = 100 * day;
+  const state = new Map([
+    [
+      "expired.aoe2record",
+      {
+        finalStored: true,
+        finalAccepted: true,
+        lastFinalUploadedFingerprint: "expired",
+        lastFinalReplayHash: "expired",
+        lastFinalUploadAt: 1 * day,
+        monitoring: false,
+        importing: false,
+      },
+    ],
+    [
+      "fresh.aoe2record",
+      {
+        finalStored: true,
+        finalAccepted: true,
+        lastFinalUploadedFingerprint: "fresh",
+        lastFinalReplayHash: "fresh",
+        lastFinalUploadAt: 20 * day,
+        monitoring: false,
+        importing: false,
+      },
+    ],
+    [
+      "expired-active.aoe2record",
+      {
+        finalStored: true,
+        finalAccepted: true,
+        lastFinalUploadedFingerprint: "active",
+        lastFinalReplayHash: "active",
+        lastFinalUploadAt: 1 * day,
+        monitoring: true,
+        importing: false,
+      },
+    ],
+  ]);
+
+  const result = pruneSettledUploadState(
+    state,
+    5000,
+    now
+  );
+
+  assert.equal(result.removed, 1);
+  assert.equal(result.removedExpired, 1);
+  assert.equal(result.removedOverflow, 0);
+  assert.equal(state.has("expired.aoe2record"), false);
+  assert.equal(state.has("fresh.aoe2record"), true);
+  assert.equal(state.has("expired-active.aoe2record"), true);
+});
+
 test("historical scan does not allocate replay state for every file and persists once after the batch", () => {
   const source =
     fs.readFileSync(
