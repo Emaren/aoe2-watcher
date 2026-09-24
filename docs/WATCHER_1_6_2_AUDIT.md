@@ -134,7 +134,10 @@ entry is created only after a replay is stable and actually needs work; transien
 failed import state is released after the item; settled entries are pruned to the
 existing 5,000-entry durability limit; and historical imports persist the bounded
 settlement snapshot once after the batch rather than once per successful replay.
-Server-side duplicate handling remains the safety net if the app exits mid-import.
+The in-memory map now applies the same 90-day settlement age contract as the
+persisted snapshot, while never pruning a replay that is actively monitoring or
+importing. Server-side duplicate handling remains the safety net if the app exits
+mid-import.
 
 ### P2 — repeated whole-replay live uploads are a measurable cost center
 
