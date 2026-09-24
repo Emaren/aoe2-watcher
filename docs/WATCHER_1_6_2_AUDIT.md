@@ -130,9 +130,10 @@ retryable failure that made zero queue progress does not need to atomically rewr
 the same durable JSON bytes.
 
 **1.6.2 status:** an empty flush leaves no queue file behind; draining the final
-entry removes the file instead of persisting `[]`; and a retryable no-progress
-flush keeps the existing durable file untouched. Enqueue still seals retryable
-telemetry failures immediately, so crash durability is not traded for lower IO.
+entry removes the file instead of persisting `[]`; a stale-only legacy queue file
+is retired on the next flush; and a retryable no-progress flush keeps the existing
+durable file untouched. Enqueue still seals retryable telemetry failures
+immediately, so crash durability is not traded for lower IO.
 
 ### P1 — historical state must stay bounded as archives grow
 
