@@ -52,6 +52,17 @@ const {
   createResourceProfiler,
   selectResourceSampleInterval,
 } = require("./resourceProfile");
+const {
+  DEFAULT_RENDERER_BOOT_TIMEOUT_MS,
+  beginRendererBoot,
+  beginRendererRecovery,
+  buildRendererHealthMetadata,
+  closeRenderer,
+  completeRendererBoot,
+  createRendererHealthState,
+  failRenderer,
+  sanitizeDiagnosticMessage,
+} = require("./rendererHealth");
 
 const WATCHER_PAIR_PROTOCOL = "aoe2hd-watcher";
 const APP_NAME = "AoE2HDBets Watcher";
@@ -112,6 +123,15 @@ const RELEASE_CHECK_TIMEOUT_MS = Number(process.env.AOE2_RELEASE_CHECK_TIMEOUT_M
 const AUTO_UPDATE_FEED_URL = process.env.AOE2_UPDATE_FEED_URL || "https://aoe2war.com/downloads";
 const MAC_AUTO_UPDATE_ENABLED = process.env.AOE2_ENABLE_MAC_AUTO_UPDATE === "1";
 const APP_SESSION_ID = createRandomId("session");
+const RENDERER_BOOT_TIMEOUT_MS = Math.max(
+  5000,
+  Number(
+    process.env.AOE2_RENDERER_BOOT_TIMEOUT_MS ||
+      DEFAULT_RENDERER_BOOT_TIMEOUT_MS
+  )
+);
+const RENDERER_FAILURE_TELEMETRY_COOLDOWN_MS =
+  30 * 1000;
 const runtimeEventCoalescer =
   createRuntimeEventCoalescer();
 
@@ -128,6 +148,11 @@ let nativeStreamActive = false;
 let watcherSession = 0;
 let importSession = 0;
 let rendererReady = false;
+let rendererHealth =
+  createRendererHealthState();
+let rendererBootTimer = null;
+let rendererFailureTelemetryKey = null;
+let rendererFailureTelemetryAt = 0;
 let pendingPairingUrl = null;
 let currentImportState = createImportStateFromSummary();
 let heartbeatTimer = null;
@@ -448,6 +473,9 @@ function buildRuntimeMetadata(config = loadConfig()) {
     finalityContractVersion: 2,
     resourceProfile:
       resourceProfiler.getSnapshot(),
+    ...buildRendererHealthMetadata(
+      rendererHealth
+    ),
   };
 }
 
@@ -2107,6 +2135,10 @@ function getAppInfo(config = loadConfig()) {
     autoUpdate: updateState,
     resourceProfile:
       resourceProfiler.getSnapshot(),
+    renderer:
+      buildRendererHealthMetadata(
+        rendererHealth
+      ),
   };
 }
 
@@ -2130,6 +2162,182 @@ function sendToRenderer(channel, payload) {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send(channel, payload);
   }
+}
+
+function clearRendererBootWatchdog() {
+  if (rendererBootTimer) {
+    clearTimeout(rendererBootTimer);
+    rendererBootTimer = null;
+  }
+}
+
+function isCurrentRendererSender(event) {
+  return Boolean(
+    mainWindow &&
+      !mainWindow.isDestroyed() &&
+      event?.sender?.id ===
+        mainWindow.webContents.id
+  );
+}
+
+function showRendererBootstrapFallback() {
+  if (
+    !mainWindow ||
+    mainWindow.isDestroyed()
+  ) {
+    return;
+  }
+
+  const fallbackScript = `
+    (() => {
+      const title = document.getElementById("watcherStateText");
+      const detail = document.getElementById("watcherStateDetailText");
+      const status = document.getElementById("statusBar");
+      if (title) title.textContent = "Dashboard startup issue";
+      if (detail) detail.textContent = "The background replay watcher may still be running. This dashboard will try one safe reload.";
+      if (status) {
+        status.textContent = "Dashboard startup did not complete. Replay monitoring runs separately.";
+        status.className = "status-bar error";
+      }
+    })();
+  `;
+
+  void mainWindow.webContents
+    .executeJavaScript(
+      fallbackScript,
+      true
+    )
+    .catch(() => {});
+}
+
+function recordRendererFailure(
+  reason,
+  error,
+  { fatal = true } = {}
+) {
+  const now = Date.now();
+  const safeError =
+    sanitizeDiagnosticMessage(
+      error?.message ||
+        error ||
+        "Renderer failure"
+    );
+
+  rendererHealth =
+    failRenderer(
+      rendererHealth,
+      {
+        now,
+        reason,
+        error: safeError,
+        fatal,
+      }
+    );
+
+  if (fatal) {
+    rendererReady = false;
+  }
+
+  appendLog(
+    `Dashboard renderer ${fatal ? "failure" : "issue"}: ${rendererHealth.failureReason}${safeError ? ` · ${safeError}` : ""}`,
+    fatal ? "error" : "warn"
+  );
+
+  const key =
+    `${rendererHealth.failureReason}:${safeError}`;
+
+  if (
+    key !==
+      rendererFailureTelemetryKey ||
+    now -
+      rendererFailureTelemetryAt >=
+      RENDERER_FAILURE_TELEMETRY_COOLDOWN_MS
+  ) {
+    rendererFailureTelemetryKey = key;
+    rendererFailureTelemetryAt = now;
+
+    emitWatcherTelemetry(
+      "watcher_error",
+      {
+        reason:
+          `renderer_${rendererHealth.failureReason}`,
+        errorMessage: safeError,
+        detail:
+          "Dashboard renderer issue; replay monitoring runs in the separate Watcher engine.",
+        metadata:
+          buildRendererHealthMetadata(
+            rendererHealth
+          ),
+      },
+      loadConfig()
+    );
+  }
+
+  return rendererHealth;
+}
+
+function attemptRendererRecovery(reason) {
+  if (
+    rendererReady ||
+    rendererHealth.reloadAttempts >= 1 ||
+    !mainWindow ||
+    mainWindow.isDestroyed() ||
+    nativeStreamActive
+  ) {
+    return false;
+  }
+
+  rendererHealth =
+    beginRendererRecovery(
+      rendererHealth
+    );
+
+  appendLog(
+    `Dashboard renderer recovery: one safe reload after ${reason}.`,
+    "warn"
+  );
+
+  clearRendererBootWatchdog();
+
+  try {
+    mainWindow.webContents
+      .reloadIgnoringCache();
+    return true;
+  } catch (error) {
+    recordRendererFailure(
+      "reload_failed",
+      error,
+      { fatal: true }
+    );
+    return false;
+  }
+}
+
+function armRendererBootWatchdog() {
+  clearRendererBootWatchdog();
+
+  rendererBootTimer =
+    setTimeout(() => {
+      rendererBootTimer = null;
+
+      if (
+        rendererReady ||
+        !mainWindow ||
+        mainWindow.isDestroyed()
+      ) {
+        return;
+      }
+
+      recordRendererFailure(
+        "boot_timeout",
+        "Dashboard renderer did not acknowledge startup before the bounded timeout.",
+        { fatal: true }
+      );
+      showRendererBootstrapFallback();
+      attemptRendererRecovery(
+        "boot timeout"
+      );
+    }, RENDERER_BOOT_TIMEOUT_MS);
 }
 
 function broadcastConfig(config) {
@@ -3264,7 +3472,13 @@ function hydrateRenderer() {
     return;
   }
 
-  rendererReady = true;
+  rendererReady = false;
+  rendererHealth =
+    beginRendererBoot(
+      rendererHealth
+    );
+  armRendererBootWatchdog();
+
   const config = loadConfig();
 
   broadcastConfig(config);
@@ -3279,8 +3493,6 @@ function hydrateRenderer() {
   for (const entry of recentUiLogs) {
     sendToRenderer("watcher:log", entry);
   }
-
-  processPendingPairingUrl();
 }
 
 function createWindow({ showOnReady = true } = {}) {
@@ -3295,6 +3507,15 @@ function createWindow({ showOnReady = true } = {}) {
   if (process.platform === "darwin" && app.dock && showOnReady) {
     void app.dock.show();
   }
+
+  rendererReady = false;
+  rendererHealth =
+    beginRendererBoot(
+      rendererHealth,
+      {
+        resetReloadAttempts: true,
+      }
+    );
 
   mainWindow = new BrowserWindow({
     width: 1320,
@@ -3327,7 +3548,71 @@ function createWindow({ showOnReady = true } = {}) {
     return { action: "deny" };
   });
 
-  mainWindow.webContents.once("did-finish-load", hydrateRenderer);
+  mainWindow.webContents.on(
+    "did-finish-load",
+    hydrateRenderer
+  );
+
+  mainWindow.webContents.on(
+    "preload-error",
+    (_event, _preloadPath, error) => {
+      recordRendererFailure(
+        "preload_error",
+        error,
+        { fatal: true }
+      );
+    }
+  );
+
+  mainWindow.webContents.on(
+    "did-fail-load",
+    (
+      _event,
+      errorCode,
+      errorDescription,
+      validatedUrl,
+      isMainFrame
+    ) => {
+      if (isMainFrame === false) {
+        return;
+      }
+
+      recordRendererFailure(
+        "page_load_failed",
+        `${errorCode || ""} ${errorDescription || "Dashboard page failed to load."} ${validatedUrl ? "(local page)" : ""}`.trim(),
+        { fatal: true }
+      );
+      showRendererBootstrapFallback();
+      attemptRendererRecovery(
+        "page load failure"
+      );
+    }
+  );
+
+  mainWindow.webContents.on(
+    "render-process-gone",
+    (_event, details = {}) => {
+      recordRendererFailure(
+        "process_gone",
+        `${details.reason || "unknown"}${details.exitCode !== undefined ? ` exit=${details.exitCode}` : ""}`,
+        { fatal: true }
+      );
+      attemptRendererRecovery(
+        "renderer process exit"
+      );
+    }
+  );
+
+  mainWindow.webContents.on(
+    "unresponsive",
+    () => {
+      recordRendererFailure(
+        "unresponsive",
+        "Dashboard renderer became unresponsive.",
+        { fatal: false }
+      );
+    }
+  );
 
   mainWindow.once("ready-to-show", () => {
     if (showOnReady && mainWindow && !mainWindow.isDestroyed()) {
@@ -3336,7 +3621,12 @@ function createWindow({ showOnReady = true } = {}) {
   });
 
   mainWindow.once("closed", () => {
+    clearRendererBootWatchdog();
     rendererReady = false;
+    rendererHealth =
+      closeRenderer(
+        rendererHealth
+      );
     mainWindow = null;
     nativeStreamActive = false;
     maybeInstallPendingWatcherUpdate("dashboard_closed");
@@ -3440,6 +3730,95 @@ function bootWatcherApp() {
   registerPairingProtocol();
   createTray();
   configureAutoUpdater();
+
+  ipcMain.handle(
+    "watcher:renderer-ready",
+    async (event, payload = {}) => {
+      if (
+        !isCurrentRendererSender(
+          event
+        )
+      ) {
+        return {
+          ok: false,
+          error:
+            "Renderer sender is not current.",
+        };
+      }
+
+      clearRendererBootWatchdog();
+      rendererReady = true;
+      rendererHealth =
+        completeRendererBoot(
+          rendererHealth,
+          {
+            bootstrapMs:
+              payload.bootstrapMs,
+          }
+        );
+
+      appendLog(
+        `Dashboard renderer ready${rendererHealth.bootstrapMs !== null ? ` in ${rendererHealth.bootstrapMs} ms` : ""}.`
+      );
+
+      processPendingPairingUrl();
+
+      return {
+        ok: true,
+        renderer:
+          buildRendererHealthMetadata(
+            rendererHealth
+          ),
+      };
+    }
+  );
+
+  ipcMain.handle(
+    "watcher:renderer-error",
+    async (event, payload = {}) => {
+      if (
+        !isCurrentRendererSender(
+          event
+        )
+      ) {
+        return {
+          ok: false,
+          error:
+            "Renderer sender is not current.",
+        };
+      }
+
+      const wasReady =
+        rendererReady;
+
+      recordRendererFailure(
+        payload.reason ||
+          "reported_error",
+        payload.errorMessage ||
+          "Renderer reported an error.",
+        {
+          fatal:
+            payload.fatal === true ||
+            !wasReady,
+        }
+      );
+
+      if (!wasReady) {
+        showRendererBootstrapFallback();
+        attemptRendererRecovery(
+          "reported bootstrap failure"
+        );
+      }
+
+      return {
+        ok: true,
+        renderer:
+          buildRendererHealthMetadata(
+            rendererHealth
+          ),
+      };
+    }
+  );
 
   ipcMain.handle("watcher:get-config", async () => {
     return loadConfig();
@@ -3727,7 +4106,12 @@ function bootWatcherApp() {
 }
 
 app.on("window-all-closed", () => {
+  clearRendererBootWatchdog();
   rendererReady = false;
+  rendererHealth =
+    closeRenderer(
+      rendererHealth
+    );
   // The replay engine intentionally survives without a BrowserWindow.
 });
 
@@ -3736,7 +4120,12 @@ app.on("activate", () => {
 });
 
 app.on("before-quit", (event) => {
+  clearRendererBootWatchdog();
   rendererReady = false;
+  rendererHealth =
+    closeRenderer(
+      rendererHealth
+    );
   stopTelemetryHeartbeat();
   stopMonitorWatchdog();
   stopResourceProfiling();
