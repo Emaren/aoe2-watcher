@@ -2256,6 +2256,11 @@ function recordRendererFailure(
   const key =
     `${rendererHealth.failureReason}:${safeError}`;
 
+  sendToRenderer(
+    "watcher:app-info",
+    getAppInfo(loadConfig())
+  );
+
   if (
     key !==
       rendererFailureTelemetryKey ||
@@ -3771,6 +3776,10 @@ function bootWatcherApp() {
         `Dashboard renderer ready${rendererHealth.bootstrapMs !== null ? ` in ${rendererHealth.bootstrapMs} ms` : ""}.`
       );
 
+      sendToRenderer(
+        "watcher:app-info",
+        getAppInfo(loadConfig())
+      );
       processPendingPairingUrl();
 
       return {

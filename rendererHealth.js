@@ -25,6 +25,7 @@ function sanitizeDiagnosticMessage(value, maxLength = 300) {
   text = text
     .replace(/(apiKey|watcherKey|x-api-key)=([^\s&]+)/gi, "$1=[redacted]")
     .replace(/[A-Za-z]:\\(?:[^\\\s]+\\)*[^\\\s]*/g, "[local-path]")
+    .replace(/(?:file:\/\/\/)?[A-Za-z]:\/(?:[^/\s]+\/)*[^/\s]*/g, "[local-path]")
     .replace(/\/(?:Users|home)\/[^/\s]+\/[^\s]*/g, "[local-path]");
 
   return text.slice(0, Math.max(40, Number(maxLength) || 300));
