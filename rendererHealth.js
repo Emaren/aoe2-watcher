@@ -23,7 +23,7 @@ function sanitizeDiagnosticMessage(value, maxLength = 300) {
     .trim();
 
   text = text
-    .replace(/(?:apiKey|watcherKey|x-api-key)=([^\s&]+)/gi, "$1=[redacted]")
+    .replace(/(apiKey|watcherKey|x-api-key)=([^\s&]+)/gi, "$1=[redacted]")
     .replace(/[A-Za-z]:\\(?:[^\\\s]+\\)*[^\\\s]*/g, "[local-path]")
     .replace(/\/(?:Users|home)\/[^/\s]+\/[^\s]*/g, "[local-path]");
 
@@ -68,7 +68,10 @@ function completeRendererBoot(
   { now = Date.now(), bootstrapMs = null } = {}
 ) {
   const measured =
-    Number.isFinite(Number(bootstrapMs)) && Number(bootstrapMs) >= 0
+    bootstrapMs !== null &&
+    bootstrapMs !== undefined &&
+    Number.isFinite(Number(bootstrapMs)) &&
+    Number(bootstrapMs) >= 0
       ? Number(bootstrapMs)
       : state.bootStartedAt
         ? Math.max(0, Number(now) - Date.parse(state.bootStartedAt))
@@ -147,7 +150,11 @@ function buildRendererHealthMetadata(state = createRendererHealthState()) {
     rendererBootStartedAt: state.bootStartedAt || null,
     rendererReadyAt: state.readyAt || null,
     rendererBootstrapMs:
-      Number.isFinite(Number(state.bootstrapMs)) ? Number(state.bootstrapMs) : null,
+      state.bootstrapMs !== null &&
+      state.bootstrapMs !== undefined &&
+      Number.isFinite(Number(state.bootstrapMs))
+        ? Number(state.bootstrapMs)
+        : null,
     rendererLastFailureAt: state.lastFailureAt || null,
     rendererFailureReason: state.failureReason || null,
     rendererLastError: state.lastError || null,

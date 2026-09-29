@@ -426,7 +426,10 @@ function invalidateFolderStatusCache() {
   cachedFolderStatus = null;
 }
 
-function buildRuntimeMetadata(config = loadConfig()) {
+function buildRuntimeMetadata(
+  config = loadConfig(),
+  { includeResourceProfile = false } = {}
+) {
   const watcherRuntime = getRuntimeStatus();
   const folder = inspectReplayFolderCached(config?.watchDir);
   return {
@@ -472,7 +475,9 @@ function buildRuntimeMetadata(config = loadConfig()) {
     updateFeedUrl: AUTO_UPDATE_FEED_URL,
     finalityContractVersion: 2,
     resourceProfile:
-      resourceProfiler.getSnapshot(),
+      includeResourceProfile
+        ? resourceProfiler.getSnapshot()
+        : undefined,
     ...buildRendererHealthMetadata(
       rendererHealth
     ),
@@ -1855,7 +1860,12 @@ function startTelemetryHeartbeat() {
 
     emitWatcherTelemetry("heartbeat", {
       metadata:
-        buildRuntimeMetadata(config),
+        buildRuntimeMetadata(
+          config,
+          {
+            includeResourceProfile: true,
+          }
+        ),
     });
 
     void flushWatcherTelemetryQueue(

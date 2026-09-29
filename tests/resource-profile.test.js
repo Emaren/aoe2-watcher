@@ -1,6 +1,8 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
 const test = require("node:test");
 
 const {
@@ -176,5 +178,26 @@ test("resource profiler keeps rolling averages, peaks, and exact attempted netwo
   assert.equal(
     snapshot.averageCpuPercent,
     2
+  );
+});
+
+
+test("resource profile stays heartbeat-scoped instead of bloating every telemetry event", () => {
+  const mainSource = fs.readFileSync(
+    path.join(__dirname, "..", "main.js"),
+    "utf8"
+  );
+
+  assert.match(
+    mainSource,
+    /function buildRuntimeMetadata\([\s\S]*includeResourceProfile = false/
+  );
+  assert.match(
+    mainSource,
+    /includeResourceProfile[\s\S]*resourceProfiler\.getSnapshot\(\)[\s\S]*: undefined/
+  );
+  assert.match(
+    mainSource,
+    /emitWatcherTelemetry\("heartbeat"[\s\S]*includeResourceProfile: true/
   );
 });
