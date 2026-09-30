@@ -194,10 +194,32 @@ test("resource profile stays heartbeat-scoped instead of bloating every telemetr
   );
   assert.match(
     mainSource,
-    /includeResourceProfile[\s\S]*resourceProfiler\.getSnapshot\(\)[\s\S]*: undefined/
+    /includeResourceProfile[\s\S]*buildResourceTelemetryProfile\(\)[\s\S]*: undefined/
   );
   assert.match(
     mainSource,
     /emitWatcherTelemetry\("heartbeat"[\s\S]*includeResourceProfile: true/
   );
+});
+
+
+test("remote resource heartbeat uses a compact support profile instead of the full local snapshot", () => {
+  const mainSource = fs.readFileSync(
+    path.join(__dirname, "..", "main.js"),
+    "utf8"
+  );
+
+  const helper =
+    mainSource.match(
+      /function buildResourceTelemetryProfile\(\)[\s\S]*?\n}\n\nfunction buildRuntimeMetadata/
+    )?.[0] || "";
+
+  assert.match(helper, /cpuPercent/);
+  assert.match(helper, /workingSetMb/);
+  assert.match(helper, /idleWakeupsPerSecond/);
+  assert.match(helper, /networkMbps/);
+  assert.match(helper, /powerSignal/);
+  assert.doesNotMatch(helper, /processTypes/);
+  assert.doesNotMatch(helper, /replayUploadBytes/);
+  assert.doesNotMatch(helper, /streamUploadBytes/);
 });

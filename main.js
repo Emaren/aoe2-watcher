@@ -426,6 +426,41 @@ function invalidateFolderStatusCache() {
   cachedFolderStatus = null;
 }
 
+function buildResourceTelemetryProfile() {
+  const profile =
+    resourceProfiler.getSnapshot();
+
+  return {
+    sampledAt: profile.sampledAt,
+    processCount: profile.processCount,
+    cpuPercent: profile.cpuPercent,
+    averageCpuPercent:
+      profile.averageCpuPercent,
+    workingSetMb: profile.workingSetMb,
+    sessionPeakWorkingSetMb:
+      profile.sessionPeakWorkingSetMb,
+    idleWakeupsPerSecond:
+      profile.idleWakeupsPerSecond,
+    idleWakeupsAvailable:
+      profile.idleWakeupsAvailable,
+    networkMbps: profile.networkMbps,
+    averageNetworkMbps:
+      profile.averageNetworkMbps,
+    powerSignal: profile.powerSignal
+      ? {
+          key:
+            profile.powerSignal.key,
+          label:
+            profile.powerSignal.label,
+        }
+      : null,
+    sampleCount: profile.sampleCount,
+    powerWatts: null,
+    powerMeasurement:
+      "cpu-and-wakeup-proxy",
+  };
+}
+
 function buildRuntimeMetadata(
   config = loadConfig(),
   { includeResourceProfile = false } = {}
@@ -476,7 +511,7 @@ function buildRuntimeMetadata(
     finalityContractVersion: 2,
     resourceProfile:
       includeResourceProfile
-        ? resourceProfiler.getSnapshot()
+        ? buildResourceTelemetryProfile()
         : undefined,
     ...buildRendererHealthMetadata(
       rendererHealth
@@ -3487,12 +3522,15 @@ function hydrateRenderer() {
     return;
   }
 
-  rendererReady = false;
-  rendererHealth =
-    beginRendererBoot(
-      rendererHealth
-    );
-  armRendererBootWatchdog();
+  // The bottom-of-body renderer can complete its IPC handshake before
+  // Electron emits did-finish-load. Never demote an already-ready renderer.
+  if (!rendererReady) {
+    rendererHealth =
+      beginRendererBoot(
+        rendererHealth
+      );
+    armRendererBootWatchdog();
+  }
 
   const config = loadConfig();
 

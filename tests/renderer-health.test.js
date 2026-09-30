@@ -125,3 +125,22 @@ test("main and renderer source keep the remote bootstrap diagnosis contract wire
   assert.match(preloadSource, /watcher:renderer-ready/);
   assert.match(preloadSource, /watcher:renderer-error/);
 });
+
+
+test("did-finish-load hydration never demotes an early successful renderer handshake", () => {
+  const mainSource = fs.readFileSync(
+    path.join(__dirname, "..", "main.js"),
+    "utf8"
+  );
+
+  const hydrate =
+    mainSource.match(
+      /function hydrateRenderer\(\)[\s\S]*?\n}\n\nfunction createWindow/
+    )?.[0] || "";
+
+  assert.match(hydrate, /if \(!rendererReady\)/);
+  assert.doesNotMatch(
+    hydrate,
+    /rendererReady\s*=\s*false/
+  );
+});
