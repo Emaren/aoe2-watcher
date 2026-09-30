@@ -8,16 +8,18 @@ systems: ["aoe2-watcher","api-prodn"]
 audience: ["developers","operators","ai-agents"]
 source_of_truth: "git"
 authority: "repository-entrypoint"
-reviewed_at: "2026-09-22"
+reviewed_at: "2026-09-29"
 review_interval_days: 60
 sensitivity: "internal"
 ---
 
 # aoe2-watcher
 
-## v1.6.2 release candidate — smaller footprint, stronger support
+## v1.6.2 certified release — public publication pending
 
-Watcher 1.6.2 is the next five-artifact release candidate. Its engineering goal is
+Watcher 1.6.2 has completed its five-artifact source, package, platform-signing and
+cryptographic certification gate. Public GitHub publication and AoE2WAR download
+promotion are intentionally separate final steps. Its engineering goal remains
 deliberately paradoxical: do less background work while exposing more useful truth.
 
 The steady-state reductions are structural. Passive replay-folder status caching moves
@@ -59,6 +61,21 @@ remote support diagnostics without asking gamers to use developer tools.
 
 The engineering audit and release evidence boundary live in
 [Watcher 1.6.2 Engineering Audit](docs/WATCHER_1_6_2_AUDIT.md).
+
+Certified 1.6.2 evidence:
+
+- runtime source: `1d1e9b3ca9f95a89cf47ab582219e4c85b725603`;
+- cross-platform build source: `b1e3b1353aa48840bdaa7d8afc353e1afc5bf22d`;
+- Windows Azure-signing run: `36649412730`;
+- macOS/Linux build run: `36649412594`;
+- certified publication-bundle run: `36649765669`;
+- certified bundle artifact: `certified-watcher-release-1.6.2`;
+- certified outer artifact digest:
+  `39123c7f47adcde308be83ee904f9c5ca4319c793b5911a05b3d7600c82449f4`.
+
+The five principal user-facing bytes are bound by SHA-256 in the certification
+manifest. Public app metadata must stay on 1.6.1 until the owner publishes those
+exact bytes as `v1.6.2` and the public release inventory is re-verified.
 
 ## v1.6.1 public release
 

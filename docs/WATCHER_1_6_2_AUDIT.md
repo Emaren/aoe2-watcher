@@ -22,10 +22,11 @@ fallbacks and diagnostics while making ordinary live watching difficult for a us
 to notice: low CPU, stable memory, little disk churn, bounded network activity,
 safe self-recovery, and upgrades that do not interrupt a match.
 
-1.6.1 remains public until this branch earns the complete source, package, platform,
-and cryptographic release gate. 1.6.2's resource instrumentation is also the vehicle
-for collecting real-machine field evidence after publication; this document does not
-turn proxy signals into invented watt claims.
+1.6.1 remains the public release until the owner publication handoff completes.
+1.6.2 has earned the complete source, package, platform-signing and cryptographic
+certification gate. Its resource instrumentation is also the vehicle for collecting
+real-machine field evidence after publication; this document does not turn proxy
+signals into invented watt claims.
 
 ## What is already strong
 
@@ -230,22 +231,72 @@ numbers:
 Support snapshots and heartbeat metadata carry the same compact values. No absolute
 replay path, key, replay contents or new personal data is added by this feature.
 
+## Certified release evidence
+
+The Sep. 29/30 UTC certification chain completed successfully:
+
+- runtime source: `1d1e9b3ca9f95a89cf47ab582219e4c85b725603`;
+- build source shared by all five platform candidates:
+  `b1e3b1353aa48840bdaa7d8afc353e1afc5bf22d`;
+- Watcher CI on the build source: run `36649412606`, success;
+- Windows installer + portable build and Azure Artifact Signing:
+  run `36649412730`, success;
+- macOS DMG/direct ZIP + Linux AppImage build:
+  run `36649412594`, success;
+- immutable certification/publication-bundle workflow:
+  run `36649765669`, success;
+- certified bundle artifact `certified-watcher-release-1.6.2`,
+  outer digest
+  `39123c7f47adcde308be83ee904f9c5ca4319c793b5911a05b3d7600c82449f4`.
+
+Certified principal artifacts:
+
+| Artifact | Bytes | SHA-256 |
+| --- | ---: | --- |
+| Windows installer | 108043264 | `80c04168949c791cfdc0c67432c2ac4868459219923d8b7c96efc40f24d8d0c3` |
+| Windows portable | 107780592 | `4b7d0709dae6e9a80ea400bbb88a87a3880b0d5bf99dac11bcdb5e8b6ff129f7` |
+| macOS DMG | 129148488 | `89860bc8d3a95283cb49d9d86f8a8b8b07e0423b3c7f53ddd5ddd003b1c8df95` |
+| macOS direct ZIP | 127433063 | `d2bfb053cf78418fa90d1dca20d223f8488c3baa82071d5db515dbbaceb38a78` |
+| Linux AppImage | 134026163 | `a73367344321e0e9399192dd47e588adab68770aa1632636ab4f3f3e1743237a` |
+
+Secondary certified evidence includes DMG blockmap
+`c14e65579e54b2417766c5ab816798fb2f87221798b3fee5fd4c788fa3beaf63`,
+`latest-mac.yml`
+`fc75da5949b3fcf12e3b1ac45feb714f1b983094c62a1c6c8b20bf18d25d1b3c`,
+`latest-linux.yml`
+`2138060fbedb23f3d7a090238634fd0cbd8388db674f80de5cd016093bd47b6f`,
+and generated Windows `latest.yml`
+`ed9b4ef11bd3a3a998b12da11febb755f64427d43bb33ea32e7bcb45acd324dc`.
+
+Package size stayed effectively flat versus 1.6.1: each principal artifact changed
+by roughly one-hundredth of one percent or less. That is distribution-size neutrality,
+not a claim about runtime cost. The runtime-efficiency claim rests on reduced scan,
+journal, retry and historical-state work plus the new field-measurement rail.
+
+The only remaining publication boundary is owner release creation/tag publication
+and verification of the public inventory. AoE2WAR web metadata must not advertise
+1.6.2 before that public evidence exists.
+
 ## Release acceptance and field-soak boundary
 
 ### Required before publication
 
-- Dependency audit, runtime lint, Watcher contracts and Electron package smoke are
-  green on the exact release-candidate source.
-- Historical-import contracts prove disk-backed one-at-a-time snapshots, bounded
-  state, stable-failure advancement and one end-of-batch settlement persistence.
-- Update lifecycle contracts preserve replay/import/upload/stream ownership and
-  renderer recovery remains bounded to one dashboard reload.
-- Renderer readiness/failure telemetry and diagnostic redaction contracts are green.
-- Windows installer + portable, macOS DMG + direct ZIP, and Linux AppImage are built
-  from a source-bound release commit, with the configured signing/notarization policy
-  preserved.
-- All five user-facing artifacts plus updater/support metadata are cryptographically
-  certified before public application metadata advertises 1.6.2.
+- **COMPLETE** — dependency audit, runtime lint, Watcher contracts and Electron
+  package smoke are green on the exact build source.
+- **COMPLETE** — historical-import contracts prove disk-backed one-at-a-time
+  snapshots, bounded state, stable-failure advancement and one end-of-batch
+  settlement persistence.
+- **COMPLETE** — update lifecycle contracts preserve replay/import/upload/stream
+  ownership and renderer recovery remains bounded to one dashboard reload.
+- **COMPLETE** — renderer readiness/failure telemetry and diagnostic redaction
+  contracts are green.
+- **COMPLETE** — Windows installer + portable, macOS DMG + direct ZIP, and Linux
+  AppImage are built from one source-bound build commit; Windows Azure signing and
+  configured macOS/Linux policy are preserved.
+- **COMPLETE** — all five user-facing artifacts plus updater/support metadata are
+  cryptographically certified. **PENDING OWNER HANDOFF** — public GitHub release
+  publication and post-publication inventory verification must occur before public
+  application metadata advertises 1.6.2.
 
 ### Field evidence intentionally collected by 1.6.2
 

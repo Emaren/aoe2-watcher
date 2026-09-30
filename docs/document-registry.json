@@ -43,7 +43,7 @@
       "review_interval_days": 14,
       "reviewed_at": "2026-09-29",
       "sensitivity": "internal",
-      "sha256": "30e688a3d3c68ec1b0976e8c64c205acc45e763265bce9a0b0991044178e1887",
+      "sha256": "e2c1167acf4373bda4d80b342a71b0d5034e73fc3c90779a7f3391e513ccd7c4",
       "source_of_truth": "git",
       "status": "draft",
       "systems": [
@@ -64,9 +64,9 @@
       "owner": "aoe2war-watcher",
       "path": "README.md",
       "review_interval_days": 60,
-      "reviewed_at": "2026-09-22",
+      "reviewed_at": "2026-09-29",
       "sensitivity": "internal",
-      "sha256": "4855754f5c07f8e5d6cbfd32306daaa34f3e8a4f8a0d2b5e79586f08b65fc1af",
+      "sha256": "b157382d6f957999e7c63e06b69bcc19c59d85eb6b0b79b371fb6e95b96df1ff",
       "source_of_truth": "git",
       "status": "active",
       "systems": [
