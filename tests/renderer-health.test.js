@@ -133,10 +133,21 @@ test("did-finish-load hydration never demotes an early successful renderer hands
     "utf8"
   );
 
+  const hydrateStart =
+    mainSource.indexOf("function hydrateRenderer()");
+  const createWindowStart =
+    mainSource.indexOf(
+      "function createWindow",
+      hydrateStart
+    );
   const hydrate =
-    mainSource.match(
-      /function hydrateRenderer\(\)[\s\S]*?\n}\n\nfunction createWindow/
-    )?.[0] || "";
+    hydrateStart >= 0 &&
+    createWindowStart > hydrateStart
+      ? mainSource.slice(
+          hydrateStart,
+          createWindowStart
+        )
+      : "";
 
   assert.match(hydrate, /if \(!rendererReady\)/);
   assert.doesNotMatch(
@@ -152,10 +163,21 @@ test("renderer process loss clears stale native-stream state before one recovery
     "utf8"
   );
 
+  const processGoneStart =
+    mainSource.indexOf('"render-process-gone"');
+  const unresponsiveStart =
+    mainSource.indexOf(
+      '"unresponsive"',
+      processGoneStart
+    );
   const processGone =
-    mainSource.match(
-      /"render-process-gone"[\s\S]*?\n\s*}\n\s*\);/
-    )?.[0] || "";
+    processGoneStart >= 0 &&
+    unresponsiveStart > processGoneStart
+      ? mainSource.slice(
+          processGoneStart,
+          unresponsiveStart
+        )
+      : "";
 
   assert.match(processGone, /nativeStreamActive\s*=\s*false/);
   assert.match(processGone, /attemptRendererRecovery/);
