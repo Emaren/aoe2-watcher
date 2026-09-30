@@ -14,6 +14,29 @@
         "operators",
         "ai-agents"
       ],
+      "authority": "repository-entrypoint",
+      "id": "aoe2war.aoe2-watcher.readme",
+      "owner": "aoe2war-watcher",
+      "path": "README.md",
+      "review_interval_days": 60,
+      "reviewed_at": "2026-09-29",
+      "sensitivity": "internal",
+      "sha256": "ef1a09aa99076c40f45b8eb2f02e2d87f1b979954fd819e512553d9ad9e57828",
+      "source_of_truth": "git",
+      "status": "active",
+      "systems": [
+        "aoe2-watcher",
+        "api-prodn"
+      ],
+      "title": "aoe2-watcher",
+      "type": "reference"
+    },
+    {
+      "audience": [
+        "developers",
+        "operators",
+        "ai-agents"
+      ],
       "authority": "generated-repository-index",
       "id": "aoe2war.aoe2-watcher.docs-documentation-control-plane",
       "owner": "aoe2war-watcher",
@@ -21,7 +44,7 @@
       "review_interval_days": 0,
       "reviewed_at": "2026-07-26",
       "sensitivity": "internal",
-      "sha256": "3ce2d81c2f1b6782bde3c1c16048f67b3600de42275e5e5a67e335cf68bd5f58",
+      "sha256": "68627ff2d9aee63633cf5fad67717c87efeca0602dd229c5a81f779895ea3f0b",
       "source_of_truth": "generated",
       "status": "generated",
       "systems": [
@@ -52,29 +75,6 @@
       ],
       "title": "Watcher 1.6.2 Engineering Audit",
       "type": "working"
-    },
-    {
-      "audience": [
-        "developers",
-        "operators",
-        "ai-agents"
-      ],
-      "authority": "repository-entrypoint",
-      "id": "aoe2war.aoe2-watcher.readme",
-      "owner": "aoe2war-watcher",
-      "path": "README.md",
-      "review_interval_days": 60,
-      "reviewed_at": "2026-09-29",
-      "sensitivity": "internal",
-      "sha256": "ef1a09aa99076c40f45b8eb2f02e2d87f1b979954fd819e512553d9ad9e57828",
-      "source_of_truth": "git",
-      "status": "active",
-      "systems": [
-        "aoe2-watcher",
-        "api-prodn"
-      ],
-      "title": "aoe2-watcher",
-      "type": "reference"
     }
   ]
 }
