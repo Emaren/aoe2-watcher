@@ -144,3 +144,19 @@ test("did-finish-load hydration never demotes an early successful renderer hands
     /rendererReady\s*=\s*false/
   );
 });
+
+
+test("renderer process loss clears stale native-stream state before one recovery reload", () => {
+  const mainSource = fs.readFileSync(
+    path.join(__dirname, "..", "main.js"),
+    "utf8"
+  );
+
+  const processGone =
+    mainSource.match(
+      /"render-process-gone"[\s\S]*?\n\s*}\n\s*\);/
+    )?.[0] || "";
+
+  assert.match(processGone, /nativeStreamActive\s*=\s*false/);
+  assert.match(processGone, /attemptRendererRecovery/);
+});

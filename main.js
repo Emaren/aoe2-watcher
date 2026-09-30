@@ -3645,6 +3645,11 @@ function createWindow({ showOnReady = true } = {}) {
   mainWindow.webContents.on(
     "render-process-gone",
     (_event, details = {}) => {
+      // Native MediaRecorder capture lives in the renderer. If that process
+      // is gone, the local video stream is already dead; do not let a stale
+      // stream flag block the one bounded dashboard recovery reload.
+      nativeStreamActive = false;
+
       recordRendererFailure(
         "process_gone",
         `${details.reason || "unknown"}${details.exitCode !== undefined ? ` exit=${details.exitCode}` : ""}`,
