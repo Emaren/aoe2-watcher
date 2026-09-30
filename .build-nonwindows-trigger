@@ -2,4 +2,4 @@ AoE2HDBets Watcher non-Windows release build
 version=1.6.2
 runtime_source=1d1e9b3ca9f95a89cf47ab582219e4c85b725603
 reason=release_1.6.2_cross_platform_contract_portability
-attempt=2
+attempt=3

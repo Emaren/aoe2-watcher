@@ -209,10 +209,23 @@ test("remote resource heartbeat uses a compact support profile instead of the fu
     "utf8"
   );
 
+  const helperStart =
+    mainSource.indexOf(
+      "function buildResourceTelemetryProfile()"
+    );
+  const metadataStart =
+    mainSource.indexOf(
+      "function buildRuntimeMetadata",
+      helperStart
+    );
   const helper =
-    mainSource.match(
-      /function buildResourceTelemetryProfile\(\)[\s\S]*?\n}\n\nfunction buildRuntimeMetadata/
-    )?.[0] || "";
+    helperStart >= 0 &&
+    metadataStart > helperStart
+      ? mainSource.slice(
+          helperStart,
+          metadataStart
+        )
+      : "";
 
   assert.match(helper, /cpuPercent/);
   assert.match(helper, /workingSetMb/);
