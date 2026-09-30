@@ -69,6 +69,16 @@ export function rewriteReadme(text, version) {
   paragraphs[0] = publicHeading;
   paragraphs[state.statusParagraphIndex] = publicReleaseParagraph(version);
 
+  if (state.heading.includes("certified release")) {
+    const boundaryIndex = paragraphs.findIndex((paragraph) =>
+      paragraph.includes("Public app metadata must stay")
+    );
+    if (boundaryIndex >= 0) {
+      paragraphs[boundaryIndex] =
+        `The five principal user-facing bytes are bound by SHA-256 in the certification manifest. The immutable \`v${version}\` public release inventory has been verified, so downstream release metadata may promote only those exact certified bytes.`;
+    }
+  }
+
   return (
     text.slice(0, start) +
     paragraphs.join("\n\n") +

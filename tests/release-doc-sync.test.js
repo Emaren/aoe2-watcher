@@ -39,6 +39,8 @@ test("promotes a certified pending-publication section without discarding audit 
     "",
     "A second detailed paragraph must survive the lifecycle transition.",
     "",
+    "The five principal user-facing bytes are bound by SHA-256 in the certification manifest. Public app metadata must stay on 1.6.1 until the owner publishes these exact bytes.",
+    "",
     "## v1.6.1 public release",
     "",
     "Previous release.",
@@ -57,6 +59,11 @@ test("promotes a certified pending-publication section without discarding audit 
     /A second detailed paragraph must survive the lifecycle transition\./,
   );
   assert.doesNotMatch(updated, /certified release — public publication pending/);
+  assert.doesNotMatch(updated, /Public app metadata must stay/);
+  assert.match(
+    updated,
+    /immutable `v1\.6\.2` public release inventory has been verified/,
+  );
 });
 
 test("an already-public release stays current even with richer release prose", async () => {
