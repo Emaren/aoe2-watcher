@@ -39,8 +39,7 @@ This page is generated from the validated front matter in this repository. Cross
 
 ### Lifecycle
 
-- `active`: 1
-- `draft`: 1
+- `active`: 2
 - `generated`: 1
 
 ## Documents
@@ -48,7 +47,7 @@ This page is generated from the validated front matter in this repository. Cross
 | Document | Type | Status | Authority |
 | --- | --- | --- | --- |
 | [aoe2-watcher](../README.md) | `reference` | `active` | `repository-entrypoint` |
-| [Watcher 1.6.2 Engineering Audit](WATCHER_1_6_2_AUDIT.md) | `working` | `draft` | `watcher-1.6.2-engineering-plan` |
+| [Watcher 1.6.2 Engineering Audit](WATCHER_1_6_2_AUDIT.md) | `working` | `active` | `watcher-1.6.2-engineering-plan` |
 
 ## Canonical commands
 
