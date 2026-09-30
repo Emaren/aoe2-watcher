@@ -8,7 +8,7 @@ systems: ["aoe2-watcher","api-prodn"]
 audience: ["developers","operators","ai-agents"]
 source_of_truth: "git"
 authority: "watcher-1.6.2-engineering-plan"
-reviewed_at: "2026-09-22"
+reviewed_at: "2026-09-29"
 review_interval_days: 14
 sensitivity: "internal"
 ---
@@ -22,8 +22,10 @@ fallbacks and diagnostics while making ordinary live watching difficult for a us
 to notice: low CPU, stable memory, little disk churn, bounded network activity,
 safe self-recovery, and upgrades that do not interrupt a match.
 
-1.6.1 remains public until this branch earns a complete Windows, macOS and Linux
-release gate. Nothing in this document authorizes publication or production rollout.
+1.6.1 remains public until this branch earns the complete source, package, platform,
+and cryptographic release gate. 1.6.2's resource instrumentation is also the vehicle
+for collecting real-machine field evidence after publication; this document does not
+turn proxy signals into invented watt claims.
 
 ## What is already strong
 
@@ -50,12 +52,49 @@ Before this branch, support telemetry could prove what the Watcher was doing but
 not how expensive the Watcher itself was. CPU, RAM, processor wakeups and
 Watcher-attributable network rate were absent from the user-facing diagnostics.
 
-**1.6.2 status:** first tranche implemented. The Watcher samples the Electron
-process tree every 15 seconds while replay/import/stream work is active, backs off
-to 60 seconds whenever the Watcher is otherwise idle (even if the dashboard remains
-open), keeps a small rolling window, records
-session peaks, and publishes only the compact resource summary through the existing
-heartbeat.
+**1.6.2 status:** implemented. The Watcher samples the Electron process tree every
+15 seconds while replay/import/upload/stream work is active, backs off to 60 seconds
+whenever the Watcher is otherwise idle (even if the dashboard remains open), keeps a
+small rolling window, and records session peaks. The remote profile is a compact
+support subset attached only to the existing heartbeat; ordinary replay lifecycle
+events do not inherit the resource block.
+
+### P1 — dashboard bootstrap health was not independently observable
+
+A Sep. 29 Windows 1.6.1 field report showed a repeatable split-brain support state:
+the Watcher engine remained authenticated, heartbeating, monitor-attached, and bound
+to a valid active HD folder while the desktop window stayed on the static
+`Loading watcher…` placeholder after a full process-tree restart.
+
+The exact local JavaScript exception cannot be recovered retroactively because 1.6.1
+did not report renderer startup truth. Its main process marked `rendererReady=true`
+on Electron `did-finish-load`, which proves HTML finished loading but does not prove
+that preload, renderer JavaScript, initial IPC, or first meaningful render completed.
+
+**1.6.2 status:** implemented and contract-tested.
+
+- The renderer sends an explicit readiness handshake only after config/app state has
+  loaded and the first meaningful UI render has completed.
+- Main tracks closed / booting / recovering / ready / failed state independently of
+  replay-engine health.
+- A bounded 12-second boot watchdog records a sanitized `watcher_error` and updates
+  the local dashboard to a human-readable startup issue instead of leaving an
+  indefinite loading placeholder.
+- Main observes preload errors, main-frame load failures, renderer-process loss and
+  unresponsive state. Global renderer exceptions/rejections report through the same
+  bounded support rail when the preload bridge is available.
+- At most one cache-bypassing dashboard reload is attempted. Replay monitoring is not
+  restarted. A renderer-process crash during native streaming clears the stale local
+  stream-active flag first because MediaRecorder lived in the dead renderer.
+- Heartbeats expose renderer status, readiness, bootstrap time, last failure reason,
+  failure count and recovery-attempt count without transmitting API keys or full local
+  paths.
+- The readiness race is covered: an early successful IPC handshake is never demoted
+  later merely because Electron subsequently emits `did-finish-load`.
+
+This does not claim the unknown 1.6.1 field exception itself was identified. It closes
+the support blind spot so the same class of failure becomes self-describing and, when
+safe, self-recovering.
 
 ### P1 — power must be measured without pretending
 
@@ -191,29 +230,35 @@ numbers:
 Support snapshots and heartbeat metadata carry the same compact values. No absolute
 replay path, key, replay contents or new personal data is added by this feature.
 
-## Next audit passes before release
+## Release acceptance and field-soak boundary
 
-- Run an actual idle/live/import/stream resource benchmark on Windows and macOS;
-  capture p50/p95 CPU, RAM peak, wakeups, network and defensible system-power delta.
-- Exercise huge replay libraries and decide whether event-maintained folder metadata
-  can replace most full status censuses.
-- Build the macOS idle-safe verified self-update path or document the exact signing
-  blocker if Apple trust requirements prevent it.
-- Measure app startup/background process count and remove only work proven redundant.
-- Re-audit timers, retries, telemetry queue limits, runtime-journal rotation and
-  sleep/wake recovery after the resource instrumentation itself has soaked.
-- Re-run Windows installer/portable, macOS DMG/ZIP and Linux AppImage packaging,
-  signing/notarization policy, hashes and updater manifests before changing public
-  version metadata.
+### Required before publication
 
-## Release boundary
+- Dependency audit, runtime lint, Watcher contracts and Electron package smoke are
+  green on the exact release-candidate source.
+- Historical-import contracts prove disk-backed one-at-a-time snapshots, bounded
+  state, stable-failure advancement and one end-of-batch settlement persistence.
+- Update lifecycle contracts preserve replay/import/upload/stream ownership and
+  renderer recovery remains bounded to one dashboard reload.
+- Renderer readiness/failure telemetry and diagnostic redaction contracts are green.
+- Windows installer + portable, macOS DMG + direct ZIP, and Linux AppImage are built
+  from a source-bound release commit, with the configured signing/notarization policy
+  preserved.
+- All five user-facing artifacts plus updater/support metadata are cryptographically
+  certified before public application metadata advertises 1.6.2.
 
-Do not call this 1.6.2 publicly until:
+### Field evidence intentionally collected by 1.6.2
 
-- all Watcher contracts and package smoke tests are green;
-- measured normal replay-watching resource behavior is acceptable;
-- no resource regression appears during historical import;
-- update behavior is safe while a replay/import/stream is active;
-- all five platform artifacts are built and cryptographically certified; and
-- public app metadata is promoted only after the production Watcher vault contains
-  those exact certified bytes.
+- Collect real Windows/macOS idle, normal replay, historical import and native-stream
+  CPU/RAM/wakeup/payload profiles from the new instrumentation and use p50/p95 evidence
+  to tune the next Watcher version.
+- Exercise very large replay libraries in the field before replacing the conservative
+  five-minute full-census failsafe with event-maintained metadata.
+- Continue the macOS one-action verified updater only when Apple signing/notarization
+  trust can be preserved; convenience does not override release provenance.
+- Treat any system-power measurement as controlled external evidence. `powerWatts`
+  stays null in 1.6.2.
+
+The 1.6.2 release claim is therefore structural rather than theatrical: lower passive
+I/O and telemetry churn, bounded memory state, stronger diagnostics and recovery, with
+no invented promise that every machine consumes a specific number of watts.

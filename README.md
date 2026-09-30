@@ -15,41 +15,50 @@ sensitivity: "internal"
 
 # aoe2-watcher
 
-## v1.6.2 development branch — tiny, powerful, measurable
+## v1.6.2 release candidate — smaller footprint, stronger support
 
-Watcher 1.6.1 remains the current public release. The 1.6.2 branch is deliberately
-not published yet; it is the accumulation lane for measured resource efficiency,
-cross-machine resilience, telemetry, and update ergonomics before the next
-five-artifact release gate.
+Watcher 1.6.2 is the next five-artifact release candidate. Its engineering goal is
+deliberately paradoxical: do less background work while exposing more useful truth.
 
-The first 1.6.2 tranche adds an adaptive low-frequency resource profile built from
-Electron's own process-tree metrics: current/rolling CPU, working-set memory,
-session peaks, processor wakeups, and Watcher-attributable replay/stream network
-rate. It samples every 15 seconds while the dashboard or real work is active and
-backs off to 60 seconds when the Watcher is quietly backgrounded. Those
-figures appear in Diagnostics, support snapshots, and heartbeat metadata. The
-power readout is intentionally a CPU/wakeup **signal**, not invented watts:
-portable per-process watt measurement is not exposed by Electron.
+The steady-state reductions are structural. Passive replay-folder status caching moves
+from one minute to five minutes; runtime-event diagnostics batch bounded asynchronous
+writes instead of synchronously appending every event; healthy durable telemetry no
+longer rewrites empty or no-progress queue state; historical scans stop allocating
+state for every archived replay and persist one bounded settlement snapshot per batch.
+Settled runtime state is capped by both the existing 5,000-entry limit and the 90-day
+age contract without pruning active work.
 
-Passive replay-folder status caching is also extended to five minutes, matching the
-existing freshness probe, so an idle Watcher does fewer full directory inspections.
-Each inspection now records its entry count and elapsed time so large replay
-libraries can be measured before any more aggressive optimization is attempted.
+The new resource profiler samples the Electron process tree every 15 seconds only
+while replay/import/upload/stream work is active and backs off to 60 seconds when the
+Watcher is otherwise idle, even with the dashboard open. CPU, working-set RAM,
+processor wakeups, payload-attempt rate, and a non-watt power signal are visible in
+Diagnostics. Remote telemetry carries a compact support subset on the existing
+one-minute heartbeat only; ordinary replay lifecycle events do not carry the resource
+profile.
 
-Runtime-event diagnostics no longer synchronously append to disk for every event.
-They batch in memory and flush asynchronously after up to two seconds or 64 KiB,
-with one bounded synchronous final flush only when the app quits. The journal
-retains its existing size/rotation boundary while reducing steady-state disk churn.
+A Sep. 29 Windows 1.6.1 field report from Tekki exposed a separate support blind spot:
+the replay engine remained authenticated, heartbeating, monitor-attached, and pointed
+at a valid active HD folder while the desktop window stayed on the static
+"Loading watcher…" placeholder even after a cold process restart. 1.6.1 treated
+Electron `did-finish-load` as renderer readiness, which proved only that HTML loaded.
 
-Historical scans also stop allocating an in-memory replay-state object merely to
-look at every archived file. Transient failed import state is released after each
-item, settled state is capped to the existing 5,000-entry durability contract, and
-the historical batch writes settlement state once at completion instead of
-rewriting the full state file after every successful replay.
+1.6.2 replaces that assumption with an explicit renderer-ready handshake. The main
+process records sanitized preload/page/renderer-process/bootstrap failures, exposes
+renderer health in heartbeat/support metadata, waits a bounded 12 seconds for startup,
+and performs at most one safe dashboard reload. Replay monitoring remains a separate
+engine and is not restarted by dashboard recovery. If the renderer process itself dies
+during optional native streaming, stale local stream state is cleared before that one
+recovery attempt because the renderer-owned MediaRecorder is already gone.
 
-The working engineering audit and release boundary live in
+This release does **not** claim measured universal watt or CPU savings. Electron does
+not expose defensible portable per-process watts, and real-machine p50/p95 resource
+evidence will be collected from 1.6.2's new instrumentation during field soak. The
+release claim is narrower and testable: less passive filesystem/disk/telemetry churn,
+bounded historical memory state, stronger self-recovery, and substantially better
+remote support diagnostics without asking gamers to use developer tools.
+
+The engineering audit and release evidence boundary live in
 [Watcher 1.6.2 Engineering Audit](docs/WATCHER_1_6_2_AUDIT.md).
-
 
 ## v1.6.1 public release
 
