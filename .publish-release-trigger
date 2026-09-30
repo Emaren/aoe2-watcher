@@ -1,6 +1,7 @@
-AoE2HDBets Watcher release publish
-version=1.6.1
-windows_run=35808959038
-nonwindows_run=35808958815
-runtime_source=3f8982d0f9c3f28540ec49adacad5418de065adc
-build_source=eb8c7478575b472273b4400f01c4d401df03e2c5
+AoE2HDBets Watcher certified release publication gate
+version=1.6.2
+runtime_source=1d1e9b3ca9f95a89cf47ab582219e4c85b725603
+build_source=b1e3b1353aa48840bdaa7d8afc353e1afc5bf22d
+windows_run=36649412730
+nonwindows_run=36649412594
+reason=certify_1.6.2_tiny_powerful_renderer_support

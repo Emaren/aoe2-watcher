@@ -18,11 +18,11 @@ jobs:
     timeout-minutes: 20
 
     env:
-      VERSION: "1.6.1"
-      WINDOWS_RUN_ID: "35808959038"
-      NONWINDOWS_RUN_ID: "35808958815"
-      RUNTIME_SOURCE_SHA: "3f8982d0f9c3f28540ec49adacad5418de065adc"
-      BUILD_SOURCE_SHA: "eb8c7478575b472273b4400f01c4d401df03e2c5"
+      VERSION: "1.6.2"
+      WINDOWS_RUN_ID: "36649412730"
+      NONWINDOWS_RUN_ID: "36649412594"
+      RUNTIME_SOURCE_SHA: "1d1e9b3ca9f95a89cf47ab582219e4c85b725603"
+      BUILD_SOURCE_SHA: "b1e3b1353aa48840bdaa7d8afc353e1afc5bf22d"
 
     steps:
       - name: Checkout
@@ -172,21 +172,21 @@ jobs:
 
           expected = {
               f"AoE2HDBets Watcher Setup {version}.exe":
-                  "755f04816cb0c965c1c716f0a904521b6c470448b4096d07668ab02ff20a32fa",
+                  "80c04168949c791cfdc0c67432c2ac4868459219923d8b7c96efc40f24d8d0c3",
               f"AoE2HDBets Watcher {version}.exe":
-                  "775356c6f901ab688537a00d96bfb1887bf0d44799103df2a1b17fecefbfec44",
+                  "4b7d0709dae6e9a80ea400bbb88a87a3880b0d5bf99dac11bcdb5e8b6ff129f7",
               f"AoE2HDBets Watcher-{version}-arm64.dmg":
-                  "e00be9ce8ff1e3fb4794345c5f72147c6d71b947c7581f626e6e8ebb89f551d8",
+                  "89860bc8d3a95283cb49d9d86f8a8b8b07e0423b3c7f53ddd5ddd003b1c8df95",
               "aoe2hdbets-watcher-direct.zip":
-                  "c22084525aebf7634581e3abeb6c794ff5206579630a00e6f94df7fe226b60cc",
+                  "d2bfb053cf78418fa90d1dca20d223f8488c3baa82071d5db515dbbaceb38a78",
               f"AoE2HDBets Watcher-{version}.AppImage":
-                  "56df79354885859826833c848591b69605aae5cd2964d69f6d6ed40f14b98924",
+                  "a73367344321e0e9399192dd47e588adab68770aa1632636ab4f3f3e1743237a",
               f"AoE2HDBets Watcher-{version}-arm64.dmg.blockmap":
-                  "87564583a61e95e3576bd2385e4239ca18d1fca572328defe6791a3e783571df",
+                  "c14e65579e54b2417766c5ab816798fb2f87221798b3fee5fd4c788fa3beaf63",
               "latest-mac.yml":
-                  "3779e9181397c60b4b8fed02db3cf1b906d60af11d600b5b73bb37bafc59f95a",
+                  "fc75da5949b3fcf12e3b1ac45feb714f1b983094c62a1c6c8b20bf18d25d1b3c",
               "latest-linux.yml":
-                  "66b56060fb82a35fc655ac8361df5f6b071ea85cb58d85e356c3aa3f1e92b63b",
+                  "2138060fbedb23f3d7a090238634fd0cbd8388db674f80de5cd016093bd47b6f",
           }
 
           actual = {row["filename"]: row["sha256"] for row in rows}
