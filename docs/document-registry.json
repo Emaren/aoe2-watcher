@@ -4,8 +4,8 @@
   "repo": "aoe2-watcher",
   "owner": "aoe2war-watcher",
   "implementation_baseline": {
-    "branch": "feature/watcher-1.6.2-tiny-powerful-20260922",
-    "commit": "1d1e9b3ca9f95a89cf47ab582219e4c85b725603"
+    "branch": "fix/release-doc-lifecycle-20260930",
+    "commit": "8bf003afd76314064f23ceaa23a42c21d7cf91b8"
   },
   "documents": [
     {
@@ -21,7 +21,7 @@
       "review_interval_days": 0,
       "reviewed_at": "2026-07-26",
       "sensitivity": "internal",
-      "sha256": "aa74ac972d47a9da45b3d586f9e1d2ec098ba14ddef062708c8e7877d8aed577",
+      "sha256": "3ce2d81c2f1b6782bde3c1c16048f67b3600de42275e5e5a67e335cf68bd5f58",
       "source_of_truth": "generated",
       "status": "generated",
       "systems": [
@@ -43,9 +43,9 @@
       "review_interval_days": 14,
       "reviewed_at": "2026-09-29",
       "sensitivity": "internal",
-      "sha256": "e2c1167acf4373bda4d80b342a71b0d5034e73fc3c90779a7f3391e513ccd7c4",
+      "sha256": "e90b0a07d96c74c92746212561cba2731036c9af20d926751fc3965e31f878e1",
       "source_of_truth": "git",
-      "status": "draft",
+      "status": "active",
       "systems": [
         "aoe2-watcher",
         "api-prodn"
@@ -66,7 +66,7 @@
       "review_interval_days": 60,
       "reviewed_at": "2026-09-29",
       "sensitivity": "internal",
-      "sha256": "b157382d6f957999e7c63e06b69bcc19c59d85eb6b0b79b371fb6e95b96df1ff",
+      "sha256": "ef1a09aa99076c40f45b8eb2f02e2d87f1b979954fd819e512553d9ad9e57828",
       "source_of_truth": "git",
       "status": "active",
       "systems": [

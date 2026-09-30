@@ -22,27 +22,69 @@ export function publicReleaseParagraph(version) {
 }
 
 export function rewriteReadme(text, version) {
-  const heading = `## v${version} release candidate`;
   const publicHeading = `## v${version} public release`;
   if (text.includes(publicHeading)) {
     return text;
   }
-  const start = text.indexOf(`${heading}\n`);
-  if (start < 0) {
-    throw new Error(`release candidate section missing for ${version}`);
+
+  const lifecycleStates = [
+    {
+      heading: `## v${version} release candidate`,
+      statusParagraphIndex: 2,
+    },
+    {
+      heading: `## v${version} certified release — public publication pending`,
+      statusParagraphIndex: 1,
+    },
+  ];
+
+  const state = lifecycleStates.find(({ heading }) =>
+    text.includes(`${heading}\n`)
+  );
+  if (!state) {
+    throw new Error(
+      `pre-publication release section missing for ${version}; expected candidate or certified/pending-publication state`,
+    );
   }
-  const nextHeading = text.indexOf("\n## ", start + heading.length + 1);
+
+  const start = text.indexOf(`${state.heading}\n`);
+  const nextHeading = text.indexOf(
+    "\n## ",
+    start + state.heading.length + 1,
+  );
   if (nextHeading < 0) {
-    throw new Error(`next section boundary missing after ${heading}`);
+    throw new Error(
+      `next section boundary missing after ${state.heading}`,
+    );
   }
+
   const section = text.slice(start, nextHeading);
   const paragraphs = section.split("\n\n");
-  if (paragraphs.length < 3) {
-    throw new Error(`release candidate section is incomplete for ${version}`);
+  if (paragraphs.length <= state.statusParagraphIndex) {
+    throw new Error(
+      `pre-publication release section is incomplete for ${version}`,
+    );
   }
+
   paragraphs[0] = publicHeading;
-  paragraphs[2] = publicReleaseParagraph(version);
-  return text.slice(0, start) + paragraphs.join("\n\n") + "\n" + text.slice(nextHeading);
+  paragraphs[state.statusParagraphIndex] = publicReleaseParagraph(version);
+
+  if (state.heading.includes("certified release")) {
+    const boundaryIndex = paragraphs.findIndex((paragraph) =>
+      paragraph.includes("Public app metadata must stay")
+    );
+    if (boundaryIndex >= 0) {
+      paragraphs[boundaryIndex] =
+        `The five principal user-facing bytes are bound by SHA-256 in the certification manifest. The immutable \`v${version}\` public release inventory has been verified, so downstream release metadata may promote only those exact certified bytes.`;
+    }
+  }
+
+  return (
+    text.slice(0, start) +
+    paragraphs.join("\n\n") +
+    "\n" +
+    text.slice(nextHeading)
+  );
 }
 
 export function releaseInventoryComplete(payload, version) {

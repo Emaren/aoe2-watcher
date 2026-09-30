@@ -26,6 +26,46 @@ test("promotes the current candidate section to a public release", async () => {
   assert.ok(updated.includes(publicReleaseParagraph("1.5.12")));
   assert.match(updated, /## v1\.5\.11 release candidate/);
 });
+test("promotes a certified pending-publication section without discarding audit prose", async () => {
+  const { rewriteReadme, publicReleaseParagraph } = await moduleUnderTest();
+  const source = [
+    "# aoe2-watcher",
+    "",
+    "## v1.6.2 certified release — public publication pending",
+    "",
+    "Watcher 1.6.2 has completed certification but public publication is pending.",
+    "",
+    "The detailed resource-profile and renderer-health engineering evidence stays here.",
+    "",
+    "A second detailed paragraph must survive the lifecycle transition.",
+    "",
+    "The five principal user-facing bytes are bound by SHA-256 in the certification manifest. Public app metadata must stay on 1.6.1 until the owner publishes these exact bytes.",
+    "",
+    "## v1.6.1 public release",
+    "",
+    "Previous release.",
+    "",
+  ].join("\n");
+
+  const updated = rewriteReadme(source, "1.6.2");
+  assert.match(updated, /## v1\.6\.2 public release/);
+  assert.ok(updated.includes(publicReleaseParagraph("1.6.2")));
+  assert.match(
+    updated,
+    /The detailed resource-profile and renderer-health engineering evidence stays here\./,
+  );
+  assert.match(
+    updated,
+    /A second detailed paragraph must survive the lifecycle transition\./,
+  );
+  assert.doesNotMatch(updated, /certified release — public publication pending/);
+  assert.doesNotMatch(updated, /Public app metadata must stay/);
+  assert.match(
+    updated,
+    /immutable `v1\.6\.2` public release inventory has been verified/,
+  );
+});
+
 test("an already-public release stays current even with richer release prose", async () => {
   const { rewriteReadme } = await moduleUnderTest();
   const source = [
