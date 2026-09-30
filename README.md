@@ -15,12 +15,13 @@ sensitivity: "internal"
 
 # aoe2-watcher
 
-## v1.6.2 certified release — public publication pending
+## v1.6.2 public release
 
-Watcher 1.6.2 has completed its five-artifact source, package, platform-signing and
-cryptographic certification gate. Public GitHub publication and AoE2WAR download
-promotion are intentionally separate final steps. Its engineering goal remains
-deliberately paradoxical: do less background work while exposing more useful truth.
+Watcher 1.6.2 is the current public release. The five-artifact publication gate
+completed for Windows Installer, Windows Portable, macOS DMG, macOS Direct ZIP,
+and Linux AppImage. The immutable `v1.6.2` release and its updater metadata were
+verified before publication. Its engineering goal remains deliberately paradoxical:
+do less background work while exposing more useful truth.
 
 The steady-state reductions are structural. Passive replay-folder status caching moves
 from one minute to five minutes; runtime-event diagnostics batch bounded asynchronous
@@ -74,8 +75,9 @@ Certified 1.6.2 evidence:
   `39123c7f47adcde308be83ee904f9c5ca4319c793b5911a05b3d7600c82449f4`.
 
 The five principal user-facing bytes are bound by SHA-256 in the certification
-manifest. Public app metadata must stay on 1.6.1 until the owner publishes those
-exact bytes as `v1.6.2` and the public release inventory is re-verified.
+manifest. The immutable `v1.6.2` public release inventory was re-verified after
+publication, and AoE2WAR's production download vault was proven byte-for-byte
+against that certified public inventory before downstream metadata promotion.
 
 ## v1.6.1 public release
 

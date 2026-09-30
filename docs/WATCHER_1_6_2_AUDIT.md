@@ -2,7 +2,7 @@
 id: "aoe2war.aoe2-watcher.docs-watcher-1-6-2-audit"
 title: "Watcher 1.6.2 Engineering Audit"
 type: "working"
-status: "draft"
+status: "active"
 owner: "aoe2war-watcher"
 systems: ["aoe2-watcher","api-prodn"]
 audience: ["developers","operators","ai-agents"]
@@ -22,11 +22,11 @@ fallbacks and diagnostics while making ordinary live watching difficult for a us
 to notice: low CPU, stable memory, little disk churn, bounded network activity,
 safe self-recovery, and upgrades that do not interrupt a match.
 
-1.6.1 remains the public release until the owner publication handoff completes.
-1.6.2 has earned the complete source, package, platform-signing and cryptographic
-certification gate. Its resource instrumentation is also the vehicle for collecting
-real-machine field evidence after publication; this document does not turn proxy
-signals into invented watt claims.
+1.6.2 is the current public release. It completed the source, package,
+platform-signing, cryptographic certification, owner-publication and public-inventory
+verification gates before AoE2WAR downstream metadata promotion. Its resource
+instrumentation is also the vehicle for collecting real-machine field evidence after
+publication; this document does not turn proxy signals into invented watt claims.
 
 ## What is already strong
 
@@ -273,13 +273,15 @@ by roughly one-hundredth of one percent or less. That is distribution-size neutr
 not a claim about runtime cost. The runtime-efficiency claim rests on reduced scan,
 journal, retry and historical-state work plus the new field-measurement rail.
 
-The only remaining publication boundary is owner release creation/tag publication
-and verification of the public inventory. AoE2WAR web metadata must not advertise
-1.6.2 before that public evidence exists.
+The owner publication boundary is complete. Public GitHub release `v1.6.2`
+(release ID `399642320`) was published on 2026-09-30 01:25:23 UTC, and all 11
+public assets were re-verified by SHA-256 digest multiset against the certified bundle.
+AoE2WAR's production download vault was then proven 11/11 exact before downstream
+metadata promotion.
 
 ## Release acceptance and field-soak boundary
 
-### Required before publication
+### Publication gate — complete
 
 - **COMPLETE** — dependency audit, runtime lint, Watcher contracts and Electron
   package smoke are green on the exact build source.
@@ -294,9 +296,9 @@ and verification of the public inventory. AoE2WAR web metadata must not advertis
   AppImage are built from one source-bound build commit; Windows Azure signing and
   configured macOS/Linux policy are preserved.
 - **COMPLETE** — all five user-facing artifacts plus updater/support metadata are
-  cryptographically certified. **PENDING OWNER HANDOFF** — public GitHub release
-  publication and post-publication inventory verification must occur before public
-  application metadata advertises 1.6.2.
+  cryptographically certified, the immutable `v1.6.2` GitHub release is public,
+  all 11 public assets match the certified bundle, and the AoE2WAR production
+  download vault was proven 11/11 exact before metadata promotion.
 
 ### Field evidence intentionally collected by 1.6.2
 
