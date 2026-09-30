@@ -2,6 +2,8 @@ const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("watcherApi", {
   getConfig: () => ipcRenderer.invoke("watcher:get-config"),
+  rendererReady: (payload = {}) => ipcRenderer.invoke("watcher:renderer-ready", payload),
+  reportRendererError: (payload = {}) => ipcRenderer.invoke("watcher:renderer-error", payload),
   getAppInfo: () => ipcRenderer.invoke("watcher:get-app-info"),
   saveConfig: (config) => ipcRenderer.invoke("watcher:save-config", config),
   startWatching: (config) => ipcRenderer.invoke("watcher:start", config),
@@ -41,6 +43,9 @@ contextBridge.exposeInMainWorld("watcherApi", {
   },
   onUpdateState: (callback) => {
     ipcRenderer.on("watcher:update-state", (_event, payload) => callback(payload));
+  },
+  onResourceProfile: (callback) => {
+    ipcRenderer.on("watcher:resource-profile", (_event, payload) => callback(payload));
   },
   onLog: (callback) => {
     ipcRenderer.on("watcher:log", (_event, payload) => callback(payload));

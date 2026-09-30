@@ -46,6 +46,23 @@ const { buildStreamHandoff } = require("./streamHandoff");
 const {
   createNetworkPriorityArbiter,
 } = require("./networkPriority");
+const {
+  DEFAULT_RESOURCE_IDLE_SAMPLE_MS,
+  DEFAULT_RESOURCE_SAMPLE_MS,
+  createResourceProfiler,
+  selectResourceSampleInterval,
+} = require("./resourceProfile");
+const {
+  DEFAULT_RENDERER_BOOT_TIMEOUT_MS,
+  beginRendererBoot,
+  beginRendererRecovery,
+  buildRendererHealthMetadata,
+  closeRenderer,
+  completeRendererBoot,
+  createRendererHealthState,
+  failRenderer,
+  sanitizeDiagnosticMessage,
+} = require("./rendererHealth");
 
 const WATCHER_PAIR_PROTOCOL = "aoe2hd-watcher";
 const APP_NAME = "AoE2HDBets Watcher";
@@ -87,10 +104,34 @@ const RUNTIME_EVENT_JOURNAL_MAX_BYTES = Number(
   process.env.AOE2_RUNTIME_EVENT_JOURNAL_MAX_BYTES ||
     5 * 1024 * 1024
 );
+const RUNTIME_EVENT_JOURNAL_FLUSH_MS = Math.max(
+  250,
+  Number(
+    process.env.AOE2_RUNTIME_EVENT_JOURNAL_FLUSH_MS ||
+      2000
+  )
+);
+const RUNTIME_EVENT_JOURNAL_BUFFER_MAX_BYTES =
+  Math.max(
+    8 * 1024,
+    Number(
+      process.env.AOE2_RUNTIME_EVENT_JOURNAL_BUFFER_MAX_BYTES ||
+        64 * 1024
+    )
+  );
 const RELEASE_CHECK_TIMEOUT_MS = Number(process.env.AOE2_RELEASE_CHECK_TIMEOUT_MS || 5000);
 const AUTO_UPDATE_FEED_URL = process.env.AOE2_UPDATE_FEED_URL || "https://aoe2war.com/downloads";
 const MAC_AUTO_UPDATE_ENABLED = process.env.AOE2_ENABLE_MAC_AUTO_UPDATE === "1";
 const APP_SESSION_ID = createRandomId("session");
+const RENDERER_BOOT_TIMEOUT_MS = Math.max(
+  5000,
+  Number(
+    process.env.AOE2_RENDERER_BOOT_TIMEOUT_MS ||
+      DEFAULT_RENDERER_BOOT_TIMEOUT_MS
+  )
+);
+const RENDERER_FAILURE_TELEMETRY_COOLDOWN_MS =
+  30 * 1000;
 const runtimeEventCoalescer =
   createRuntimeEventCoalescer();
 
@@ -107,6 +148,11 @@ let nativeStreamActive = false;
 let watcherSession = 0;
 let importSession = 0;
 let rendererReady = false;
+let rendererHealth =
+  createRendererHealthState();
+let rendererBootTimer = null;
+let rendererFailureTelemetryKey = null;
+let rendererFailureTelemetryAt = 0;
 let pendingPairingUrl = null;
 let currentImportState = createImportStateFromSummary();
 let heartbeatTimer = null;
@@ -137,8 +183,133 @@ const MONITOR_REATTACH_COOLDOWN_MS = Number(
   process.env.AOE2_MONITOR_REATTACH_COOLDOWN_MS || 60 * 1000
 );
 const UI_LOG_BUFFER_MAX_ENTRIES = 250;
+const RESOURCE_SAMPLE_MS = Math.max(
+  5000,
+  Number(
+    process.env.AOE2_RESOURCE_SAMPLE_MS ||
+      DEFAULT_RESOURCE_SAMPLE_MS
+  )
+);
+const RESOURCE_IDLE_SAMPLE_MS = Math.max(
+  RESOURCE_SAMPLE_MS,
+  Number(
+    process.env.AOE2_RESOURCE_IDLE_SAMPLE_MS ||
+      DEFAULT_RESOURCE_IDLE_SAMPLE_MS
+  )
+);
 const recentUiLogs = [];
+let resourceProfileTimer = null;
+let runtimeEventJournalBuffer = "";
+let runtimeEventJournalBufferBytes = 0;
+let runtimeEventJournalFlushTimer = null;
+let runtimeEventJournalFlushChain =
+  Promise.resolve();
+let runtimeJournalQuitDrainStarted = false;
+let runtimeJournalQuitDrainComplete = false;
 
+const resourceProfiler =
+  createResourceProfiler({
+    getMetrics: () =>
+      app.isReady()
+        ? app.getAppMetrics()
+        : [],
+    getWorkload: () => {
+      const runtime =
+        getRuntimeStatus();
+
+      return {
+        streamActive:
+          nativeStreamActive ||
+          Boolean(
+            lastStreamHandoff?.streamId &&
+              !lastStreamHandoff?.endedAt
+          ),
+        importRunning:
+          Boolean(
+            currentImportState?.isRunning
+          ),
+        uploadActive:
+          Number(
+            runtime.uploadQueueLength || 0
+          ) > 0,
+        activeReplay:
+          Boolean(runtime.activeReplay),
+      };
+    },
+  });
+
+
+function sampleResourceProfile({
+  publish = true,
+} = {}) {
+  const profile =
+    resourceProfiler.sample();
+
+  if (publish) {
+    sendToRenderer(
+      "watcher:resource-profile",
+      profile
+    );
+  }
+
+  return profile;
+}
+
+function getResourceSampleIntervalMs() {
+  const runtime =
+    getRuntimeStatus();
+
+  return selectResourceSampleInterval({
+    streamActive:
+      nativeStreamActive ||
+      Boolean(
+        lastStreamHandoff?.streamId &&
+          !lastStreamHandoff?.endedAt
+      ),
+    importRunning:
+      Boolean(
+        currentImportState?.isRunning
+      ),
+    uploadActive:
+      Number(
+        runtime.uploadQueueLength || 0
+      ) > 0,
+    activeReplay:
+      Boolean(runtime.activeReplay),
+    activeMs: RESOURCE_SAMPLE_MS,
+    idleMs: RESOURCE_IDLE_SAMPLE_MS,
+  });
+}
+
+function scheduleResourceProfileSample() {
+  if (resourceProfileTimer) {
+    clearTimeout(
+      resourceProfileTimer
+    );
+  }
+
+  resourceProfileTimer =
+    setTimeout(() => {
+      resourceProfileTimer = null;
+      sampleResourceProfile();
+      scheduleResourceProfileSample();
+    }, getResourceSampleIntervalMs());
+}
+
+function startResourceProfiling() {
+  stopResourceProfiling();
+  sampleResourceProfile();
+  scheduleResourceProfileSample();
+}
+
+function stopResourceProfiling() {
+  if (resourceProfileTimer) {
+    clearTimeout(
+      resourceProfileTimer
+    );
+    resourceProfileTimer = null;
+  }
+}
 
 function createUpdateState(patch = {}) {
   return {
@@ -255,7 +426,45 @@ function invalidateFolderStatusCache() {
   cachedFolderStatus = null;
 }
 
-function buildRuntimeMetadata(config = loadConfig()) {
+function buildResourceTelemetryProfile() {
+  const profile =
+    resourceProfiler.getSnapshot();
+
+  return {
+    sampledAt: profile.sampledAt,
+    processCount: profile.processCount,
+    cpuPercent: profile.cpuPercent,
+    averageCpuPercent:
+      profile.averageCpuPercent,
+    workingSetMb: profile.workingSetMb,
+    sessionPeakWorkingSetMb:
+      profile.sessionPeakWorkingSetMb,
+    idleWakeupsPerSecond:
+      profile.idleWakeupsPerSecond,
+    idleWakeupsAvailable:
+      profile.idleWakeupsAvailable,
+    networkMbps: profile.networkMbps,
+    averageNetworkMbps:
+      profile.averageNetworkMbps,
+    powerSignal: profile.powerSignal
+      ? {
+          key:
+            profile.powerSignal.key,
+          label:
+            profile.powerSignal.label,
+        }
+      : null,
+    sampleCount: profile.sampleCount,
+    powerWatts: null,
+    powerMeasurement:
+      "cpu-and-wakeup-proxy",
+  };
+}
+
+function buildRuntimeMetadata(
+  config = loadConfig(),
+  { includeResourceProfile = false } = {}
+) {
   const watcherRuntime = getRuntimeStatus();
   const folder = inspectReplayFolderCached(config?.watchDir);
   return {
@@ -276,6 +485,8 @@ function buildRuntimeMetadata(config = loadConfig()) {
     folderSupportedReplayCount: folder.supportedReplayCount,
     folderLatestReplayBasename: folder.latestReplayBasename,
     folderLatestReplayModifiedAt: folder.latestReplayModifiedAt,
+    folderEntriesScanned: folder.entriesScanned,
+    folderInspectionDurationMs: folder.inspectionDurationMs,
     folderActivityProven: Boolean(
       folder.supportedReplayCount > 0 && folder.latestReplayModifiedAt
     ),
@@ -298,6 +509,13 @@ function buildRuntimeMetadata(config = loadConfig()) {
     appPackaged: Boolean(app.isPackaged),
     updateFeedUrl: AUTO_UPDATE_FEED_URL,
     finalityContractVersion: 2,
+    resourceProfile:
+      includeResourceProfile
+        ? buildResourceTelemetryProfile()
+        : undefined,
+    ...buildRendererHealthMetadata(
+      rendererHealth
+    ),
   };
 }
 
@@ -725,6 +943,14 @@ async function installDownloadedWatcherUpdate(config = loadConfig(), options = {
       allowPendingInstall: false,
     });
   }
+
+  // Do not let the generic before-quit drain interrupt Electron's updater
+  // shutdown sequence. The watcher is already stopped, so drain all journal
+  // evidence first and mark the quit path safe before handing control to
+  // quitAndInstall.
+  await flushRuntimeEventJournal();
+  flushRuntimeEventJournalSync();
+  runtimeJournalQuitDrainComplete = true;
 
   autoUpdater.quitAndInstall(false, true);
 
@@ -1669,7 +1895,12 @@ function startTelemetryHeartbeat() {
 
     emitWatcherTelemetry("heartbeat", {
       metadata:
-        buildRuntimeMetadata(config),
+        buildRuntimeMetadata(
+          config,
+          {
+            includeResourceProfile: true,
+          }
+        ),
     });
 
     void flushWatcherTelemetryQueue(
@@ -1947,6 +2178,12 @@ function getAppInfo(config = loadConfig()) {
     release: releaseState,
     update: updateState,
     autoUpdate: updateState,
+    resourceProfile:
+      resourceProfiler.getSnapshot(),
+    renderer:
+      buildRendererHealthMetadata(
+        rendererHealth
+      ),
   };
 }
 
@@ -1970,6 +2207,187 @@ function sendToRenderer(channel, payload) {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send(channel, payload);
   }
+}
+
+function clearRendererBootWatchdog() {
+  if (rendererBootTimer) {
+    clearTimeout(rendererBootTimer);
+    rendererBootTimer = null;
+  }
+}
+
+function isCurrentRendererSender(event) {
+  return Boolean(
+    mainWindow &&
+      !mainWindow.isDestroyed() &&
+      event?.sender?.id ===
+        mainWindow.webContents.id
+  );
+}
+
+function showRendererBootstrapFallback() {
+  if (
+    !mainWindow ||
+    mainWindow.isDestroyed()
+  ) {
+    return;
+  }
+
+  const fallbackScript = `
+    (() => {
+      const title = document.getElementById("watcherStateText");
+      const detail = document.getElementById("watcherStateDetailText");
+      const status = document.getElementById("statusBar");
+      if (title) title.textContent = "Dashboard startup issue";
+      if (detail) detail.textContent = "The background replay watcher may still be running. This dashboard will try one safe reload.";
+      if (status) {
+        status.textContent = "Dashboard startup did not complete. Replay monitoring runs separately.";
+        status.className = "status-bar error";
+      }
+    })();
+  `;
+
+  void mainWindow.webContents
+    .executeJavaScript(
+      fallbackScript,
+      true
+    )
+    .catch(() => {});
+}
+
+function recordRendererFailure(
+  reason,
+  error,
+  { fatal = true } = {}
+) {
+  const now = Date.now();
+  const safeError =
+    sanitizeDiagnosticMessage(
+      error?.message ||
+        error ||
+        "Renderer failure"
+    );
+
+  rendererHealth =
+    failRenderer(
+      rendererHealth,
+      {
+        now,
+        reason,
+        error: safeError,
+        fatal,
+      }
+    );
+
+  if (fatal) {
+    rendererReady = false;
+  }
+
+  appendLog(
+    `Dashboard renderer ${fatal ? "failure" : "issue"}: ${rendererHealth.failureReason}${safeError ? ` · ${safeError}` : ""}`,
+    fatal ? "error" : "warn"
+  );
+
+  const key =
+    `${rendererHealth.failureReason}:${safeError}`;
+
+  sendToRenderer(
+    "watcher:app-info",
+    getAppInfo(loadConfig())
+  );
+
+  if (
+    key !==
+      rendererFailureTelemetryKey ||
+    now -
+      rendererFailureTelemetryAt >=
+      RENDERER_FAILURE_TELEMETRY_COOLDOWN_MS
+  ) {
+    rendererFailureTelemetryKey = key;
+    rendererFailureTelemetryAt = now;
+
+    emitWatcherTelemetry(
+      "watcher_error",
+      {
+        reason:
+          `renderer_${rendererHealth.failureReason}`,
+        errorMessage: safeError,
+        detail:
+          "Dashboard renderer issue; replay monitoring runs in the separate Watcher engine.",
+        metadata:
+          buildRendererHealthMetadata(
+            rendererHealth
+          ),
+      },
+      loadConfig()
+    );
+  }
+
+  return rendererHealth;
+}
+
+function attemptRendererRecovery(reason) {
+  if (
+    rendererReady ||
+    rendererHealth.reloadAttempts >= 1 ||
+    !mainWindow ||
+    mainWindow.isDestroyed() ||
+    nativeStreamActive
+  ) {
+    return false;
+  }
+
+  rendererHealth =
+    beginRendererRecovery(
+      rendererHealth
+    );
+
+  appendLog(
+    `Dashboard renderer recovery: one safe reload after ${reason}.`,
+    "warn"
+  );
+
+  clearRendererBootWatchdog();
+
+  try {
+    mainWindow.webContents
+      .reloadIgnoringCache();
+    return true;
+  } catch (error) {
+    recordRendererFailure(
+      "reload_failed",
+      error,
+      { fatal: true }
+    );
+    return false;
+  }
+}
+
+function armRendererBootWatchdog() {
+  clearRendererBootWatchdog();
+
+  rendererBootTimer =
+    setTimeout(() => {
+      rendererBootTimer = null;
+
+      if (
+        rendererReady ||
+        !mainWindow ||
+        mainWindow.isDestroyed()
+      ) {
+        return;
+      }
+
+      recordRendererFailure(
+        "boot_timeout",
+        "Dashboard renderer did not acknowledge startup before the bounded timeout.",
+        { fatal: true }
+      );
+      showRendererBootstrapFallback();
+      attemptRendererRecovery(
+        "boot timeout"
+      );
+    }, RENDERER_BOOT_TIMEOUT_MS);
 }
 
 function broadcastConfig(config) {
@@ -2098,6 +2516,11 @@ async function postStreamChunk(payload = {}) {
   const baseUrl = normalizeBaseUrl(payload.baseUrl || getStreamWebBaseUrl(config));
 
   try {
+    resourceProfiler.recordNetworkBytes(
+      buffer.length,
+      "stream"
+    );
+
     const response = await axios.post(
       `${baseUrl}/api/streams/${streamId}/chunks?sequence=${sequence}`,
       buffer,
@@ -2380,6 +2803,228 @@ function emitTelemetryForRuntimeEvent(event) {
   }
 }
 
+function getRuntimeEventJournalPath() {
+  return path.join(
+    app.getPath("userData"),
+    "watcher-runtime-events.jsonl"
+  );
+}
+
+async function rotateRuntimeEventJournalIfNeeded(
+  journalPath,
+  incomingBytes = 0
+) {
+  let currentBytes = 0;
+
+  try {
+    currentBytes =
+      (
+        await fs.promises.stat(
+          journalPath
+        )
+      ).size;
+  } catch (error) {
+    if (error?.code !== "ENOENT") {
+      throw error;
+    }
+  }
+
+  if (
+    currentBytes +
+      Math.max(
+        0,
+        Number(incomingBytes) || 0
+      ) <=
+    RUNTIME_EVENT_JOURNAL_MAX_BYTES
+  ) {
+    return false;
+  }
+
+  const rotated =
+    `${journalPath}.1`;
+
+  await fs.promises.rm(
+    rotated,
+    {
+      force: true,
+    }
+  );
+
+  try {
+    await fs.promises.rename(
+      journalPath,
+      rotated
+    );
+  } catch (error) {
+    if (error?.code !== "ENOENT") {
+      throw error;
+    }
+  }
+
+  return true;
+}
+
+function scheduleRuntimeEventJournalFlush() {
+  if (
+    runtimeEventJournalFlushTimer ||
+    !runtimeEventJournalBuffer
+  ) {
+    return;
+  }
+
+  runtimeEventJournalFlushTimer =
+    setTimeout(() => {
+      runtimeEventJournalFlushTimer =
+        null;
+      void flushRuntimeEventJournal();
+    }, RUNTIME_EVENT_JOURNAL_FLUSH_MS);
+}
+
+function flushRuntimeEventJournal() {
+  if (!runtimeEventJournalBuffer) {
+    return runtimeEventJournalFlushChain;
+  }
+
+  const chunk =
+    runtimeEventJournalBuffer;
+  const chunkBytes =
+    runtimeEventJournalBufferBytes;
+
+  runtimeEventJournalBuffer = "";
+  runtimeEventJournalBufferBytes = 0;
+
+  if (runtimeEventJournalFlushTimer) {
+    clearTimeout(
+      runtimeEventJournalFlushTimer
+    );
+    runtimeEventJournalFlushTimer =
+      null;
+  }
+
+  runtimeEventJournalFlushChain =
+    runtimeEventJournalFlushChain
+      .then(async () => {
+        const journalPath =
+          getRuntimeEventJournalPath();
+
+        await fs.promises.mkdir(
+          path.dirname(journalPath),
+          {
+            recursive: true,
+          }
+        );
+
+        await rotateRuntimeEventJournalIfNeeded(
+          journalPath,
+          chunkBytes
+        );
+
+        await fs.promises.appendFile(
+          journalPath,
+          chunk,
+          "utf8"
+        );
+      })
+      .catch((error) => {
+        console.warn(
+          `Watcher runtime journal flush failed: ${
+            error.message || error
+          }`
+        );
+      });
+
+  return runtimeEventJournalFlushChain;
+}
+
+function flushRuntimeEventJournalSync() {
+  if (!runtimeEventJournalBuffer) {
+    return;
+  }
+
+  const chunk =
+    runtimeEventJournalBuffer;
+
+  runtimeEventJournalBuffer = "";
+  runtimeEventJournalBufferBytes = 0;
+
+  if (runtimeEventJournalFlushTimer) {
+    clearTimeout(
+      runtimeEventJournalFlushTimer
+    );
+    runtimeEventJournalFlushTimer =
+      null;
+  }
+
+  try {
+    const journalPath =
+      getRuntimeEventJournalPath();
+
+    fs.mkdirSync(
+      path.dirname(journalPath),
+      {
+        recursive: true,
+      }
+    );
+
+    const incomingBytes =
+      Buffer.byteLength(
+        chunk,
+        "utf8"
+      );
+
+    let currentBytes = 0;
+    try {
+      currentBytes =
+        fs.statSync(
+          journalPath
+        ).size;
+    } catch (error) {
+      if (error?.code !== "ENOENT") {
+        throw error;
+      }
+    }
+
+    if (
+      currentBytes +
+        incomingBytes >
+      RUNTIME_EVENT_JOURNAL_MAX_BYTES
+    ) {
+      const rotated =
+        `${journalPath}.1`;
+
+      fs.rmSync(
+        rotated,
+        {
+          force: true,
+        }
+      );
+
+      try {
+        fs.renameSync(
+          journalPath,
+          rotated
+        );
+      } catch (error) {
+        if (error?.code !== "ENOENT") {
+          throw error;
+        }
+      }
+    }
+
+    fs.appendFileSync(
+      journalPath,
+      chunk,
+      "utf8"
+    );
+  } catch (error) {
+    console.warn(
+      `Watcher runtime journal final flush failed: ${
+        error.message || error
+      }`
+    );
+  }
+}
+
 function appendRuntimeEventJournal(
   event
 ) {
@@ -2391,66 +3036,49 @@ function appendRuntimeEventJournal(
     return;
   }
 
-  try {
-    const journalPath =
-      path.join(
-        app.getPath("userData"),
-        "watcher-runtime-events.jsonl"
-      );
+  const line =
+    `${JSON.stringify({
+      recordedAt:
+        new Date().toISOString(),
+      appVersion:
+        WATCHER_VERSION,
+      sessionId:
+        APP_SESSION_ID,
+      ...event,
+    })}\n`;
 
-    fs.mkdirSync(
-      path.dirname(journalPath),
-      {
-        recursive: true,
-      }
-    );
-
-    if (
-      fs.existsSync(journalPath) &&
-      fs.statSync(journalPath).size >
-        RUNTIME_EVENT_JOURNAL_MAX_BYTES
-    ) {
-      const rotated =
-        `${journalPath}.1`;
-
-      try {
-        fs.rmSync(
-          rotated,
-          {
-            force: true,
-          }
-        );
-      } catch {}
-
-      fs.renameSync(
-        journalPath,
-        rotated
-      );
-    }
-
-    fs.appendFileSync(
-      journalPath,
-      `${JSON.stringify({
-        recordedAt:
-          new Date().toISOString(),
-        appVersion:
-          WATCHER_VERSION,
-        sessionId:
-          APP_SESSION_ID,
-        ...event,
-      })}\n`,
+  runtimeEventJournalBuffer += line;
+  runtimeEventJournalBufferBytes +=
+    Buffer.byteLength(
+      line,
       "utf8"
     );
-  } catch (error) {
-    console.warn(
-      `Watcher runtime journal failed: ${
-        error.message || error
-      }`
-    );
+
+  if (
+    runtimeEventJournalBufferBytes >=
+    RUNTIME_EVENT_JOURNAL_BUFFER_MAX_BYTES
+  ) {
+    void flushRuntimeEventJournal();
+    return;
   }
+
+  scheduleRuntimeEventJournalFlush();
 }
 
 function handleWatcherRuntimeEvent(event) {
+  if (
+    event?.type === "upload-start" &&
+    Number.isFinite(
+      Number(event.fileSizeBytes)
+    ) &&
+    Number(event.fileSizeBytes) > 0
+  ) {
+    resourceProfiler.recordNetworkBytes(
+      Number(event.fileSizeBytes),
+      "replay"
+    );
+  }
+
   const priority =
     networkPriorityArbiter
       .handleReplayEvent(event);
@@ -2894,7 +3522,16 @@ function hydrateRenderer() {
     return;
   }
 
-  rendererReady = true;
+  // The bottom-of-body renderer can complete its IPC handshake before
+  // Electron emits did-finish-load. Never demote an already-ready renderer.
+  if (!rendererReady) {
+    rendererHealth =
+      beginRendererBoot(
+        rendererHealth
+      );
+    armRendererBootWatchdog();
+  }
+
   const config = loadConfig();
 
   broadcastConfig(config);
@@ -2909,8 +3546,6 @@ function hydrateRenderer() {
   for (const entry of recentUiLogs) {
     sendToRenderer("watcher:log", entry);
   }
-
-  processPendingPairingUrl();
 }
 
 function createWindow({ showOnReady = true } = {}) {
@@ -2925,6 +3560,15 @@ function createWindow({ showOnReady = true } = {}) {
   if (process.platform === "darwin" && app.dock && showOnReady) {
     void app.dock.show();
   }
+
+  rendererReady = false;
+  rendererHealth =
+    beginRendererBoot(
+      rendererHealth,
+      {
+        resetReloadAttempts: true,
+      }
+    );
 
   mainWindow = new BrowserWindow({
     width: 1320,
@@ -2957,7 +3601,76 @@ function createWindow({ showOnReady = true } = {}) {
     return { action: "deny" };
   });
 
-  mainWindow.webContents.once("did-finish-load", hydrateRenderer);
+  mainWindow.webContents.on(
+    "did-finish-load",
+    hydrateRenderer
+  );
+
+  mainWindow.webContents.on(
+    "preload-error",
+    (_event, _preloadPath, error) => {
+      recordRendererFailure(
+        "preload_error",
+        error,
+        { fatal: true }
+      );
+    }
+  );
+
+  mainWindow.webContents.on(
+    "did-fail-load",
+    (
+      _event,
+      errorCode,
+      errorDescription,
+      validatedUrl,
+      isMainFrame
+    ) => {
+      if (isMainFrame === false) {
+        return;
+      }
+
+      recordRendererFailure(
+        "page_load_failed",
+        `${errorCode || ""} ${errorDescription || "Dashboard page failed to load."} ${validatedUrl ? "(local page)" : ""}`.trim(),
+        { fatal: true }
+      );
+      showRendererBootstrapFallback();
+      attemptRendererRecovery(
+        "page load failure"
+      );
+    }
+  );
+
+  mainWindow.webContents.on(
+    "render-process-gone",
+    (_event, details = {}) => {
+      // Native MediaRecorder capture lives in the renderer. If that process
+      // is gone, the local video stream is already dead; do not let a stale
+      // stream flag block the one bounded dashboard recovery reload.
+      nativeStreamActive = false;
+
+      recordRendererFailure(
+        "process_gone",
+        `${details.reason || "unknown"}${details.exitCode !== undefined ? ` exit=${details.exitCode}` : ""}`,
+        { fatal: true }
+      );
+      attemptRendererRecovery(
+        "renderer process exit"
+      );
+    }
+  );
+
+  mainWindow.webContents.on(
+    "unresponsive",
+    () => {
+      recordRendererFailure(
+        "unresponsive",
+        "Dashboard renderer became unresponsive.",
+        { fatal: false }
+      );
+    }
+  );
 
   mainWindow.once("ready-to-show", () => {
     if (showOnReady && mainWindow && !mainWindow.isDestroyed()) {
@@ -2966,7 +3679,12 @@ function createWindow({ showOnReady = true } = {}) {
   });
 
   mainWindow.once("closed", () => {
+    clearRendererBootWatchdog();
     rendererReady = false;
+    rendererHealth =
+      closeRenderer(
+        rendererHealth
+      );
     mainWindow = null;
     nativeStreamActive = false;
     maybeInstallPendingWatcherUpdate("dashboard_closed");
@@ -3000,6 +3718,8 @@ function initializeWatcherRuntime() {
       config.uploadApiKey ? "present" : "missing"
     }`
   );
+
+  startResourceProfiling();
 
   emitWatcherTelemetry(
     "app_open",
@@ -3068,6 +3788,99 @@ function bootWatcherApp() {
   registerPairingProtocol();
   createTray();
   configureAutoUpdater();
+
+  ipcMain.handle(
+    "watcher:renderer-ready",
+    async (event, payload = {}) => {
+      if (
+        !isCurrentRendererSender(
+          event
+        )
+      ) {
+        return {
+          ok: false,
+          error:
+            "Renderer sender is not current.",
+        };
+      }
+
+      clearRendererBootWatchdog();
+      rendererReady = true;
+      rendererHealth =
+        completeRendererBoot(
+          rendererHealth,
+          {
+            bootstrapMs:
+              payload.bootstrapMs,
+          }
+        );
+
+      appendLog(
+        `Dashboard renderer ready${rendererHealth.bootstrapMs !== null ? ` in ${rendererHealth.bootstrapMs} ms` : ""}.`
+      );
+
+      sendToRenderer(
+        "watcher:app-info",
+        getAppInfo(loadConfig())
+      );
+      processPendingPairingUrl();
+
+      return {
+        ok: true,
+        renderer:
+          buildRendererHealthMetadata(
+            rendererHealth
+          ),
+      };
+    }
+  );
+
+  ipcMain.handle(
+    "watcher:renderer-error",
+    async (event, payload = {}) => {
+      if (
+        !isCurrentRendererSender(
+          event
+        )
+      ) {
+        return {
+          ok: false,
+          error:
+            "Renderer sender is not current.",
+        };
+      }
+
+      const wasReady =
+        rendererReady;
+
+      recordRendererFailure(
+        payload.reason ||
+          "reported_error",
+        payload.errorMessage ||
+          "Renderer reported an error.",
+        {
+          fatal:
+            payload.fatal === true ||
+            !wasReady,
+        }
+      );
+
+      if (!wasReady) {
+        showRendererBootstrapFallback();
+        attemptRendererRecovery(
+          "reported bootstrap failure"
+        );
+      }
+
+      return {
+        ok: true,
+        renderer:
+          buildRendererHealthMetadata(
+            rendererHealth
+          ),
+      };
+    }
+  );
 
   ipcMain.handle("watcher:get-config", async () => {
     return loadConfig();
@@ -3355,7 +4168,12 @@ function bootWatcherApp() {
 }
 
 app.on("window-all-closed", () => {
+  clearRendererBootWatchdog();
   rendererReady = false;
+  rendererHealth =
+    closeRenderer(
+      rendererHealth
+    );
   // The replay engine intentionally survives without a BrowserWindow.
 });
 
@@ -3363,10 +4181,32 @@ app.on("activate", () => {
   focusMainWindow();
 });
 
-app.on("before-quit", () => {
+app.on("before-quit", (event) => {
+  clearRendererBootWatchdog();
   rendererReady = false;
+  rendererHealth =
+    closeRenderer(
+      rendererHealth
+    );
   stopTelemetryHeartbeat();
   stopMonitorWatchdog();
+  stopResourceProfiling();
+
+  if (!runtimeJournalQuitDrainComplete) {
+    event.preventDefault();
+
+    if (!runtimeJournalQuitDrainStarted) {
+      runtimeJournalQuitDrainStarted = true;
+
+      void flushRuntimeEventJournal()
+        .finally(() => {
+          runtimeJournalQuitDrainComplete = true;
+          app.quit();
+        });
+    }
+
+    return;
+  }
 
   if (watcherHandle) {
     stopCurrentWatcher({
@@ -3374,6 +4214,10 @@ app.on("before-quit", () => {
       allowPendingInstall: false,
     });
   }
+
+  // stopCurrentWatcher emits the final watcher_stopped telemetry event.
+  // Flush only after that event is journaled so graceful quit cannot drop it.
+  flushRuntimeEventJournalSync();
 
   if (tray) {
     tray.destroy();

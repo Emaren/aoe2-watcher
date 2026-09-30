@@ -1,3 +1,51 @@
+const RENDERER_BOOT_STARTED_AT = Date.now();
+
+function rendererErrorMessage(value) {
+  if (value instanceof Error) {
+    return value.message || value.name || "Renderer error";
+  }
+
+  if (value && typeof value === "object" && typeof value.message === "string") {
+    return value.message;
+  }
+
+  return String(value || "Renderer error");
+}
+
+async function reportRendererIssue(reason, error, { fatal = false } = {}) {
+  const bridge = window.watcherApi;
+  if (!bridge || typeof bridge.reportRendererError !== "function") {
+    return false;
+  }
+
+  try {
+    const result = await bridge.reportRendererError({
+      reason,
+      errorMessage: rendererErrorMessage(error),
+      fatal,
+    });
+    return Boolean(result?.ok);
+  } catch {
+    return false;
+  }
+}
+
+window.addEventListener("error", (event) => {
+  void reportRendererIssue(
+    "renderer_exception",
+    event?.error || event?.message || "Unhandled renderer exception.",
+    { fatal: false }
+  );
+});
+
+window.addEventListener("unhandledrejection", (event) => {
+  void reportRendererIssue(
+    "renderer_unhandled_rejection",
+    event?.reason || "Unhandled renderer promise rejection.",
+    { fatal: false }
+  );
+});
+
 const els = {
   watchDirInput: document.getElementById("watchDirInput"),
   apiBaseUrlInput: document.getElementById("apiBaseUrlInput"),
@@ -51,6 +99,11 @@ const els = {
   apiHostText: document.getElementById("apiHostText"),
   replayPathDiagText: document.getElementById("replayPathDiagText"),
   supportedExtensionsText: document.getElementById("supportedExtensionsText"),
+  resourceCpuText: document.getElementById("resourceCpuText"),
+  resourceMemoryText: document.getElementById("resourceMemoryText"),
+  resourceWakeupsText: document.getElementById("resourceWakeupsText"),
+  resourceNetworkText: document.getElementById("resourceNetworkText"),
+  resourcePowerText: document.getElementById("resourcePowerText"),
   importPhaseText: document.getElementById("importPhaseText"),
   importDetailText: document.getElementById("importDetailText"),
   importSummaryText: document.getElementById("importSummaryText"),
@@ -165,6 +218,7 @@ const EMPTY_IMPORT_STATE = {
 
 let currentConfig = { ...DEFAULT_CONFIG };
 let appInfo = null;
+let resourceProfile = null;
 let watcherState = { isWatching: false };
 let importState = { ...EMPTY_IMPORT_STATE };
 let updateState = {
@@ -1653,6 +1707,38 @@ function renderStatusBar() {
   }
 }
 
+function formatResourcePercent(value) {
+  const number = Number(value);
+  return Number.isFinite(number)
+    ? `${number.toFixed(1)}%`
+    : "Measuring…";
+}
+
+function formatResourceMb(value) {
+  const number = Number(value);
+  return Number.isFinite(number)
+    ? `${Math.round(number)} MB`
+    : "Measuring…";
+}
+
+function formatResourceWakeups(value, available = true) {
+  if (!available) {
+    return "Not reported";
+  }
+
+  const number = Number(value);
+  return Number.isFinite(number)
+    ? `${number.toFixed(1)}/s`
+    : "Not reported";
+}
+
+function formatResourceMbps(value) {
+  const number = Number(value);
+  return Number.isFinite(number)
+    ? `${number < 0.01 ? "<0.01" : number.toFixed(2)} Mbps`
+    : "Measuring…";
+}
+
 function renderDiagnostics() {
   const releaseStatus = getReleaseStatus();
 
@@ -1680,6 +1766,54 @@ function renderDiagnostics() {
   els.replayPathDiagText.textContent = shortenPath(readForm().watchDir, "Not chosen yet");
   els.supportedExtensionsText.textContent =
     appInfo?.supportedReplayExtensions?.join(", ") || ".aoe2record, .aoe2mpgame, .mgz, .mgx, .mgl";
+
+  const profile =
+    resourceProfile ||
+    appInfo?.resourceProfile ||
+    null;
+
+  if (els.resourceCpuText) {
+    els.resourceCpuText.textContent =
+      profile
+        ? `${formatResourcePercent(profile.cpuPercent)} · avg ${formatResourcePercent(profile.averageCpuPercent)}`
+        : "Measuring…";
+  }
+
+  if (els.resourceMemoryText) {
+    els.resourceMemoryText.textContent =
+      profile
+        ? `${formatResourceMb(profile.workingSetMb)} · peak ${formatResourceMb(profile.sessionPeakWorkingSetMb)}`
+        : "Measuring…";
+  }
+
+  if (els.resourceWakeupsText) {
+    els.resourceWakeupsText.textContent =
+      profile
+        ? formatResourceWakeups(
+            profile.idleWakeupsPerSecond,
+            profile.idleWakeupsAvailable
+          )
+        : "Measuring…";
+  }
+
+  if (els.resourceNetworkText) {
+    els.resourceNetworkText.textContent =
+      profile
+        ? `${formatResourceMbps(profile.networkMbps)} · avg ${formatResourceMbps(profile.averageNetworkMbps)}`
+        : "Measuring…";
+  }
+
+  if (els.resourcePowerText) {
+    const signal =
+      profile?.powerSignal;
+    els.resourcePowerText.textContent =
+      signal
+        ? `${signal.label} · CPU/wakeup proxy`
+        : "Measuring…";
+    els.resourcePowerText.title =
+      signal?.detail ||
+      "Portable per-process watts are not exposed by Electron; the Watcher reports CPU and processor-wakeup evidence instead.";
+  }
 }
 
 function describeImportPhase() {
@@ -2134,6 +2268,15 @@ function buildSupportSnapshot() {
     `Auto-update status: ${updateState.status || "unknown"}`,
     `Auto-update detail: ${updateState.message || updateState.error || "none"}`,
     `Platform: ${formatPlatform(appInfo?.platform)}`,
+    `Dashboard: ${appInfo?.renderer?.rendererStatus || "unknown"}`,
+    `Dashboard ready: ${appInfo?.renderer?.rendererReady ? "yes" : "no"}`,
+    `Dashboard reload attempts: ${appInfo?.renderer?.rendererReloadAttempts ?? 0}`,
+    `Dashboard last issue: ${appInfo?.renderer?.rendererFailureReason || "none"}`,
+    `CPU: ${resourceProfile ? formatResourcePercent(resourceProfile.cpuPercent) : "measuring"}`,
+    `Memory: ${resourceProfile ? formatResourceMb(resourceProfile.workingSetMb) : "measuring"}`,
+    `Processor wakeups: ${resourceProfile ? formatResourceWakeups(resourceProfile.idleWakeupsPerSecond, resourceProfile.idleWakeupsAvailable) : "measuring"}`,
+    `Payload attempt rate: ${resourceProfile ? formatResourceMbps(resourceProfile.networkMbps) : "measuring"}`,
+    `Power signal: ${resourceProfile?.powerSignal?.label || "measuring"} (CPU/wakeup proxy; watts not fabricated)`,
     `Status: ${primaryStatus.label}`,
     `Status detail: ${primaryStatus.detail}`,
     `Watching: ${watcherState.isWatching ? "yes" : "no"}`,
@@ -2291,9 +2434,20 @@ function consumeRuntimeEvent(event) {
 }
 
 async function loadInitialData() {
+  const bridge = window.watcherApi;
+
+  if (
+    !bridge ||
+    typeof bridge.getConfig !== "function" ||
+    typeof bridge.getAppInfo !== "function" ||
+    typeof bridge.rendererReady !== "function"
+  ) {
+    throw new Error("Watcher desktop bridge is unavailable.");
+  }
+
   const [config, info] = await Promise.all([
-    window.watcherApi.getConfig(),
-    window.watcherApi.getAppInfo(),
+    bridge.getConfig(),
+    bridge.getAppInfo(),
   ]);
 
   currentConfig = {
@@ -2301,11 +2455,50 @@ async function loadInitialData() {
     ...config,
   };
   appInfo = info;
+  resourceProfile =
+    info?.resourceProfile ||
+    resourceProfile;
   updateState = info?.autoUpdate || info?.update || updateState;
   writeForm(currentConfig);
   watchDirStatus = info?.watchDirStatus || watchDirStatus;
+  runtimeState.phase =
+    watcherState.isWatching
+      ? "watching"
+      : "idle";
+  runtimeState.detail =
+    watcherState.isWatching
+      ? "Watcher is armed in the background."
+      : "Dashboard ready.";
   renderAll();
-  await validateWatchDir(currentConfig.watchDir);
+
+  const readyResult =
+    await bridge.rendererReady({
+      bootstrapMs:
+        Math.max(
+          0,
+          Date.now() -
+            RENDERER_BOOT_STARTED_AT
+        ),
+    });
+
+  if (!readyResult?.ok) {
+    throw new Error("Watcher dashboard handshake was rejected.");
+  }
+
+  try {
+    await validateWatchDir(currentConfig.watchDir);
+  } catch (error) {
+    setStatus(
+      `Replay folder validation needs attention: ${rendererErrorMessage(error)}`,
+      "warn",
+      { sticky: true }
+    );
+    void reportRendererIssue(
+      "post_boot_folder_validation",
+      error,
+      { fatal: false }
+    );
+  }
 }
 
 els.saveSettingsBtn.addEventListener("click", async () => {
@@ -2619,6 +2812,9 @@ window.watcherApi.onConfig((config) => {
 
 window.watcherApi.onAppInfo((info) => {
   appInfo = info;
+  resourceProfile =
+    info?.resourceProfile ||
+    resourceProfile;
   if (info?.watchDirStatus) {
     watchDirStatus = info.watchDirStatus;
   }
@@ -2635,6 +2831,15 @@ window.watcherApi.onAppInfo((info) => {
   }
   renderAll();
 });
+
+if (window.watcherApi.onResourceProfile) {
+  window.watcherApi.onResourceProfile((profile) => {
+    resourceProfile =
+      profile ||
+      resourceProfile;
+    renderDiagnostics();
+  });
+}
 
 window.watcherApi.onState(({ isWatching }) => {
   watcherState.isWatching = isWatching;
@@ -2691,5 +2896,31 @@ window.watcherApi.onClearLog(() => {
 });
 
 loadInitialData().catch((error) => {
-  setStatus(`Failed loading watcher data: ${error.message || error}`, "error", { sticky: true });
+  const message =
+    rendererErrorMessage(error);
+
+  runtimeState.phase = "error";
+  runtimeState.detail =
+    "Dashboard startup failed. The background replay watcher may still be running.";
+
+  if (els.watcherStateText) {
+    els.watcherStateText.textContent =
+      "Dashboard startup issue";
+  }
+  if (els.watcherStateDetailText) {
+    els.watcherStateDetailText.textContent =
+      runtimeState.detail;
+  }
+
+  setStatus(
+    `Dashboard startup failed: ${message}`,
+    "error",
+    { sticky: true }
+  );
+
+  void reportRendererIssue(
+    "renderer_bootstrap_failed",
+    error,
+    { fatal: true }
+  );
 });

@@ -82,6 +82,10 @@ test(
       await queue.size(),
       0
     );
+    assert.equal(
+      fs.existsSync(filePath),
+      false
+    );
   }
 );
 
@@ -144,6 +148,125 @@ test(
       await queue.size(),
       0
     );
+  }
+);
+
+test(
+  "empty telemetry flush does not create an idle queue file",
+  async () => {
+    const { filePath } = tempQueue();
+    const queue =
+      createDurableTelemetryQueue({
+        filePath,
+      });
+
+    const result =
+      await queue.flush(async () => ({
+        ok: true,
+      }));
+
+    assert.equal(result.attempted, 0);
+    assert.equal(result.remaining, 0);
+    assert.equal(
+      fs.existsSync(filePath),
+      false
+    );
+  }
+);
+
+test(
+  "flush retires a legacy queue file containing only expired entries",
+  async () => {
+    const { filePath } = tempQueue();
+
+    fs.writeFileSync(
+      filePath,
+      JSON.stringify([
+        {
+          eventType: "old",
+          queuedAtMs: 1,
+          payload: {
+            event_type: "old",
+          },
+        },
+      ]),
+      "utf8"
+    );
+
+    const queue =
+      createDurableTelemetryQueue({
+        filePath,
+        maxAgeMs: 1000,
+      });
+
+    const originalNow = Date.now;
+    Date.now = () => 10_000;
+    try {
+      const result =
+        await queue.flush(async () => ({
+          ok: true,
+        }));
+
+      assert.equal(result.attempted, 0);
+      assert.equal(result.remaining, 0);
+      assert.equal(
+        fs.existsSync(filePath),
+        false
+      );
+    } finally {
+      Date.now = originalNow;
+    }
+  }
+);
+
+test(
+  "retryable telemetry failure preserves the durable queue without rewriting it",
+  async () => {
+    const { filePath } = tempQueue();
+    const queue =
+      createDurableTelemetryQueue({
+        filePath,
+      });
+
+    await queue.enqueue({
+      eventType: "heartbeat",
+      payload: {
+        event_type: "heartbeat",
+      },
+    });
+
+    const before =
+      fs.readFileSync(filePath);
+    const beforeStat =
+      fs.statSync(filePath);
+
+    const result =
+      await queue.flush(async () => ({
+        ok: false,
+        retryable: true,
+      }));
+
+    const after =
+      fs.readFileSync(filePath);
+    const afterStat =
+      fs.statSync(filePath);
+
+    assert.equal(result.delivered, 0);
+    assert.equal(result.dropped, 0);
+    assert.equal(result.remaining, 1);
+    assert.deepEqual(after, before);
+
+    // Atomic queue rewrites replace the file. Keeping the same inode proves
+    // a pure retryable no-progress heartbeat did not churn the durable queue.
+    if (
+      Number.isFinite(beforeStat.ino) &&
+      Number.isFinite(afterStat.ino)
+    ) {
+      assert.equal(
+        afterStat.ino,
+        beforeStat.ino
+      );
+    }
   }
 );
 
