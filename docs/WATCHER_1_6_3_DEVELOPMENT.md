@@ -138,6 +138,30 @@ quiet/stability path.
 Repaired 1.6.3 resource heartbeats remain the authority for deciding whether
 any further cadence change is justified.
 
+## Fourth field finding — background Mac updates were easy to miss
+
+The local packaged Mac Watcher was still 1.6.1 while the public
+`latest-mac.yml` feed advertised 1.6.2. Production telemetry proved the
+updater itself was healthy: the same Watcher detected 1.6.2 twice on
+2026-09-30 and entered `manual_required` with
+`mac_manual_unsigned`, with no updater error.
+
+That exposed a presentation gap rather than an update-check failure. macOS
+manual replacement is intentional unless signed auto-update is explicitly
+enabled, but the tray menu previously keyed only on
+`updateState.downloaded`. A manual Mac update is never downloaded, so a
+background Watcher that already knew 1.6.2 was available could continue to
+show only `Check for Updates`.
+
+1.6.3 makes manual-required update state visible without changing signing or
+installation policy:
+
+- the tray label becomes `Download Watcher <version>`;
+- the tray tooltip states that the specific update is available;
+- the tray action opens the canonical manual update URL directly;
+- downloaded auto-update platforms keep their existing install action;
+- ordinary/current state still shows `Check for Updates`.
+
 ## Television WOLO relationship
 
 Television WOLO does not justify continuous capture by itself. The Watcher may

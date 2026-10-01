@@ -28,6 +28,48 @@ function shouldLaunchInBackground({
   );
 }
 
+function getUpdateTrayPresentation(
+  updateState = {}
+) {
+  const manualUpdateReady =
+    Boolean(
+      updateState.manualInstall ||
+      updateState.status ===
+        "manual_required"
+    );
+
+  if (manualUpdateReady) {
+    const version =
+      String(
+        updateState.updateVersion || ""
+      ).trim();
+
+    return {
+      action: "download_manual",
+      label: version
+        ? `Download Watcher ${version}`
+        : "Download Watcher Update",
+      tooltip: version
+        ? `AoE2HDBets Watcher — update ${version} available`
+        : "AoE2HDBets Watcher — update available",
+    };
+  }
+
+  if (updateState.downloaded) {
+    return {
+      action: "install_downloaded",
+      label: "Install Downloaded Update",
+      tooltip: "AoE2HDBets Watcher — update ready to install",
+    };
+  }
+
+  return {
+    action: "check",
+    label: "Check for Updates",
+    tooltip: "AoE2HDBets Watcher",
+  };
+}
+
 module.exports = {
   DEFAULT_FINAL_SETTLE_POLL_MS,
   DEFAULT_FOLDER_FRESHNESS_PROBE_MS,
@@ -35,5 +77,6 @@ module.exports = {
   DEFAULT_IDLE_RECOVERY_SCAN_MS,
   DEFAULT_MONITOR_WATCHDOG_MS,
   getUpdateBlocker,
+  getUpdateTrayPresentation,
   shouldLaunchInBackground,
 };

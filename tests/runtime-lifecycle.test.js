@@ -85,6 +85,33 @@ test("graceful quit drains queued journal writes before the final watcher stop f
   assert.ok(finalFlush > stop);
 });
 
+test("manual update state is wired to a direct tray download action", () => {
+  const trayStart = source.indexOf(
+    "function refreshTrayMenu"
+  );
+  const trayEnd = source.indexOf(
+    "function createTray",
+    trayStart
+  );
+  const block = source.slice(
+    trayStart,
+    trayEnd
+  );
+
+  assert.match(
+    block,
+    /getUpdateTrayPresentation/
+  );
+  assert.match(
+    block,
+    /download_manual/
+  );
+  assert.match(
+    block,
+    /shell\.openExternal\(\s*getManualUpdateUrl\(\)/
+  );
+});
+
 test("update installation drains the journal before quitAndInstall", () => {
   const installStart = source.indexOf(
     "async function installDownloadedWatcherUpdate"

@@ -28,6 +28,7 @@ const {
   DEFAULT_FOLDER_STATUS_CACHE_MS,
   DEFAULT_MONITOR_WATCHDOG_MS,
   getUpdateBlocker,
+  getUpdateTrayPresentation,
   shouldLaunchInBackground,
 } = require("./runtimePolicy");
 
@@ -3443,7 +3444,14 @@ function refreshTrayMenu() {
 
   const runtime = getRuntimeStatus();
   const isWatching = Boolean(watcherHandle && runtime.monitorAttached);
-  const updateReady = Boolean(updateState.downloaded);
+  const updatePresentation =
+    getUpdateTrayPresentation(
+      updateState
+    );
+
+  tray.setToolTip(
+    updatePresentation.tooltip
+  );
 
   tray.setContextMenu(
     Menu.buildFromTemplate([
@@ -3476,18 +3484,33 @@ function refreshTrayMenu() {
       },
       { type: "separator" },
       {
-        label: updateReady
-          ? "Install Downloaded Update"
-          : "Check for Updates",
+        label:
+          updatePresentation.label,
         click: () => {
-          if (updateReady) {
-            void installDownloadedWatcherUpdate(loadConfig());
-          } else {
-            void checkForWatcherUpdates({
-              manual: true,
-              config: loadConfig(),
-            });
+          if (
+            updatePresentation.action ===
+            "download_manual"
+          ) {
+            void shell.openExternal(
+              getManualUpdateUrl()
+            );
+            return;
           }
+
+          if (
+            updatePresentation.action ===
+            "install_downloaded"
+          ) {
+            void installDownloadedWatcherUpdate(
+              loadConfig()
+            );
+            return;
+          }
+
+          void checkForWatcherUpdates({
+            manual: true,
+            config: loadConfig(),
+          });
         },
       },
       { type: "separator" },

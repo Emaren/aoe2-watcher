@@ -8,6 +8,7 @@ const {
   DEFAULT_IDLE_RECOVERY_SCAN_MS,
   DEFAULT_MONITOR_WATCHDOG_MS,
   getUpdateBlocker,
+  getUpdateTrayPresentation,
   shouldLaunchInBackground,
 } = require("../runtimePolicy");
 
@@ -59,6 +60,39 @@ test("background launch policy recognizes login and explicit starts", () => {
       wasOpenedAtLogin: true,
     }),
     true
+  );
+});
+
+test("manual Mac update is visible and actionable from the tray", () => {
+  assert.deepEqual(
+    getUpdateTrayPresentation({
+      status: "manual_required",
+      manualInstall: true,
+      updateVersion: "1.6.2",
+      downloaded: false,
+    }),
+    {
+      action: "download_manual",
+      label: "Download Watcher 1.6.2",
+      tooltip: "AoE2HDBets Watcher — update 1.6.2 available",
+    }
+  );
+});
+
+test("downloaded update remains an install action and idle state remains a check", () => {
+  assert.equal(
+    getUpdateTrayPresentation({
+      downloaded: true,
+    }).action,
+    "install_downloaded"
+  );
+  assert.deepEqual(
+    getUpdateTrayPresentation({}),
+    {
+      action: "check",
+      label: "Check for Updates",
+      tooltip: "AoE2HDBets Watcher",
+    }
   );
 });
 
