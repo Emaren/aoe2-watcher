@@ -16,6 +16,7 @@ const {
   pruneSettledUploadState,
   selectPreferredReplayFolder,
   shouldSwitchReplayFolder,
+  tryClaimReplayMonitor,
 } = require("../watcher");
 
 test("live recovery scan is wired to fresh-unknown admission and has no English filename veto", () => {
@@ -24,6 +25,40 @@ test("live recovery scan is wired to fresh-unknown admission and has no English 
   assert.match(source, /freshUnknown = shouldRecoverUnknownReplayCandidate/);
   assert.match(source, /recent_unknown_replay_on_attach/);
   assert.doesNotMatch(source, /filePath\.includes\("Out of Sync"\)/);
+});
+
+test("one replay entry grants only one live monitor claim at a time", () => {
+  const entry = {
+    monitoring: false,
+    importing: false,
+  };
+
+  assert.equal(tryClaimReplayMonitor(entry), true);
+  assert.equal(entry.monitoring, true);
+  assert.equal(tryClaimReplayMonitor(entry), false);
+
+  const importing = {
+    monitoring: false,
+    importing: true,
+  };
+
+  assert.equal(tryClaimReplayMonitor(importing), false);
+  assert.equal(importing.monitoring, false);
+});
+
+test("monitor ownership is claimed before asynchronous final-state inspection", () => {
+  const source = fs.readFileSync(path.join(__dirname, "..", "watcher.js"), "utf8");
+  const start = source.indexOf("async function monitorReplayFile");
+  const end = source.indexOf("async function onFileDetected", start);
+  const monitorSource = source.slice(start, end);
+
+  const claimAt = monitorSource.indexOf("tryClaimReplayMonitor(entry)");
+  const asyncPreflightAt = monitorSource.indexOf(
+    "await resolveFinalReplayShortCircuit"
+  );
+
+  assert.ok(claimAt >= 0);
+  assert.ok(asyncPreflightAt > claimAt);
 });
 
 function temporaryFolder(segment) {

@@ -1191,6 +1191,19 @@ function getStateEntry(filePath) {
   return entry;
 }
 
+function tryClaimReplayMonitor(entry) {
+  if (
+    !entry ||
+    entry.monitoring ||
+    entry.importing
+  ) {
+    return false;
+  }
+
+  entry.monitoring = true;
+  return true;
+}
+
 function shouldPersistSettlementEntry(
   entry
 ) {
@@ -2843,59 +2856,60 @@ async function monitorReplayFile(filePath, runtimeConfig) {
   }
 
   const entry = getStateEntry(filePath);
-  if (entry.monitoring) {
-    log(`Skipping duplicate monitor for ${path.basename(filePath)} because it is already active.`);
-    emitRuntimeEvent("skip-upload-in-progress", {
-      filePath,
-      fileName: path.basename(filePath),
-      reason: "monitor_already_active",
-    });
-    return;
-  }
+  if (!tryClaimReplayMonitor(entry)) {
+    const reason =
+      entry.importing
+        ? "batch_upload_active"
+        : "monitor_already_active";
 
-  if (entry.importing) {
-    log(`Skipping live monitor for ${path.basename(filePath)} because it is importing already.`, "warn");
-    emitRuntimeEvent("skip-upload-in-progress", {
-      filePath,
-      fileName: path.basename(filePath),
-      reason: "batch_upload_active",
-    });
-    return;
-  }
-
-  const finalReplayShortCircuit = await resolveFinalReplayShortCircuit(
-    filePath,
-    entry,
-    runtimeConfig
-  );
-  if (finalReplayShortCircuit) {
     log(
-      `Skipping monitor for ${path.basename(filePath)} because replay already matches final upload state (${finalReplayShortCircuit.reason}).`
+      reason === "batch_upload_active"
+        ? `Skipping live monitor for ${path.basename(filePath)} because it is importing already.`
+        : `Skipping duplicate monitor for ${path.basename(filePath)} because it is already active.`,
+      reason === "batch_upload_active" ? "warn" : "info"
     );
-    emitRuntimeEvent("monitor-skip-final", {
+    emitRuntimeEvent("skip-upload-in-progress", {
       filePath,
       fileName: path.basename(filePath),
-      reason: finalReplayShortCircuit.reason,
-      replayHash: finalReplayShortCircuit.replayHash || entry.lastFinalReplayHash || null,
-    });
-    emitRuntimeEvent("skip-already-finalized", {
-      filePath,
-      fileName: path.basename(filePath),
-      reason: finalReplayShortCircuit.reason,
-      replayHash: finalReplayShortCircuit.replayHash || entry.lastFinalReplayHash || null,
+      reason,
     });
     return;
   }
 
-  entry.monitoring = true;
-  entry.monitorStartedAt = Date.now();
-  emitRuntimeEvent("monitor-start", {
-    filePath,
-    fileName: path.basename(filePath),
-  });
-  log(`Starting monitor loop for ${path.basename(filePath)}.`);
+  let monitorStarted = false;
 
   try {
+    const finalReplayShortCircuit = await resolveFinalReplayShortCircuit(
+      filePath,
+      entry,
+      runtimeConfig
+    );
+    if (finalReplayShortCircuit) {
+      log(
+        `Skipping monitor for ${path.basename(filePath)} because replay already matches final upload state (${finalReplayShortCircuit.reason}).`
+      );
+      emitRuntimeEvent("monitor-skip-final", {
+        filePath,
+        fileName: path.basename(filePath),
+        reason: finalReplayShortCircuit.reason,
+        replayHash: finalReplayShortCircuit.replayHash || entry.lastFinalReplayHash || null,
+      });
+      emitRuntimeEvent("skip-already-finalized", {
+        filePath,
+        fileName: path.basename(filePath),
+        reason: finalReplayShortCircuit.reason,
+        replayHash: finalReplayShortCircuit.replayHash || entry.lastFinalReplayHash || null,
+      });
+      return;
+    }
+
+    entry.monitorStartedAt = Date.now();
+    monitorStarted = true;
+    emitRuntimeEvent("monitor-start", {
+      filePath,
+      fileName: path.basename(filePath),
+    });
+    log(`Starting monitor loop for ${path.basename(filePath)}.`);
     if (!(await waitForFirstBytes(filePath, runtimeConfig))) {
       log(
         `Stopping monitor for ${path.basename(filePath)} before upload because byte floor was not reached.`,
@@ -3076,11 +3090,14 @@ async function monitorReplayFile(filePath, runtimeConfig) {
     }
   } finally {
     entry.monitoring = false;
-    emitRuntimeEvent("monitor-stop", {
-      filePath,
-      fileName: path.basename(filePath),
-    });
-    log(`Stopped monitor loop for ${path.basename(filePath)}.`);
+
+    if (monitorStarted) {
+      emitRuntimeEvent("monitor-stop", {
+        filePath,
+        fileName: path.basename(filePath),
+      });
+      log(`Stopped monitor loop for ${path.basename(filePath)}.`);
+    }
   }
 }
 
@@ -4223,6 +4240,7 @@ module.exports = {
   resolveFinalReplayShortCircuit,
   shouldHandle,
   summarizeUploadResponse,
+  tryClaimReplayMonitor,
   startWatching,
   stopWatching,
 };
