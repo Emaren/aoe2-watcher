@@ -144,7 +144,23 @@ test("manual update state is wired to a direct tray download action", () => {
   );
   assert.match(
     block,
-    /shell\.openExternal\(\s*getManualUpdateUrl\(\)/
+    /shell\.openExternal\([\s\S]*updateState\.manualDownloadUrl[\s\S]*getManualUpdateUrl\(\)/
+  );
+});
+
+test("manual update state preserves the discovered artifact URL", () => {
+  const start = source.indexOf(
+    "function setManualUpdateState"
+  );
+  const end = source.indexOf(
+    "function inspectReplayFolderCached",
+    start
+  );
+  const block = source.slice(start, end);
+
+  assert.match(
+    block,
+    /String\(info\.updateUrl \|\| ""\)\.trim\(\) \|\|[\s\S]*getManualUpdateUrl\(\)/
   );
 });
 

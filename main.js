@@ -389,7 +389,9 @@ function setManualUpdateState(reason, error = null, info = {}) {
       downloaded: false,
       manualInstall: true,
       manualReason: reason,
-      manualDownloadUrl: getManualUpdateUrl(),
+      manualDownloadUrl:
+        String(info.updateUrl || "").trim() ||
+        getManualUpdateUrl(),
       error: error?.message || (error ? String(error) : null),
     },
     {
@@ -927,7 +929,9 @@ async function installDownloadedWatcherUpdate(config = loadConfig(), options = {
     return {
       ok: false,
       manualRequired: true,
-      updateUrl: getManualUpdateUrl(),
+      updateUrl:
+        updateState.manualDownloadUrl ||
+        getManualUpdateUrl(),
       update: updateState,
     };
   }
@@ -3540,7 +3544,8 @@ function refreshTrayMenu() {
             "download_manual"
           ) {
             void shell.openExternal(
-              getManualUpdateUrl()
+              updateState.manualDownloadUrl ||
+                getManualUpdateUrl()
             );
             return;
           }
