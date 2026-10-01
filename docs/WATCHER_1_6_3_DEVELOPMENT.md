@@ -190,6 +190,63 @@ This is four lightweight release checks per day at most for a continuously
 running current client, and zero periodic release traffic once an update is
 already known.
 
+## Measured no-change conclusions
+
+The final 1.6.3 hotspot pass deliberately leaves several subsystems unchanged
+because measured cost is already tiny relative to their reliability value.
+
+### Idle Electron footprint
+
+An eight-sample local measurement of the packaged 1.6.1 Mac Watcher while idle
+showed:
+
+- total process-tree CPU p50 0.00%, p95/max 0.10%;
+- total resident memory about 100.2 MiB across three Electron processes;
+- main process about 81.7 MiB;
+- GPU helper about 11.6 MiB;
+- network service about 7.7 MiB.
+
+Idle CPU is already effectively invisible. Disabling hardware acceleration to
+chase roughly 12 MiB of GPU-helper memory is not justified because it would
+degrade the dashboard/video path for a very small fixed-memory saving. The
+remaining memory is primarily Electron runtime floor, not evidence of a
+Watcher-logic leak.
+
+### Recovery scan
+
+The live recovery fallback was benchmarked against the real local SaveGame
+folder:
+
+- 1,260 directory entries;
+- 1,042 supported replay files;
+- eight complete `readdir + stat` passes;
+- total pass time about 13.6–17.2 ms.
+
+At one pass per minute this is roughly 0.025% wall-clock duty. The 60-second
+fallback is retained because it protects against missed native/CrossOver
+filesystem notifications at negligible measured cost.
+
+### Telemetry and other timers
+
+The 1.6.2 field window contained 671 heartbeats totaling only about 0.90 MiB of
+metadata, while replay payload attempts totaled hundreds of MiB. Telemetry is
+therefore not a meaningful bandwidth target.
+
+Other recurring work is already bounded:
+
+- resource profiling: 60 seconds idle, 15 seconds only during active work;
+- telemetry heartbeat: 60 seconds;
+- monitor watchdog: 60 seconds, with fuller folder freshness work every five
+  minutes;
+- update recheck: six hours;
+- renderer watchdogs and stream heartbeats exist only while their UI/stream
+  workload is active;
+- runtime journal flushing is event-driven and buffered.
+
+No further cadence, GPU, telemetry or recovery-loop changes should be made
+without repaired 1.6.3 resource heartbeat evidence showing a real regression
+or measurable hotspot.
+
 ## Television WOLO relationship
 
 Television WOLO does not justify continuous capture by itself. The Watcher may
