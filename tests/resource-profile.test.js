@@ -198,7 +198,15 @@ test("resource profile stays heartbeat-scoped instead of bloating every telemetr
   );
   assert.match(
     mainSource,
-    /emitWatcherTelemetry\("heartbeat"[\s\S]*includeResourceProfile: true/
+    /buildRuntimeMetadata\(config,\s*\{[\s\S]*includeResourceProfile:\s*eventType === "heartbeat"/
+  );
+  assert.match(
+    mainSource,
+    /emitWatcherTelemetry\(\s*"heartbeat",\s*\{\},\s*config\s*\)/
+  );
+  assert.doesNotMatch(
+    mainSource,
+    /emitWatcherTelemetry\("heartbeat"[\s\S]{0,300}includeResourceProfile: true/
   );
 });
 

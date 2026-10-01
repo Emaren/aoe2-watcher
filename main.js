@@ -1608,7 +1608,10 @@ function buildTelemetryPayload(eventType, payload = {}, config = loadConfig()) {
           relativePath: String(entry?.relativePath || "").slice(0, 260),
         }))
       : undefined,
-    ...buildRuntimeMetadata(config),
+    ...buildRuntimeMetadata(config, {
+      includeResourceProfile:
+        eventType === "heartbeat",
+    }),
   };
 
   return {
@@ -1893,15 +1896,11 @@ function startTelemetryHeartbeat() {
   heartbeatTimer = setInterval(() => {
     const config = loadConfig();
 
-    emitWatcherTelemetry("heartbeat", {
-      metadata:
-        buildRuntimeMetadata(
-          config,
-          {
-            includeResourceProfile: true,
-          }
-        ),
-    });
+    emitWatcherTelemetry(
+      "heartbeat",
+      {},
+      config
+    );
 
     void flushWatcherTelemetryQueue(
       config
