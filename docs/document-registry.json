@@ -1,12 +1,4 @@
 {
-  "schema_version": "2.1.0",
-  "generated_at": "2026-08-04T02:09:37Z",
-  "repo": "aoe2-watcher",
-  "owner": "aoe2war-watcher",
-  "implementation_baseline": {
-    "branch": "fix/release-doc-lifecycle-20260930",
-    "commit": "8bf003afd76314064f23ceaa23a42c21d7cf91b8"
-  },
   "documents": [
     {
       "audience": [
@@ -44,7 +36,7 @@
       "review_interval_days": 0,
       "reviewed_at": "2026-07-26",
       "sensitivity": "internal",
-      "sha256": "68627ff2d9aee63633cf5fad67717c87efeca0602dd229c5a81f779895ea3f0b",
+      "sha256": "779ccdededac5676f2ed63fc7caaa0188734822f343976423bff4c9ec1e7e89d",
       "source_of_truth": "generated",
       "status": "generated",
       "systems": [
@@ -75,6 +67,37 @@
       ],
       "title": "Watcher 1.6.2 Engineering Audit",
       "type": "working"
+    },
+    {
+      "audience": [
+        "developers",
+        "operators",
+        "ai-agents"
+      ],
+      "authority": "watcher-1.6.3-development-plan",
+      "id": "aoe2war.aoe2-watcher.docs-watcher-1-6-3-development",
+      "owner": "aoe2war-watcher",
+      "path": "docs/WATCHER_1_6_3_DEVELOPMENT.md",
+      "review_interval_days": 14,
+      "reviewed_at": "2026-09-30",
+      "sensitivity": "internal",
+      "sha256": "303604dc15d94fe1dfe0ea00f1045542d32a6026f3d291c1d97bc26ab57e84f8",
+      "source_of_truth": "git",
+      "status": "active",
+      "systems": [
+        "aoe2-watcher",
+        "app-prodn"
+      ],
+      "title": "Watcher 1.6.3 Development",
+      "type": "working"
     }
-  ]
+  ],
+  "generated_at": "2026-08-04T02:09:37Z",
+  "implementation_baseline": {
+    "branch": "fix/release-doc-lifecycle-20260930",
+    "commit": "8bf003afd76314064f23ceaa23a42c21d7cf91b8"
+  },
+  "owner": "aoe2war-watcher",
+  "repo": "aoe2-watcher",
+  "schema_version": "2.1.0"
 }
