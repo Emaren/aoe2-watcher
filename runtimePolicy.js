@@ -3,6 +3,7 @@ const DEFAULT_MONITOR_WATCHDOG_MS = 60 * 1000;
 const DEFAULT_FOLDER_FRESHNESS_PROBE_MS = 5 * 60 * 1000;
 const DEFAULT_FINAL_SETTLE_POLL_MS = 10 * 1000;
 const DEFAULT_FOLDER_STATUS_CACHE_MS = 5 * 60 * 1000;
+const DEFAULT_UPDATE_RECHECK_MS = 6 * 60 * 60 * 1000;
 
 function getUpdateBlocker({
   runtimeStatus = {},
@@ -25,6 +26,32 @@ function shouldLaunchInBackground({
   return Boolean(
     wasOpenedAtLogin ||
     argv.some((value) => String(value || "").trim() === "--background")
+  );
+}
+
+function shouldRunBackgroundUpdateCheck(
+  updateState = {}
+) {
+  if (
+    updateState.manualInstall ||
+    updateState.downloaded
+  ) {
+    return false;
+  }
+
+  return !new Set([
+    "checking",
+    "available",
+    "downloading",
+    "manual_required",
+    "pending_install",
+    "installing",
+    "unsupported",
+    "dev_skipped",
+  ]).has(
+    String(
+      updateState.status || "idle"
+    )
   );
 }
 
@@ -76,7 +103,9 @@ module.exports = {
   DEFAULT_FOLDER_STATUS_CACHE_MS,
   DEFAULT_IDLE_RECOVERY_SCAN_MS,
   DEFAULT_MONITOR_WATCHDOG_MS,
+  DEFAULT_UPDATE_RECHECK_MS,
   getUpdateBlocker,
   getUpdateTrayPresentation,
   shouldLaunchInBackground,
+  shouldRunBackgroundUpdateCheck,
 };

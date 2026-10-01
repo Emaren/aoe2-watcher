@@ -27,9 +27,11 @@ const {
   DEFAULT_FOLDER_FRESHNESS_PROBE_MS,
   DEFAULT_FOLDER_STATUS_CACHE_MS,
   DEFAULT_MONITOR_WATCHDOG_MS,
+  DEFAULT_UPDATE_RECHECK_MS,
   getUpdateBlocker,
   getUpdateTrayPresentation,
   shouldLaunchInBackground,
+  shouldRunBackgroundUpdateCheck,
 } = require("./runtimePolicy");
 
 const {
@@ -162,6 +164,7 @@ let releaseState = createReleaseState();
 let updateState = createUpdateState();
 let updateCheckInFlight = false;
 let updateEventsConfigured = false;
+let updateRecheckTimer = null;
 let lastStreamHandoff = null;
 let monitorWatchdogTimer = null;
 let monitorReattachAttempts = 0;
@@ -170,6 +173,13 @@ let lastReplayFolderFreshnessProbeAt = 0;
 const MONITOR_WATCHDOG_MS = Number(
   process.env.AOE2_MONITOR_WATCHDOG_MS ||
     DEFAULT_MONITOR_WATCHDOG_MS
+);
+const UPDATE_RECHECK_MS = Math.max(
+  60 * 60 * 1000,
+  Number(
+    process.env.AOE2_UPDATE_RECHECK_MS ||
+      DEFAULT_UPDATE_RECHECK_MS
+  ) || DEFAULT_UPDATE_RECHECK_MS
 );
 const REPLAY_FOLDER_FRESHNESS_PROBE_MS = Number(
   process.env.AOE2_REPLAY_FOLDER_FRESHNESS_PROBE_MS ||
@@ -873,6 +883,43 @@ async function checkForWatcherUpdates({ manual = false, config = loadConfig() } 
   }
 }
 
+function stopBackgroundUpdateChecks() {
+  if (updateRecheckTimer) {
+    clearInterval(
+      updateRecheckTimer
+    );
+    updateRecheckTimer = null;
+  }
+}
+
+function startBackgroundUpdateChecks() {
+  stopBackgroundUpdateChecks();
+
+  if (
+    !Number.isFinite(
+      UPDATE_RECHECK_MS
+    ) ||
+    UPDATE_RECHECK_MS <= 0
+  ) {
+    return;
+  }
+
+  updateRecheckTimer =
+    setInterval(() => {
+      if (
+        !shouldRunBackgroundUpdateCheck(
+          updateState
+        )
+      ) {
+        return;
+      }
+
+      void checkForWatcherUpdates({
+        config: loadConfig(),
+      });
+    }, UPDATE_RECHECK_MS);
+}
+
 async function installDownloadedWatcherUpdate(config = loadConfig(), options = {}) {
   configureAutoUpdater();
 
@@ -937,6 +984,7 @@ async function installDownloadedWatcherUpdate(config = loadConfig(), options = {
   );
   stopMonitorWatchdog();
   stopTelemetryHeartbeat();
+  stopBackgroundUpdateChecks();
 
   if (watcherHandle) {
     stopCurrentWatcher({
@@ -3769,6 +3817,7 @@ function initializeWatcherRuntime() {
   void verifyWatcherAuth(config);
   void refreshWatcherRelease(config);
   void checkForWatcherUpdates({ config });
+  startBackgroundUpdateChecks();
   startTelemetryHeartbeat();
   void flushWatcherTelemetryQueue(config);
   startMonitorWatchdog();
@@ -4211,6 +4260,7 @@ app.on("before-quit", (event) => {
       rendererHealth
     );
   stopTelemetryHeartbeat();
+  stopBackgroundUpdateChecks();
   stopMonitorWatchdog();
   stopResourceProfiling();
 

@@ -85,6 +85,42 @@ test("graceful quit drains queued journal writes before the final watcher stop f
   assert.ok(finalFlush > stop);
 });
 
+test("background runtime periodically rechecks updates and stops that timer on quit", () => {
+  const runtimeStart = source.indexOf(
+    "function initializeWatcherRuntime"
+  );
+  const runtimeEnd = source.indexOf(
+    "function bootWatcherApp",
+    runtimeStart
+  );
+  const runtimeBlock = source.slice(
+    runtimeStart,
+    runtimeEnd
+  );
+
+  assert.match(
+    runtimeBlock,
+    /startBackgroundUpdateChecks\(\)/
+  );
+
+  const quitStart = source.indexOf(
+    'app.on("before-quit"'
+  );
+  const quitEnd = source.indexOf(
+    "const gotSingleInstanceLock",
+    quitStart
+  );
+  const quitBlock = source.slice(
+    quitStart,
+    quitEnd
+  );
+
+  assert.match(
+    quitBlock,
+    /stopBackgroundUpdateChecks\(\)/
+  );
+});
+
 test("manual update state is wired to a direct tray download action", () => {
   const trayStart = source.indexOf(
     "function refreshTrayMenu"

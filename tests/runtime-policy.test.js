@@ -7,9 +7,11 @@ const {
   DEFAULT_FOLDER_STATUS_CACHE_MS,
   DEFAULT_IDLE_RECOVERY_SCAN_MS,
   DEFAULT_MONITOR_WATCHDOG_MS,
+  DEFAULT_UPDATE_RECHECK_MS,
   getUpdateBlocker,
   getUpdateTrayPresentation,
   shouldLaunchInBackground,
+  shouldRunBackgroundUpdateCheck,
 } = require("../runtimePolicy");
 
 test("armed but idle watcher does not block update install", () => {
@@ -96,12 +98,41 @@ test("downloaded update remains an install action and idle state remains a check
   );
 });
 
+test("background update polling runs only while no update is already pending", () => {
+  assert.equal(
+    shouldRunBackgroundUpdateCheck({
+      status: "current",
+    }),
+    true
+  );
+  assert.equal(
+    shouldRunBackgroundUpdateCheck({
+      status: "error",
+    }),
+    true
+  );
+
+  for (const state of [
+    { status: "checking" },
+    { status: "downloading" },
+    { status: "manual_required", manualInstall: true },
+    { status: "pending_install", downloaded: true },
+    { status: "installing" },
+  ]) {
+    assert.equal(
+      shouldRunBackgroundUpdateCheck(state),
+      false
+    );
+  }
+});
+
 test("idle safety nets are deliberately low-frequency", () => {
   assert.ok(DEFAULT_IDLE_RECOVERY_SCAN_MS >= 60_000);
   assert.ok(DEFAULT_MONITOR_WATCHDOG_MS >= 60_000);
   assert.ok(DEFAULT_FOLDER_FRESHNESS_PROBE_MS >= 300_000);
   assert.ok(DEFAULT_FOLDER_STATUS_CACHE_MS >= 300_000);
   assert.ok(DEFAULT_FINAL_SETTLE_POLL_MS >= 10_000);
+  assert.ok(DEFAULT_UPDATE_RECHECK_MS >= 6 * 60 * 60 * 1000);
 });
 
 

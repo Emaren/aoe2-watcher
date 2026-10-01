@@ -162,6 +162,34 @@ installation policy:
 - downloaded auto-update platforms keep their existing install action;
 - ordinary/current state still shows `Check for Updates`.
 
+## Fifth field finding — update discovery was launch-bound
+
+A live-version census on 2026-10-01 found two Watchers with heartbeats in the
+preceding ten minutes: one on 1.5.10 and one on 1.6.1, with no active 1.6.2
+client in that window. The 1.6.1 client had already discovered 1.6.2 as a
+manual update. The older 1.5.10 client had previously downloaded 1.6.1 and was
+still reporting `pending_install`; current 1.6.x update-blocking policy already
+addresses the idle-watcher portion of that older behavior.
+
+Source review found no periodic release discovery in current code: packaged
+clients checked at startup, or when a person explicitly requested a check.
+A long-lived background process could therefore remain unaware of a release
+published after it started.
+
+1.6.3 adds a bounded background recheck contract:
+
+- startup still performs the immediate existing update check;
+- a current/idle client rechecks every six hours;
+- the interval cannot be configured below one hour;
+- no network recheck occurs while an update is already checking, available,
+  downloading, manually required, downloaded, pending installation or
+  installing;
+- updater polling is stopped during update installation and graceful quit.
+
+This is four lightweight release checks per day at most for a continuously
+running current client, and zero periodic release traffic once an update is
+already known.
+
 ## Television WOLO relationship
 
 Television WOLO does not justify continuous capture by itself. The Watcher may
