@@ -77,9 +77,18 @@ The same field window does **not** justify speculative renderer or folder work:
 - folder census evidence includes a 1,141-entry replay directory with recent
   inspections around 43–114 ms;
 - replay events showed 372 upload attempts, 368 successes and no stored
-  `upload_failed` events across 10 replay detections. That attempt ratio is
-  worth measuring further, but not redesigning until repaired heartbeat
-  resource/network evidence establishes the actual cost.
+  `upload_failed` events across 10 replay detections;
+- size/fingerprint follow-up showed that 362/372 attempts were the first
+  attempt at a newly observed replay size; only 10 attempts repeated an
+  already-seen size, with at most three attempts at one size;
+- one long battle produced 159 attempts across 153 distinct sizes over about
+  42.5 minutes. The high attempt count is therefore mostly deliberate rolling
+  immutable snapshots, not retry-loop churn.
+
+Do **not** change live upload cadence from this evidence alone. First collect
+the repaired heartbeat CPU/network profile and quantify whether rolling
+snapshot cost is material enough to justify a slower/adaptive cadence without
+weakening live parser freshness or replay truth.
 
 ## Television WOLO relationship
 
