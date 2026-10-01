@@ -159,6 +159,10 @@ installation policy:
 - the tray label becomes `Download Watcher <version>`;
 - the tray tooltip states that the specific update is available;
 - the tray action opens the canonical manual update URL directly;
+- the artifact URL discovered with the update is captured in
+  `manualDownloadUrl` and remains authoritative across renderer, tray, and
+  manual-required install responses; mutable release-state URLs are fallback
+  only when no captured artifact URL exists;
 - downloaded auto-update platforms keep their existing install action;
 - ordinary/current state still shows `Check for Updates`.
 
