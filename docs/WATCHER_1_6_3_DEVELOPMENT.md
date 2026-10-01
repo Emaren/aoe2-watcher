@@ -54,6 +54,33 @@ The first inputs to 1.6.3 are the field signals 1.6.2 was built to collect:
 5. keep system-power claims empirical; powerWatts remains unset without an
    external measurement source.
 
+## First 1.6.2 field finding — resource heartbeat was being overwritten
+
+A production read-only sample on 2026-10-01 covered 671 Watcher 1.6.2
+heartbeats from three Watchers / three users. Every heartbeat preserved the
+runtime, folder and renderer keys, but 0/671 preserved `resourceProfile`.
+
+The client was building the compact profile correctly at heartbeat creation,
+then `buildTelemetryPayload()` appended a second default
+`buildRuntimeMetadata(config)` object. Its `resourceProfile: undefined` value
+overwrote the real heartbeat profile before transport.
+
+1.6.3 fixes the authority point instead of adding more sampling: telemetry
+payload assembly now requests the compact resource profile exactly when
+`eventType === "heartbeat"`; the heartbeat scheduler no longer builds a
+duplicate runtime-metadata object. Ordinary telemetry remains profile-free.
+
+The same field window does **not** justify speculative renderer or folder work:
+
+- renderer heartbeats: 569 ready, 102 closed, 0 observed failures and 0 reload
+  attempts;
+- folder census evidence includes a 1,141-entry replay directory with recent
+  inspections around 43–114 ms;
+- replay events showed 372 upload attempts, 368 successes and no stored
+  `upload_failed` events across 10 replay detections. That attempt ratio is
+  worth measuring further, but not redesigning until repaired heartbeat
+  resource/network evidence establishes the actual cost.
+
 ## Television WOLO relationship
 
 Television WOLO does not justify continuous capture by itself. The Watcher may
