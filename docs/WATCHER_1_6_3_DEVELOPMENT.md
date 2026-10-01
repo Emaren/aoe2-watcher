@@ -107,9 +107,36 @@ final-state inspection and always releases that claim in `finally`. The
 existing 30-second live cadence, immutable snapshot contract, retries, final
 quiet-period logic and settlement rules are unchanged.
 
-Do **not** globally slow live upload cadence from this evidence. First remove
-the duplicate-monitor waste, collect repaired heartbeat CPU/network evidence,
-then decide whether any adaptive cadence would pay for its complexity.
+## Third 1.6.2 field finding — established live cadence is over-sampled
+
+After excluding the duplicate-monitor outlier, eight normal 1.6.2 replays
+produced 211 logical live/final upload iterations. Their final-ish bytes totaled
+about 7.7 MiB, while the logical rolling snapshots totaled about 155.6 MiB:
+roughly 20.5 final-file equivalents.
+
+The production live-session projection keeps non-final replay truth fresh for
+12 minutes, while final replay readiness is driven independently by replay-byte
+quiet/stability checks. The 30-second cadence therefore has substantial safety
+margin after the first live identity observations.
+
+A replay-trace simulation preserved the first three live snapshots at the
+existing cadence, then sampled the established replay every 60 seconds while
+still preserving final uploads. Across the eight normal games this reduced
+logical snapshot payload from about 155.6 MiB to 85.7 MiB, a projected 44.9%
+reduction, without weakening the first three live observations or the final
+quiet/stability path.
+
+1.6.3 adopts that bounded policy:
+
+- pre-first-success retry behavior remains unchanged;
+- the first three successful live snapshots retain the 30-second cadence;
+- established live replay snapshots back off to 60 seconds;
+- an explicitly longer configured live cooldown is never shortened;
+- final candidate timing, immutable snapshot integrity and retry semantics are
+  unchanged.
+
+Repaired 1.6.3 resource heartbeats remain the authority for deciding whether
+any further cadence change is justified.
 
 ## Television WOLO relationship
 

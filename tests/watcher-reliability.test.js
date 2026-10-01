@@ -10,6 +10,7 @@ const {
   disposeReplayUploadSnapshot,
   detectReplayFolder,
   getWindowsSteamRoots,
+  getLiveUploadCooldownMs,
   inspectReplayFolder,
   isRetryableUploadError,
   parseWindowsRegistryStringValue,
@@ -59,6 +60,50 @@ test("monitor ownership is claimed before asynchronous final-state inspection", 
 
   assert.ok(claimAt >= 0);
   assert.ok(asyncPreflightAt > claimAt);
+});
+
+test("live replay cadence stays fast for three successful snapshots then backs off", () => {
+  const runtimeConfig = {
+    initialLiveRetryCooldownMs: 10_000,
+    liveUploadCooldownMs: 30_000,
+    establishedLiveUploadCooldownMs: 60_000,
+    fastLiveUploadIterations: 3,
+  };
+
+  assert.equal(
+    getLiveUploadCooldownMs({ liveIteration: 0 }, runtimeConfig),
+    10_000
+  );
+  assert.equal(
+    getLiveUploadCooldownMs({ liveIteration: 1 }, runtimeConfig),
+    30_000
+  );
+  assert.equal(
+    getLiveUploadCooldownMs({ liveIteration: 2 }, runtimeConfig),
+    30_000
+  );
+  assert.equal(
+    getLiveUploadCooldownMs({ liveIteration: 3 }, runtimeConfig),
+    60_000
+  );
+  assert.equal(
+    getLiveUploadCooldownMs({ liveIteration: 12 }, runtimeConfig),
+    60_000
+  );
+});
+
+test("established replay cadence never shortens an explicit longer live cooldown", () => {
+  const runtimeConfig = {
+    initialLiveRetryCooldownMs: 10_000,
+    liveUploadCooldownMs: 90_000,
+    establishedLiveUploadCooldownMs: 60_000,
+    fastLiveUploadIterations: 3,
+  };
+
+  assert.equal(
+    getLiveUploadCooldownMs({ liveIteration: 3 }, runtimeConfig),
+    90_000
+  );
 });
 
 function temporaryFolder(segment) {

@@ -18,6 +18,8 @@ const IMPORT_SCAN_MAX_DEPTH = Math.max(
   Number.parseInt(process.env.AOE2_IMPORT_SCAN_DEPTH || "2", 10) || 0
 );
 const DEFAULT_LIVE_UPLOAD_COOLDOWN_MS = 30 * 1000;
+const DEFAULT_ESTABLISHED_LIVE_UPLOAD_COOLDOWN_MS = 60 * 1000;
+const DEFAULT_FAST_LIVE_UPLOAD_ITERATIONS = 3;
 const DEFAULT_FINAL_CANDIDATE_MIN_AGE_MS = 30 * 1000;
 const DEFAULT_FINAL_CANDIDATE_COOLDOWN_MS = 45 * 1000;
 const DEFAULT_FINAL_SETTLE_WINDOW_MS = 3 * 60 * 1000;
@@ -690,6 +692,17 @@ function buildRuntimeConfig(config = {}) {
     liveUploadCooldownMs: Number(
       process.env.AOE2_LIVE_UPLOAD_COOLDOWN_MS || DEFAULT_LIVE_UPLOAD_COOLDOWN_MS
     ),
+    establishedLiveUploadCooldownMs: Number(
+      process.env.AOE2_ESTABLISHED_LIVE_UPLOAD_COOLDOWN_MS ||
+        DEFAULT_ESTABLISHED_LIVE_UPLOAD_COOLDOWN_MS
+    ),
+    fastLiveUploadIterations: Math.max(
+      1,
+      Number(
+        process.env.AOE2_FAST_LIVE_UPLOAD_ITERATIONS ||
+          DEFAULT_FAST_LIVE_UPLOAD_ITERATIONS
+      ) || DEFAULT_FAST_LIVE_UPLOAD_ITERATIONS
+    ),
     finalCandidateMinAgeMs: Number(
       process.env.AOE2_FINAL_CANDIDATE_MIN_AGE_MS || DEFAULT_FINAL_CANDIDATE_MIN_AGE_MS
     ),
@@ -1202,6 +1215,42 @@ function tryClaimReplayMonitor(entry) {
 
   entry.monitoring = true;
   return true;
+}
+
+function getLiveUploadCooldownMs(
+  entry,
+  runtimeConfig
+) {
+  const liveIteration =
+    Math.max(
+      0,
+      Number(
+        entry?.liveIteration || 0
+      )
+    );
+
+  if (liveIteration === 0) {
+    return runtimeConfig.initialLiveRetryCooldownMs;
+  }
+
+  const fastIterations =
+    Math.max(
+      1,
+      Number(
+        runtimeConfig.fastLiveUploadIterations ||
+          DEFAULT_FAST_LIVE_UPLOAD_ITERATIONS
+      )
+    );
+
+  if (liveIteration < fastIterations) {
+    return runtimeConfig.liveUploadCooldownMs;
+  }
+
+  return Math.max(
+    runtimeConfig.liveUploadCooldownMs,
+    runtimeConfig.establishedLiveUploadCooldownMs ||
+      DEFAULT_ESTABLISHED_LIVE_UPLOAD_COOLDOWN_MS
+  );
 }
 
 function shouldPersistSettlementEntry(
@@ -2975,9 +3024,10 @@ async function monitorReplayFile(filePath, runtimeConfig) {
         log(`Observed replay change for ${path.basename(filePath)} with fingerprint ${fingerprint}.`);
 
         const liveCooldownMs =
-          entry.liveIteration === 0
-            ? runtimeConfig.initialLiveRetryCooldownMs
-            : runtimeConfig.liveUploadCooldownMs;
+          getLiveUploadCooldownMs(
+            entry,
+            runtimeConfig
+          );
         const lastLiveAnchorAt =
           entry.liveIteration === 0 ? entry.lastLiveAttemptAt : entry.lastLiveUploadAt;
 
@@ -4219,6 +4269,7 @@ module.exports = {
   shouldSwitchReplayFolder,
   getRuntimeStatus: () => ({ ...activeRuntimeStatus }),
   getFileFingerprint,
+  getLiveUploadCooldownMs,
   getRetryDelayMs: (
     attempt,
     config = {},
