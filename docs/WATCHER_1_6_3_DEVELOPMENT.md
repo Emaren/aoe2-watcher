@@ -82,13 +82,34 @@ The same field window does **not** justify speculative renderer or folder work:
   attempt at a newly observed replay size; only 10 attempts repeated an
   already-seen size, with at most three attempts at one size;
 - one long battle produced 159 attempts across 153 distinct sizes over about
-  42.5 minutes. The high attempt count is therefore mostly deliberate rolling
-  immutable snapshots, not retry-loop churn.
+  42.5 minutes. A deeper session-level trace showed two interleaved parse
+  iteration trains in the same Watcher process, so this outlier was not normal
+  30-second rolling cadence.
 
-Do **not** change live upload cadence from this evidence alone. First collect
-the repaired heartbeat CPU/network profile and quantify whether rolling
-snapshot cost is material enough to justify a slower/adaptive cadence without
-weakening live parser freshness or replay truth.
+## Second 1.6.2 field finding — duplicate live monitor ownership
+
+Across nine replay files, 1.6.2 attempted about 383.0 MiB of replay payload.
+Eight files showed median upload gaps around 31.6–34.3 seconds, matching the
+30-second live cooldown plus processing time.
+
+The outlier replay reached only about 2.2 MiB but attempted 225.6 MiB over
+42.5 minutes: roughly 101.7 final-file equivalents. It came from one Watcher ID
+and one app session, with two concurrent parse-iteration trains advancing
+1..78 and 1..77.
+
+The race was inside `monitorReplayFile()`: `entry.monitoring` was checked,
+then `resolveFinalReplayShortCircuit()` was awaited, and only afterward was
+`entry.monitoring` set. Near-simultaneous detections could both pass the guard
+before either caller owned the replay.
+
+1.6.3 now claims replay-monitor ownership synchronously before the first async
+final-state inspection and always releases that claim in `finally`. The
+existing 30-second live cadence, immutable snapshot contract, retries, final
+quiet-period logic and settlement rules are unchanged.
+
+Do **not** globally slow live upload cadence from this evidence. First remove
+the duplicate-monitor waste, collect repaired heartbeat CPU/network evidence,
+then decide whether any adaptive cadence would pay for its complexity.
 
 ## Television WOLO relationship
 
