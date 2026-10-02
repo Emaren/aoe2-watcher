@@ -321,16 +321,30 @@ from the candidate list when measurement shows they do not pay for their
 complexity.
 ## Release checkpoint
 
-1.6.3 becomes a release candidate only after accumulated work reaches a useful
-checkpoint and the branch is clean. At that point:
+**Release-candidate scope freeze: 2026-10-02.**
 
-- freeze scope;
-- run lint, contracts, packaging smoke, and platform build gates;
-- build Windows installer and portable from the same source as macOS DMG,
-  macOS direct ZIP, and Linux AppImage;
+The accumulated 1.6.3 work has reached a useful checkpoint and feature scope is
+now frozen. No additional behavior should enter this candidate unless a
+release-blocking defect is found.
+
+Candidate validation completed before platform builds:
+
+- full Watcher contracts: **112/112**;
+- runtime JavaScript lint: **clean**;
+- npm dependency install from lockfile: **clean, 0 vulnerabilities**;
+- package metadata: **1.6.3**;
+- macOS arm64 package smoke under locked electron-builder **26.15.3**:
+  **PASS**;
+- diff whitespace check: **clean**.
+
+The remaining promotion gates are intentionally artifact/platform specific:
+
+- build Windows installer and portable from this exact source;
+- build macOS DMG, macOS direct ZIP, and Linux AppImage from this exact source;
 - preserve Windows signing and configured macOS policy;
 - hash and certify every public artifact and updater manifest;
 - verify website download bytes before promoting public metadata.
 
-Until then, 1.6.3 is development only and must not be advertised as the current
-Watcher release.
+Until those five-artifact certification gates complete, 1.6.3 is a
+**release candidate only** and must not be advertised as the current public
+Watcher release. Public release remains 1.6.2.
