@@ -21,10 +21,20 @@ export function publicReleaseParagraph(version) {
   return `Watcher ${version} is the current public release. The five-artifact publication gate completed for Windows Installer, Windows Portable, macOS DMG, macOS Direct ZIP, and Linux AppImage. The immutable \`v${version}\` release and its updater metadata were verified before publication.`;
 }
 
+export function demotePreviousCurrentReleaseClaims(text, currentVersion) {
+  return text.replace(
+    /Watcher (\d+\.\d+\.\d+) is the current public release\./g,
+    (match, version) =>
+      version === currentVersion
+        ? match
+        : `Watcher ${version} was a prior public release.`,
+  );
+}
+
 export function rewriteReadme(text, version) {
   const publicHeading = `## v${version} public release`;
   if (text.includes(publicHeading)) {
-    return text;
+    return demotePreviousCurrentReleaseClaims(text, version);
   }
 
   const lifecycleStates = [
@@ -79,11 +89,12 @@ export function rewriteReadme(text, version) {
     }
   }
 
-  return (
+  return demotePreviousCurrentReleaseClaims(
     text.slice(0, start) +
-    paragraphs.join("\n\n") +
-    "\n" +
-    text.slice(nextHeading)
+      paragraphs.join("\n\n") +
+      "\n" +
+      text.slice(nextHeading),
+    version,
   );
 }
 

@@ -319,15 +319,25 @@ measured reductions discovered from 1.6.2 field profiles.
 Each candidate should land as a small tested commit. Features may be removed
 from the candidate list when measurement shows they do not pay for their
 complexity.
-## Release checkpoint
+## Public release checkpoint
 
-**Release-candidate scope freeze: 2026-10-02.**
+**Watcher 1.6.3 is the current public release as of 2026-10-02.**
 
-The accumulated 1.6.3 work has reached a useful checkpoint and feature scope is
-now frozen. No additional behavior should enter this candidate unless a
-release-blocking defect is found.
+The candidate scope froze before platform builds and no runtime behavior changed
+after the frozen runtime commit. The release provenance is deliberately split
+between runtime code and build/docs authority:
 
-Candidate validation completed before platform builds:
+- runtime source:
+  `22397221167bac75c710804d526d33cbdfe8d559`;
+- cross-platform build source and `v1.6.3` tag:
+  `ad44e34a49901aed58ee72bd922ea5b047b76870`;
+- Windows Azure-signing run: `37042601127`;
+- macOS/Linux build run: `37042597135`;
+- certification run: `37043600091`;
+- certified bundle artifact ID: `11242987071`;
+- public release time: `2026-10-02T18:00:05Z`.
+
+Release validation:
 
 - full Watcher contracts: **112/112**;
 - runtime JavaScript lint: **clean**;
@@ -335,16 +345,17 @@ Candidate validation completed before platform builds:
 - package metadata: **1.6.3**;
 - macOS arm64 package smoke under locked electron-builder **26.15.3**:
   **PASS**;
-- diff whitespace check: **clean**.
+- Windows installer and portable: **built and Azure-signed**;
+- macOS DMG and direct ZIP: **built successfully**;
+- Linux AppImage: **built successfully**;
+- all platform build jobs used the exact build source above;
+- certification workflow re-verified the build-run provenance and pinned
+  SHA-256 for every principal artifact and updater manifest;
+- public GitHub release contains **11/11** certified release assets;
+- GitHub release-asset digests match the certified
+  `SHA256SUMS-1.6.3.txt` inventory;
+- public `v1.6.3` tag resolves to the certified build source.
 
-The remaining promotion gates are intentionally artifact/platform specific:
-
-- build Windows installer and portable from this exact source;
-- build macOS DMG, macOS direct ZIP, and Linux AppImage from this exact source;
-- preserve Windows signing and configured macOS policy;
-- hash and certify every public artifact and updater manifest;
-- verify website download bytes before promoting public metadata.
-
-Until those five-artifact certification gates complete, 1.6.3 is a
-**release candidate only** and must not be advertised as the current public
-Watcher release. Public release remains 1.6.2.
+The release is therefore no longer a candidate. Future runtime work belongs in
+a later development lane; 1.6.3 should change only for release-record
+corrections that do not alter its certified bytes.

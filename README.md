@@ -15,9 +15,39 @@ sensitivity: "internal"
 
 # aoe2-watcher
 
+## v1.6.3 public release
+
+Watcher 1.6.3 is the current public release. The five-artifact publication gate completed for Windows Installer, Windows Portable, macOS DMG, macOS Direct ZIP, and Linux AppImage. The immutable `v1.6.3` release and its updater metadata were verified before publication.
+
+The release prevents duplicate monitor ownership for one replay, backs
+established live uploads from the initial fast cadence to a one-minute cadence,
+keeps low-frequency update discovery alive while the background Watcher runs,
+surfaces manual Mac update actions without weakening artifact provenance, and
+preserves the server distinction between durable final bytes and an accepted
+competitive result. A final replay stored for review is no longer described as
+fully settled merely because its bytes stopped changing.
+
+Certified 1.6.3 evidence:
+
+- runtime source: `22397221167bac75c710804d526d33cbdfe8d559`;
+- cross-platform build source / `v1.6.3` tag:
+  `ad44e34a49901aed58ee72bd922ea5b047b76870`;
+- Windows Azure-signing run: `37042601127`;
+- macOS/Linux build run: `37042597135`;
+- certification run: `37043600091`;
+- certified bundle artifact: `certified-watcher-release-1.6.3`;
+- certified bundle artifact ID: `11242987071`;
+- public GitHub release published: `2026-10-02T18:00:05Z`.
+
+The five principal user-facing bytes are bound by SHA-256 in the certification manifest. The immutable `v1.6.3` public release inventory has been verified, so downstream release metadata may promote only those exact certified bytes.
+
+The engineering evidence and measured no-change decisions live in
+[Watcher 1.6.3 Development](docs/WATCHER_1_6_3_DEVELOPMENT.md).
+
+
 ## v1.6.2 public release
 
-Watcher 1.6.2 is the current public release. The five-artifact publication gate
+Watcher 1.6.2 was a prior public release. The five-artifact publication gate
 completed for Windows Installer, Windows Portable, macOS DMG, macOS Direct ZIP,
 and Linux AppImage. The immutable `v1.6.2` release and its updater metadata were
 verified before publication. Its engineering goal remains deliberately paradoxical:
@@ -96,7 +126,7 @@ snapshot and progress-retry contract.
 The historical queue remains serial and oldest-first. No replay is deleted, and
 the hotfix does not change result, betting, settlement, or Wolo authority.
 
-Watcher 1.6.1 is the current public release. The certified release binds runtime
+Watcher 1.6.1 was a prior public release. The certified release binds runtime
 source `3f8982d0f9c3f28540ec49adacad5418de065adc` to build source
 `eb8c7478575b472273b4400f01c4d401df03e2c5`, Windows signing run
 `35808959038`, macOS/Linux build run `35808958815`, and certified bundle run

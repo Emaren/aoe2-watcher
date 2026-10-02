@@ -64,24 +64,32 @@ test("promotes a certified pending-publication section without discarding audit 
     updated,
     /immutable `v1\.6\.2` public release inventory has been verified/,
   );
+  assert.doesNotMatch(
+    updated,
+    /Watcher 1\.6\.1 is the current public release\./,
+  );
 });
 
-test("an already-public release stays current even with richer release prose", async () => {
+test("an already-public release stays current while older current claims are demoted", async () => {
   const { rewriteReadme } = await moduleUnderTest();
   const source = [
     "# aoe2-watcher",
     "",
     "## v1.6.1 public release",
     "",
-    "Watcher 1.6.1 is public with richer provenance and hotfix detail.",
+    "Watcher 1.6.1 is the current public release. Richer provenance stays here.",
     "",
     "## v1.6.0 public release",
     "",
-    "Previous release.",
+    "Watcher 1.6.0 is the current public release. Historical detail stays here.",
     "",
   ].join("\n");
 
-  assert.equal(rewriteReadme(source, "1.6.1"), source);
+  const updated = rewriteReadme(source, "1.6.1");
+  assert.match(updated, /Watcher 1\.6\.1 is the current public release\./);
+  assert.match(updated, /Watcher 1\.6\.0 was a prior public release\./);
+  assert.match(updated, /Historical detail stays here\./);
+  assert.equal(rewriteReadme(updated, "1.6.1"), updated);
 });
 
 test("requires the complete five-artifact public inventory", async () => {
