@@ -232,6 +232,40 @@ jobs:
           path: |
             release/*
 
+      - name: Stage certified draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cat > release-notes.md <<EOF
+          AoE2HDBets Watcher $VERSION
+
+          Certified runtime source: $RUNTIME_SOURCE_SHA
+          Certified build source: $BUILD_SOURCE_SHA
+          Windows signing run: $WINDOWS_RUN_ID
+          macOS/Linux build run: $NONWINDOWS_RUN_ID
+
+          This draft contains only the cryptographically certified release inventory.
+          EOF
+
+          if gh release view "v$VERSION" --repo "$GITHUB_REPOSITORY" --json isDraft >/tmp/release-state.json 2>/dev/null; then
+            python3 - <<'PY'
+          import json
+          from pathlib import Path
+          state = json.loads(Path("/tmp/release-state.json").read_text())
+          if state.get("isDraft") is not True:
+              raise SystemExit("STOP: existing release is not a draft")
+          PY
+            gh release upload "v$VERSION" --repo "$GITHUB_REPOSITORY" --clobber release/*
+          else
+            gh release create "v$VERSION" \
+              --repo "$GITHUB_REPOSITORY" \
+              --verify-tag \
+              --draft \
+              --title "AoE2HDBets Watcher $VERSION" \
+              --notes-file release-notes.md \
+              release/*
+          fi
+
       - name: Owner publication handoff
         run: |
           echo "WATCHER_RELEASE_CERTIFIED version=$VERSION"
@@ -240,5 +274,5 @@ jobs:
           echo "build_source=$BUILD_SOURCE_SHA"
           echo "windows_run=$WINDOWS_RUN_ID"
           echo "nonwindows_run=$NONWINDOWS_RUN_ID"
-          echo "GitHub Actions release creation is intentionally not used because the repository integration is denied release-create permission."
-          echo "An authenticated repository owner must publish the certified bundle against the pre-created v$VERSION tag, then verify the release inventory before advancing app metadata."
+          echo "Draft release staged from the certified bundle."
+          echo "An authenticated repository owner must verify the draft inventory, then publish v$VERSION before advancing app metadata."
