@@ -11,6 +11,7 @@ test("settled replay telemetry preserves the terminal result receipt", () => {
   for (const eventType of [
     "final-settle-observation-started",
     "final-settle-observation-complete",
+    "final-result-review-observation-complete",
   ]) {
     assert.match(watcherSource, new RegExp(`\\"${eventType}\\"`));
   }
@@ -18,6 +19,8 @@ test("settled replay telemetry preserves the terminal result receipt", () => {
   for (const metadataField of [
     "finalStored",
     "finalAccepted",
+    "resultReady",
+    "reviewRouted",
     "settleWindowMs",
     "fingerprint",
     "fileSizeBytes",

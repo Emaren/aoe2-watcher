@@ -11,6 +11,8 @@ const {
   classifyReplayAcceptance,
   getFileFingerprint,
   getReplayContentHash,
+  hasReviewRoutedReplayFingerprint,
+  hasSettledReplayFingerprint,
   importHistoricalReplays,
   resolveFinalReplayShortCircuit,
   restorePersistedSettlementState,
@@ -116,13 +118,30 @@ test("short-circuits when the replay fingerprint is already settled", async (t) 
     finalAccepted: true,
   });
 
-  const result = await resolveFinalReplayShortCircuit(filePath, entry, {
+  const runtimeConfig = {
     finalSettleWindowMs: 90000,
-  });
+  };
+
+  assert.equal(
+    hasSettledReplayFingerprint(entry, fingerprint, runtimeConfig),
+    true,
+  );
+  assert.equal(
+    hasReviewRoutedReplayFingerprint(entry, fingerprint, runtimeConfig),
+    false,
+  );
+
+  const result = await resolveFinalReplayShortCircuit(
+    filePath,
+    entry,
+    runtimeConfig,
+  );
 
   assert.deepEqual(result, {
     reason: "settled_fingerprint",
     fingerprint,
+    resultReady: true,
+    reviewRouted: false,
   });
 });
 
@@ -195,7 +214,7 @@ test("does not short-circuit an unaccepted final candidate", async (t) => {
   assert.equal(result, null);
 });
 
-test("short-circuits an archived final routed to private result review", async (t) => {
+test("archives unresolved finals as review-routed state without calling the result settled", async (t) => {
   const filePath = await createTempReplay(t, Buffer.from("archived review replay"));
   const fingerprint = await getFileFingerprint(filePath);
   const entry = buildEntry({
@@ -205,14 +224,30 @@ test("short-circuits an archived final routed to private result review", async (
     finalAccepted: false,
     finalStored: true,
   });
-
-  const result = await resolveFinalReplayShortCircuit(filePath, entry, {
+  const runtimeConfig = {
     finalSettleWindowMs: 90000,
-  });
+  };
+
+  assert.equal(
+    hasSettledReplayFingerprint(entry, fingerprint, runtimeConfig),
+    false,
+  );
+  assert.equal(
+    hasReviewRoutedReplayFingerprint(entry, fingerprint, runtimeConfig),
+    true,
+  );
+
+  const result = await resolveFinalReplayShortCircuit(
+    filePath,
+    entry,
+    runtimeConfig,
+  );
 
   assert.deepEqual(result, {
-    reason: "settled_fingerprint",
+    reason: "review_routed_fingerprint",
     fingerprint,
+    resultReady: false,
+    reviewRouted: true,
   });
 });
 

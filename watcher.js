@@ -152,6 +152,7 @@ function emitRuntimeEvent(type, payload = {}) {
       type === "upload-success" ? 0 : activeRuntimeStatus.repeatedUploadErrors + 1;
   } else if (
     type === "final-settle-observation-complete" ||
+    type === "final-result-review-observation-complete" ||
     type === "monitor-stop"
   ) {
     activeRuntimeStatus.activeReplay = false;
@@ -2105,7 +2106,24 @@ function shouldLogReplayGrowthNotice(entry, runtimeConfig, isFinal) {
 
 function hasSettledReplayFingerprint(entry, fingerprint, runtimeConfig, now = Date.now()) {
   return Boolean(
-    (entry.finalAccepted || entry.finalStored) &&
+    entry.finalAccepted &&
+      fingerprint &&
+      fingerprint === entry.lastFinalUploadedFingerprint &&
+      fingerprint === entry.lastObservedFingerprint &&
+      entry.lastFinalUploadAt > 0 &&
+      now - entry.lastFinalUploadAt >= runtimeConfig.finalSettleWindowMs
+  );
+}
+
+function hasReviewRoutedReplayFingerprint(
+  entry,
+  fingerprint,
+  runtimeConfig,
+  now = Date.now()
+) {
+  return Boolean(
+    entry.finalStored &&
+      !entry.finalAccepted &&
       fingerprint &&
       fingerprint === entry.lastFinalUploadedFingerprint &&
       fingerprint === entry.lastObservedFingerprint &&
@@ -2140,6 +2158,24 @@ async function resolveFinalReplayShortCircuit(
     return {
       reason: "settled_fingerprint",
       fingerprint: nextFingerprint,
+      resultReady: true,
+      reviewRouted: false,
+    };
+  }
+
+  if (
+    hasReviewRoutedReplayFingerprint(
+      entry,
+      nextFingerprint,
+      runtimeConfig,
+      now
+    )
+  ) {
+    return {
+      reason: "review_routed_fingerprint",
+      fingerprint: nextFingerprint,
+      resultReady: false,
+      reviewRouted: true,
     };
   }
 
@@ -2169,9 +2205,13 @@ async function resolveFinalReplayShortCircuit(
   persistSettlementState();
 
   return {
-    reason: "settled_replay_hash",
+    reason: entry.finalAccepted
+      ? "settled_replay_hash"
+      : "review_routed_replay_hash",
     fingerprint: nextFingerprint,
     replayHash: contentHash,
+    resultReady: Boolean(entry.finalAccepted),
+    reviewRouted: Boolean(entry.finalStored && !entry.finalAccepted),
   };
 }
 
@@ -2998,7 +3038,7 @@ async function monitorReplayFile(filePath, runtimeConfig) {
       }
 
       if (hasSettledReplayFingerprint(entry, fingerprint, runtimeConfig, now)) {
-        log(`Monitor loop complete for ${path.basename(filePath)}. Replay is fully settled.`);
+        log(`Monitor loop complete for ${path.basename(filePath)}. Replay result is fully settled.`);
 
         emitRuntimeEvent("final-settle-observation-complete", {
           filePath,
@@ -3006,6 +3046,39 @@ async function monitorReplayFile(filePath, runtimeConfig) {
           replayHash: entry.lastFinalReplayHash || null,
           finalAccepted: entry.finalAccepted,
           finalStored: entry.finalStored,
+          resultReady: true,
+          reviewRouted: false,
+          settleWindowMs: runtimeConfig.finalSettleWindowMs,
+          fingerprint,
+          ...parseFingerprintParts(fingerprint),
+        });
+
+        return;
+      }
+
+      if (
+        hasReviewRoutedReplayFingerprint(
+          entry,
+          fingerprint,
+          runtimeConfig,
+          now
+        )
+      ) {
+        log(
+          `Monitor loop complete for ${path.basename(
+            filePath
+          )}. Final bytes are archived, but the result remains in review.`,
+          "warn"
+        );
+
+        emitRuntimeEvent("final-result-review-observation-complete", {
+          filePath,
+          fileName: path.basename(filePath),
+          replayHash: entry.lastFinalReplayHash || null,
+          finalAccepted: false,
+          finalStored: true,
+          resultReady: false,
+          reviewRouted: true,
           settleWindowMs: runtimeConfig.finalSettleWindowMs,
           fingerprint,
           ...parseFingerprintParts(fingerprint),
@@ -4270,6 +4343,8 @@ module.exports = {
   getRuntimeStatus: () => ({ ...activeRuntimeStatus }),
   getFileFingerprint,
   getLiveUploadCooldownMs,
+  hasReviewRoutedReplayFingerprint,
+  hasSettledReplayFingerprint,
   getRetryDelayMs: (
     attempt,
     config = {},

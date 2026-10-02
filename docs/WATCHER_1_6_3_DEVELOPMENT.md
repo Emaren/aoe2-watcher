@@ -194,6 +194,51 @@ This is four lightweight release checks per day at most for a continuously
 running current client, and zero periodic release traffic once an update is
 already known.
 
+## Sixth field finding — archived final bytes are not a settled result
+
+The October 2 championship field run exposed a terminal-state semantic bug in
+the Watcher. HD replay bytes could become quiet and stable enough to be stored
+as a final replay while the parser still had no trustworthy winner evidence.
+The upload response correctly represented that distinction:
+
+- `finalStored=true`: the final candidate bytes were durably archived;
+- `finalAccepted/resultReady=true`: the server accepted those bytes as
+  competitive result authority.
+
+Watcher 1.6.2 collapsed those states after the bounded settle window:
+`hasSettledReplayFingerprint()` accepted either `finalAccepted` or
+`finalStored`. A replay routed to result review could therefore be described
+locally and in telemetry as fully settled even though its winner was still
+unknown.
+
+1.6.3 preserves the distinction end to end:
+
+- `hasSettledReplayFingerprint()` now requires `finalAccepted`;
+- archived-but-unresolved bytes enter the separate
+  `hasReviewRoutedReplayFingerprint()` state;
+- after the same bounded byte-observation window, trusted results emit
+  `final-settle-observation-complete`;
+- archived unresolved results emit
+  `final-result-review-observation-complete` with
+  `resultReady=false` and `reviewRouted=true`;
+- the Watcher still exits active polling after that bounded window, so the fix
+  does not create a permanent CPU or filesystem loop;
+- the existing recovery watchdog still reopens monitoring when a stored
+  replay later changes on disk, including across Watcher restart.
+
+This change does not infer a winner and does not weaken server result
+authority. It only prevents durable replay storage from being mislabeled as a
+settled competitive result. Server-side accepted adjudication and
+rating-delta authority remain the safe fallback when HD terminal bytes omit
+winner proof.
+
+Validation on the 1.6.3 development branch:
+
+- focused terminal/restart suite: 23/23;
+- full Watcher suite: 112/112;
+- lint: clean;
+- diff whitespace check: clean.
+
 ## Measured no-change conclusions
 
 The final 1.6.3 hotspot pass deliberately leaves several subsystems unchanged
