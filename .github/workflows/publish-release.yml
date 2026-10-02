@@ -18,11 +18,11 @@ jobs:
     timeout-minutes: 20
 
     env:
-      VERSION: "1.6.2"
-      WINDOWS_RUN_ID: "36649412730"
-      NONWINDOWS_RUN_ID: "36649412594"
-      RUNTIME_SOURCE_SHA: "1d1e9b3ca9f95a89cf47ab582219e4c85b725603"
-      BUILD_SOURCE_SHA: "b1e3b1353aa48840bdaa7d8afc353e1afc5bf22d"
+      VERSION: "1.6.3"
+      WINDOWS_RUN_ID: "37042601127"
+      NONWINDOWS_RUN_ID: "37042597135"
+      RUNTIME_SOURCE_SHA: "22397221167bac75c710804d526d33cbdfe8d559"
+      BUILD_SOURCE_SHA: "ad44e34a49901aed58ee72bd922ea5b047b76870"
 
     steps:
       - name: Checkout
@@ -44,13 +44,13 @@ jobs:
           expected = {
               "windows-run.json": {
                   "name": "Sign Windows Watcher",
-                  "event": "push",
+                  "event": "workflow_dispatch",
                   "headSha": os.environ["BUILD_SOURCE_SHA"],
                   "conclusion": "success",
               },
               "nonwindows-run.json": {
                   "name": "Build non-Windows Watcher Release",
-                  "event": "push",
+                  "event": "workflow_dispatch",
                   "headSha": os.environ["BUILD_SOURCE_SHA"],
                   "conclusion": "success",
               },
@@ -172,21 +172,21 @@ jobs:
 
           expected = {
               f"AoE2HDBets Watcher Setup {version}.exe":
-                  "80c04168949c791cfdc0c67432c2ac4868459219923d8b7c96efc40f24d8d0c3",
+                  "54cae410e9808e363efe0c1f1eed26648563be7fc09fa70dd9567a1eb7916e77",
               f"AoE2HDBets Watcher {version}.exe":
-                  "4b7d0709dae6e9a80ea400bbb88a87a3880b0d5bf99dac11bcdb5e8b6ff129f7",
+                  "a69c35ab8712451cca60da7fcd42e55f019c9ac47ffdaecd0e946ce592c37038",
               f"AoE2HDBets Watcher-{version}-arm64.dmg":
-                  "89860bc8d3a95283cb49d9d86f8a8b8b07e0423b3c7f53ddd5ddd003b1c8df95",
+                  "04c04738b23eefdb5c9c6e29c7cc1de77d28c728a34ab72d1fa48c24b354a9ff",
               "aoe2hdbets-watcher-direct.zip":
-                  "d2bfb053cf78418fa90d1dca20d223f8488c3baa82071d5db515dbbaceb38a78",
+                  "055b20df70b76f2e8b8a3f87b2106580d7fd8e427ed4ab740de708cc97cded9c",
               f"AoE2HDBets Watcher-{version}.AppImage":
-                  "a73367344321e0e9399192dd47e588adab68770aa1632636ab4f3f3e1743237a",
+                  "c1d1d149dac0e49dc8ad1361e07acc85ceea61ab8d3782b6a8e54b1790d155d0",
               f"AoE2HDBets Watcher-{version}-arm64.dmg.blockmap":
-                  "c14e65579e54b2417766c5ab816798fb2f87221798b3fee5fd4c788fa3beaf63",
+                  "d7ede3335d6f11765c035be500dadaaad9af431570bf72c31494ee5127e46147",
               "latest-mac.yml":
-                  "fc75da5949b3fcf12e3b1ac45feb714f1b983094c62a1c6c8b20bf18d25d1b3c",
+                  "9aa7f3b553b907a4ed7eb1b9f25f5335922655f42386aad99481167dc999b24a",
               "latest-linux.yml":
-                  "2138060fbedb23f3d7a090238634fd0cbd8388db674f80de5cd016093bd47b6f",
+                  "9dd2432a25922f7e1d73e1c26488f7d19f43263d7d87ff87bec56ae3915bae5b",
           }
 
           actual = {row["filename"]: row["sha256"] for row in rows}
