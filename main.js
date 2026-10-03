@@ -143,6 +143,7 @@ const networkPriorityArbiter =
 
 let mainWindow = null;
 let tray = null;
+let appQuitRequested = false;
 let runtimeInitialized = false;
 let watcherHandle = null;
 let cachedConfig = null;
@@ -1059,6 +1060,7 @@ function getDefaultConfig() {
     watcherId: process.env.AOE2_WATCHER_ID || "",
     launchAtLogin: true,
     autoStartWatching: true,
+    autoStreamMatches: false,
     lastImportSummary: null,
   };
 }
@@ -2504,8 +2506,14 @@ async function postStreamJson(payload = {}) {
 
   if (apiPath === "/api/streams/start" && response?.data?.stream?.id) {
     nativeStreamActive = true;
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.setBackgroundThrottling(false);
+    }
   } else if (/\/end$/.test(apiPath)) {
     nativeStreamActive = false;
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.setBackgroundThrottling(true);
+    }
     maybeInstallPendingWatcherUpdate("native_stream_ended");
   }
 
@@ -3666,6 +3674,22 @@ function createWindow({ showOnReady = true } = {}) {
 
   mainWindow.loadFile(path.join(__dirname, "index.html"));
 
+  mainWindow.on("close", (event) => {
+    if (
+      !appQuitRequested &&
+      loadConfig().autoStreamMatches === true
+    ) {
+      event.preventDefault();
+      mainWindow?.hide();
+      if (process.platform === "darwin" && app.dock) {
+        app.dock.hide();
+      }
+      appendLog(
+        "Dashboard hidden; automatic Television WOLO capture remains armed."
+      );
+    }
+  });
+
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     try {
       const parsed = new URL(url);
@@ -4223,7 +4247,7 @@ function bootWatcherApp() {
     return { ok: true };
   });
 
-  initializeWatcherRuntime();
+  const runtimeConfig = initializeWatcherRuntime();
 
   const loginState = app.getLoginItemSettings();
   const launchInBackground =
@@ -4235,6 +4259,12 @@ function bootWatcherApp() {
 
   if (launchInBackground) {
     appendLog("Started in low-resource background mode.");
+    if (runtimeConfig.autoStreamMatches === true) {
+      createWindow({ showOnReady: false });
+      appendLog(
+        "Hidden capture renderer armed for automatic Television WOLO streaming."
+      );
+    }
     if (process.platform === "darwin" && app.dock) {
       app.dock.hide();
     }
@@ -4258,6 +4288,7 @@ app.on("activate", () => {
 });
 
 app.on("before-quit", (event) => {
+  appQuitRequested = true;
   clearRendererBootWatchdog();
   rendererReady = false;
   rendererHealth =

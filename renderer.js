@@ -53,6 +53,7 @@ const els = {
   uploadApiKeyInput: document.getElementById("uploadApiKeyInput"),
   launchAtLoginInput: document.getElementById("launchAtLoginInput"),
   autoStartWatchingInput: document.getElementById("autoStartWatchingInput"),
+  autoStreamMatchesInput: document.getElementById("autoStreamMatchesInput"),
   saveSettingsBtn: document.getElementById("saveSettingsBtn"),
   detectFolderBtn: document.getElementById("detectFolderBtn"),
   chooseFolderBtn: document.getElementById("chooseFolderBtn"),
@@ -131,6 +132,7 @@ const DEFAULT_CONFIG = {
   uploadApiKey: "",
   launchAtLogin: true,
   autoStartWatching: true,
+  autoStreamMatches: false,
   lastImportSummary: null,
 };
 
@@ -145,6 +147,16 @@ const STREAM_HANDOFF_RUNTIME_EVENTS = new Set([
 ]);
 const STREAM_HANDOFF_CLEAR_EVENTS = new Set([
   "final-candidate-accepted",
+  "monitor-stop",
+  "watching-stopped",
+]);
+const AUTO_STREAM_START_RUNTIME_EVENTS = new Set([
+  "replay-detected",
+  "midgame-replay-recovered",
+]);
+const AUTO_STREAM_STOP_RUNTIME_EVENTS = new Set([
+  "final-settle-observation-complete",
+  "final-result-review-observation-complete",
   "monitor-stop",
   "watching-stopped",
 ]);
@@ -265,6 +277,7 @@ let nativeStreamState = {
   heartbeatTimer: null,
   startedAt: 0,
   manualStop: false,
+  autoStarted: false,
   readout: "Idle.",
   detail: "Pick a source when a watcher match is ready.",
 };
@@ -273,6 +286,8 @@ let nativeUploadChain = Promise.resolve();
 let nativeVideoUploadGeneration = 0;
 let replayVideoPriorityActive = false;
 let replayPriorityPausedRecorder = false;
+let autoNativeStreamStartPending = false;
+let nativeStreamEnding = false;
 let watchDirStatus = {
   exists: false,
   isDirectory: false,
@@ -349,6 +364,7 @@ function readForm() {
     uploadApiKey: els.uploadApiKeyInput.value.trim(),
     launchAtLogin: Boolean(els.launchAtLoginInput?.checked),
     autoStartWatching: Boolean(els.autoStartWatchingInput.checked),
+    autoStreamMatches: Boolean(els.autoStreamMatchesInput?.checked),
   };
 }
 
@@ -363,6 +379,9 @@ function writeForm(config) {
   }
 
   els.autoStartWatchingInput.checked = config.autoStartWatching !== false;
+  if (els.autoStreamMatchesInput) {
+    els.autoStreamMatchesInput.checked = config.autoStreamMatches === true;
+  }
 }
 
 function formatPlatform(value) {
@@ -906,12 +925,60 @@ function stopNativeLocalCapture() {
   }
 }
 
-async function endNativeStream(reason = "manual") {
+async function stopNativeCaptureAndDrainUploads() {
+  if (nativeStreamState.heartbeatTimer) {
+    window.clearInterval(nativeStreamState.heartbeatTimer);
+  }
+
+  const recorder = nativeStreamState.recorder;
+  if (recorder && recorder.state !== "inactive") {
+    await new Promise((resolve) => {
+      let settled = false;
+      let timer = null;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        if (timer) window.clearTimeout(timer);
+        resolve();
+      };
+
+      try {
+        recorder.addEventListener("stop", finish, { once: true });
+        recorder.stop();
+        timer = window.setTimeout(finish, 2000);
+      } catch {
+        finish();
+      }
+    });
+  }
+
+  nativeStreamState.mediaStream?.getTracks().forEach((track) => track.stop());
+  if (els.streamPreview) {
+    els.streamPreview.srcObject = null;
+  }
+
+  await nativeUploadChain.catch(() => undefined);
+}
+
+async function endNativeStream(reason = "manual", options = {}) {
+  if (nativeStreamEnding) {
+    return;
+  }
+
   const activeStream = nativeStreamState.stream;
   const preserveIssue = reason !== "manual" && nativeStreamState.status === "error";
-  nativeStreamState.manualStop = true;
+  const drainUploads = options.drainUploads !== false;
+  nativeStreamEnding = true;
   nativeStreamLastThumbnailAt = 0;
-  stopNativeLocalCapture();
+
+  if (drainUploads) {
+    await stopNativeCaptureAndDrainUploads();
+  } else {
+    nativeStreamState.manualStop = true;
+    stopNativeLocalCapture();
+  }
+
+  nativeStreamState.manualStop = true;
 
   updateNativeStreamState({
     status: preserveIssue ? "error" : "idle",
@@ -925,6 +992,7 @@ async function endNativeStream(reason = "manual") {
     uploadQueueLength: 0,
     consecutiveUploadFailures: 0,
     heartbeatFailures: 0,
+    autoStarted: false,
     readout: preserveIssue
       ? nativeStreamState.readout
       : reason === "manual"
@@ -947,6 +1015,7 @@ async function endNativeStream(reason = "manual") {
     reason,
     streamId: activeStream?.id || null,
   });
+  nativeStreamEnding = false;
 }
 
 function setReplayVideoPriority(active) {
@@ -1070,7 +1139,8 @@ async function uploadNativeChunk(streamId, sequence, blob) {
       Number(result.retryAfterSeconds) || 0
     );
     await endNativeStream(
-      "server_media_shed"
+      "server_media_shed",
+      { drainUploads: false }
     );
     updateNativeStreamState({
       readout:
@@ -1155,6 +1225,12 @@ function queueNativeChunkUpload(streamId, sequence, blob) {
         nativeStreamState.status === "idle" ||
         nativeStreamState.stream?.id !== streamId
       ) {
+        updateNativeStreamState({
+          uploadQueueLength: Math.max(
+            0,
+            nativeStreamState.uploadQueueLength - 1
+          ),
+        });
         return;
       }
 
@@ -1168,6 +1244,12 @@ function queueNativeChunkUpload(streamId, sequence, blob) {
           sequence,
           blob
         );
+        updateNativeStreamState({
+          uploadQueueLength: Math.max(
+            0,
+            nativeStreamState.uploadQueueLength - 1
+          ),
+        });
         return;
       }
 
@@ -1256,7 +1338,8 @@ function handleNativeStreamError(message, detail = "", metadata = {}) {
   });
 }
 
-async function startNativeStream() {
+async function startNativeStream(options = {}) {
+  const autoStarted = options.auto === true;
   if (nativeStreamState.busy || nativeStreamState.status === "live") {
     return;
   }
@@ -1327,7 +1410,7 @@ async function startNativeStream() {
 
     capture.getVideoTracks().forEach((track) => {
       track.addEventListener("ended", () => {
-        if (nativeStreamState.manualStop) {
+        if (nativeStreamState.manualStop || nativeStreamEnding) {
           return;
         }
         const elapsedMs = Date.now() - streamStartedAt;
@@ -1405,6 +1488,8 @@ async function startNativeStream() {
     }
 
     nativeStreamState.manualStop = false;
+    nativeStreamState.autoStarted = autoStarted;
+    nativeStreamEnding = false;
     nativeStreamLastThumbnailAt = Date.now();
     nativeStreamState.sequence = 0;
     nativeStreamState.chunkCount = 0;
@@ -1501,6 +1586,7 @@ async function startNativeStream() {
       videoBitrate: mode.videoBitsPerSecond,
       chunkTimesliceMs: STREAM_CHUNK_TIMESLICE_MS,
       captureGuidance: describeSourceDetail(selectedSource, mode),
+      autoStarted,
     });
     setStatus("Watcher stream is live.", "success");
   } catch (error) {
@@ -1511,6 +1597,61 @@ async function startNativeStream() {
       mode: mode.key,
       rawError: error.message || String(error),
     });
+  }
+}
+
+async function manageAutomaticNativeStream(event) {
+  if (!event || typeof event !== "object") {
+    return;
+  }
+
+  const autoStreamMatches = Boolean(readForm().autoStreamMatches);
+  if (!autoStreamMatches) {
+    return;
+  }
+
+  const shouldStart =
+    AUTO_STREAM_START_RUNTIME_EVENTS.has(event.type) &&
+    event.isFinal !== true;
+
+  if (shouldStart) {
+    if (
+      !watcherState.isWatching ||
+      !hasWatcherKey() ||
+      !hasStreamCandidate() ||
+      autoNativeStreamStartPending ||
+      nativeStreamState.busy ||
+      nativeStreamState.status !== "idle"
+    ) {
+      return;
+    }
+
+    autoNativeStreamStartPending = true;
+    try {
+      await startNativeStream({ auto: true });
+    } finally {
+      autoNativeStreamStartPending = false;
+    }
+    return;
+  }
+
+  const trustedFinal =
+    event.type === "upload-success" &&
+    event.isFinal === true &&
+    event.resultReady === true;
+  const shouldStop =
+    trustedFinal || AUTO_STREAM_STOP_RUNTIME_EVENTS.has(event.type);
+
+  if (
+    shouldStop &&
+    nativeStreamState.autoStarted &&
+    (nativeStreamState.stream ||
+      nativeStreamState.mediaStream ||
+      ["starting", "preview", "live", "error"].includes(nativeStreamState.status))
+  ) {
+    await endNativeStream(
+      trustedFinal ? "match_result_ready" : "match_observation_complete"
+    );
   }
 }
 
@@ -2267,6 +2408,7 @@ function buildSupportSnapshot() {
     `Watcher update detail: ${releaseStatus.detail}`,
     `Auto-update status: ${updateState.status || "unknown"}`,
     `Auto-update detail: ${updateState.message || updateState.error || "none"}`,
+    `Auto-stream matches: ${config.autoStreamMatches ? "enabled" : "disabled"}`,
     `Platform: ${formatPlatform(appInfo?.platform)}`,
     `Dashboard: ${appInfo?.renderer?.rendererStatus || "unknown"}`,
     `Dashboard ready: ${appInfo?.renderer?.rendererReady ? "yes" : "no"}`,
@@ -2316,6 +2458,14 @@ function consumeRuntimeEvent(event) {
   ) {
     setReplayVideoPriority(false);
   }
+
+  void manageAutomaticNativeStream(event).catch((error) => {
+    handleNativeStreamError(
+      "Automatic Television WOLO stream failed.",
+      error?.message || String(error),
+      { runtimeEventType: event?.type || null }
+    );
+  });
 
   switch (event.type) {
     case "watching-started":
@@ -2799,6 +2949,12 @@ if (els.launchAtLoginInput) {
 els.autoStartWatchingInput.addEventListener("change", () => {
   renderAll();
 });
+
+if (els.autoStreamMatchesInput) {
+  els.autoStreamMatchesInput.addEventListener("change", () => {
+    renderAll();
+  });
+}
 
 window.watcherApi.onConfig((config) => {
   currentConfig = {

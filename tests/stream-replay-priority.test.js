@@ -101,7 +101,7 @@ test("server media-shed response is terminal before generic chunk failure", () =
   assert.ok(genericFailureOffset > terminalOffset);
   assert.match(
     rendererSource,
-    /await endNativeStream\(\s*"server_media_shed"\s*\)/,
+    /await endNativeStream\(\s*"server_media_shed",\s*\{ drainUploads: false \}\s*\)/,
   );
   assert.match(
     rendererSource,
