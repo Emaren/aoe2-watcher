@@ -19,7 +19,7 @@ Repository ID: `aoe2-watcher`
 
 Documentation owner: `aoe2war-watcher`
 
-Implementation baseline: `feature/watcher-1.6.3-development` at `a806975f7c68011e3fd911d6cb9d57eb0527c263`
+Implementation baseline: `feature/watcher-1.6.4-auto-television` at `8e900649f5be80406505223ef255392366e050f3`
 
 The implementation baseline identifies the code commit described by this documentation. Documentation-only commits may follow it without creating a self-referential registry hash.
 
@@ -27,7 +27,7 @@ This page is generated from the validated front matter in this repository. Cross
 
 ## Documentation health
 
-- Authoritative repository documents: **4**
+- Authoritative repository documents: **5**
 - Path moves in this migration: **0**
 - Every listed document has an explicit owner, lifecycle, authority, and review interval.
 
@@ -35,11 +35,11 @@ This page is generated from the validated front matter in this repository. Cross
 
 - `generated`: 1
 - `reference`: 1
-- `working`: 2
+- `working`: 3
 
 ### Lifecycle
 
-- `active`: 3
+- `active`: 4
 - `generated`: 1
 
 ## Documents
@@ -49,6 +49,7 @@ This page is generated from the validated front matter in this repository. Cross
 | [aoe2-watcher](../README.md) | `reference` | `active` | `repository-entrypoint` |
 | [Watcher 1.6.2 Engineering Audit](WATCHER_1_6_2_AUDIT.md) | `working` | `active` | `watcher-1.6.2-engineering-plan` |
 | [Watcher 1.6.3 Development](WATCHER_1_6_3_DEVELOPMENT.md) | `working` | `active` | `watcher-1.6.3-development-plan` |
+| [Watcher 1.6.4 Update Lifecycle Development](WATCHER_1_6_4_UPDATE_LIFECYCLE.md) | `working` | `active` | `watcher-update-lifecycle-contract` |
 
 ## Canonical commands
 

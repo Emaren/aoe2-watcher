@@ -13,7 +13,7 @@
       "review_interval_days": 60,
       "reviewed_at": "2026-09-29",
       "sensitivity": "internal",
-      "sha256": "e3ae5f13bc1871bb274195f3d97a64a00390184d9838ea4e6f561bfc788852ec",
+      "sha256": "89f10bc85cf1f88a2df368bca4f50444d2230d05ae61d251972618a1db45f9c7",
       "source_of_truth": "git",
       "status": "active",
       "systems": [
@@ -36,7 +36,7 @@
       "review_interval_days": 0,
       "reviewed_at": "2026-07-26",
       "sensitivity": "internal",
-      "sha256": "db434e8f3a295b680d840a0c7a3b7b902a3d4baeabfd481fefe4ab1d71a683ec",
+      "sha256": "01ac5d31effee287e88aa3851b8748264e489d745ea90fe0f272996c1f640c68",
       "source_of_truth": "generated",
       "status": "generated",
       "systems": [
@@ -90,12 +90,34 @@
       ],
       "title": "Watcher 1.6.3 Development",
       "type": "working"
+    },
+    {
+      "audience": [
+        "developers",
+        "operators",
+        "ai-agents"
+      ],
+      "authority": "watcher-update-lifecycle-contract",
+      "id": "aoe2war.aoe2-watcher.docs-watcher-1-6-4-update-lifecycle",
+      "owner": "aoe2war-watcher",
+      "path": "docs/WATCHER_1_6_4_UPDATE_LIFECYCLE.md",
+      "review_interval_days": 30,
+      "reviewed_at": "2026-10-08",
+      "sensitivity": "internal",
+      "sha256": "db86b9d3387e783a5d2bc0dedc4491b1fa2ad114d84f2c65f20b897ecfe0cc89",
+      "source_of_truth": "git",
+      "status": "active",
+      "systems": [
+        "aoe2-watcher"
+      ],
+      "title": "Watcher 1.6.4 Update Lifecycle Development",
+      "type": "working"
     }
   ],
   "generated_at": "2026-08-04T02:09:37Z",
   "implementation_baseline": {
-    "branch": "feature/watcher-1.6.3-development",
-    "commit": "a806975f7c68011e3fd911d6cb9d57eb0527c263"
+    "branch": "feature/watcher-1.6.4-auto-television",
+    "commit": "8e900649f5be80406505223ef255392366e050f3"
   },
   "owner": "aoe2war-watcher",
   "repo": "aoe2-watcher",
