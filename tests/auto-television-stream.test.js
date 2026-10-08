@@ -52,13 +52,20 @@ test("automatic capture stays armed when the dashboard is hidden in tray mode", 
 });
 
 test("match shutdown drains queued media before the server archives the stream", () => {
-  const drainAt = renderer.indexOf("await stopNativeCaptureAndDrainUploads()");
-  const uploadDrainAt = renderer.indexOf("await nativeUploadChain.catch", drainAt);
-  const serverEndAt = renderer.indexOf("/end", drainAt);
+  const helperStart = renderer.indexOf("async function stopNativeCaptureAndDrainUploads()");
+  const endStart = renderer.indexOf("async function endNativeStream", helperStart);
+  assert.ok(helperStart >= 0);
+  assert.ok(endStart > helperStart);
+
+  const drainHelper = renderer.slice(helperStart, endStart);
+  assert.match(drainHelper, /await nativeUploadChain\.catch\(/);
+
+  const shutdown = renderer.slice(endStart);
+  const drainAt = shutdown.indexOf("await stopNativeCaptureAndDrainUploads()");
+  const serverEndAt = shutdown.indexOf("/end", drainAt);
   assert.ok(drainAt >= 0);
-  assert.ok(uploadDrainAt > drainAt);
-  assert.ok(serverEndAt > uploadDrainAt);
-  assert.match(renderer, /recorder\.addEventListener\("stop", finish, \{ once: true \}\)/);
+  assert.ok(serverEndAt > drainAt);
+  assert.match(drainHelper, /recorder\.addEventListener\("stop", finish, \{ once: true \}\)/);
   assert.match(renderer, /nativeStreamEnding/);
   assert.match(renderer, /\{ drainUploads: false \}/);
 });

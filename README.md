@@ -44,6 +44,10 @@ The five principal user-facing bytes are bound by SHA-256 in the certification m
 The engineering evidence and measured no-change decisions live in
 [Watcher 1.6.3 Development](docs/WATCHER_1_6_3_DEVELOPMENT.md).
 
+The 1.6.4 feature branch's updater and process lifecycle contract is documented
+in [Watcher 1.6.4 Update Lifecycle Development](docs/WATCHER_1_6_4_UPDATE_LIFECYCLE.md).
+It remains development work and does not promote a release.
+
 
 ## v1.6.2 public release
 

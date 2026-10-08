@@ -437,7 +437,7 @@ function getReleaseStatus() {
     return {
       headline: `${currentVersion} Update Ready`,
       detail: autoUpdate.error
-        ? "Mac update needs a fresh download."
+        ? "Update needs a fresh download."
         : latestVersion || autoUpdate.updateVersion
           ? `Watcher ${latestVersion || autoUpdate.updateVersion} is ready.`
           : "A watcher update is ready.",
@@ -455,7 +455,18 @@ function getReleaseStatus() {
   if (autoUpdate.status === "pending_install") {
     return {
       headline: `${currentVersion} Update Ready`,
-      detail: "Update will install after active replay, import, or stream work finishes.",
+      detail: autoUpdate.message || "Update will install after active replay, import, or stream work finishes.",
+      showUpdate: true,
+      showCheck: false,
+      updateUrl: "",
+      canInstall: true,
+    };
+  }
+
+  if (autoUpdate.status === "error" && autoUpdate.downloaded) {
+    return {
+      headline: `${currentVersion} Update Paused`,
+      detail: autoUpdate.message || "Update installation failed. Watcher is still running.",
       showUpdate: true,
       showCheck: false,
       updateUrl: "",
