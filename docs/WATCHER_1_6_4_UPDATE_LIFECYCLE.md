@@ -18,8 +18,7 @@ sensitivity: "internal"
 This work continues `feature/watcher-1.6.4-auto-television` from
 `a54e9935b05b2cb5ec7988523e3303819c9171e2`. It preserves the existing
 auto-Television implementation. No release, tag, publication or deployment is
-authorized by this document. Package and lock version remain 1.6.3; changing
-runtime behavior on a development branch does not certify version 1.6.4.
+authorized by this document. The package and lock now identify the **1.6.4 release candidate** so unsigned Windows packaging is version-true. This does not certify or publish v1.6.4; the public release remains 1.6.3.
 
 ## Workload and handoff contract
 
@@ -261,3 +260,34 @@ protected update metadata and safe relaunch; a trusted physical Windows
 pilot must exercise camera permissions, real two-POV matching, uninterrupted
 recording, CPU/RAM/bandwidth, finalization and failover on a compatible
 deployed Television backend. The production Watcher remains 1.6.3 until then.
+
+## Legacy Windows v1.5.10 → 1.6.4 migration contract
+
+The immutable `v1.5.10` release's `main.js` already integrates
+`electron-updater` and the AoE2WAR `/downloads` generic updater feed.
+Its `watcher-config.json` resides in Electron's userData directory—the
+same application identity and path as this candidate. It contains the old
+Watcher API key and replay-folder choice; migration must preserve those
+settings and the replay archive. It is not safe to overwrite the user's
+config or treat a new pairing as a successful in-place update.
+
+An **installed Windows NSIS** client may upgrade through the existing
+updater feed if the published `latest.yml`, signed NSIS bytes, signing
+identity and old-updater behavior permit the jump. **Windows portable**
+does not self-install: show the verified final NSIS installer as the
+recommended clean replacement or offer the signed portable EXE for
+manual substitution. Never tell portable users that quit-and-install
+works. Existing version 1.5.10 has different update timing from the
+hardened 1.6.4 logic; running the new 1.6.4 tests alone cannot prove
+the old client safely installs a new binary.
+
+Before public roll-out, record a **physical legacy upgrade canary**:
+v1.5.10 binary channel (installed/portable), old config SHA-256,
+automatic-check result, actual signed 1.6.4 payload identity, exit
+and relaunch, helper teardown, final `app.getVersion()`, preserved
+config equality (excluding deliberately migrated fields), replay
+folder, Watcher ID and key continuity, and one Watcher replay/signature
+observation accepted by the deployed backend. Redact secrets and
+personal local paths from shared receipts. Fall back to manual installer
+if any gate fails and never delete or reprocess old replays to force a
+success indicator.
