@@ -724,9 +724,14 @@ function buildNativeSessionKey() {
     candidate?.sessionKey ||
     candidate?.streamSession ||
     candidate?.fileName ||
-    candidate?.filePath ||
     `watcher:${appInfo?.sessionId || Date.now()}`;
-  return String(raw).trim().slice(0, 255);
+  const key = String(raw).trim().slice(0, 255);
+  // Never transmit a local SaveGame path as public battle identity.
+  // Unproven capture stays in an unlinked Watcher session.
+  if (/^(?:[a-z]:[\\/]|[/\\]{2}|[/]|file:\/\/)/i.test(key)) {
+    return `watcher:${appInfo?.sessionId || Date.now()}`;
+  }
+  return key;
 }
 
 function buildNativeStreamTitle() {
@@ -1318,6 +1323,9 @@ async function sendNativeHeartbeat(streamId, status = "live") {
 
   const data = await streamJson(`/api/streams/${streamId}/heartbeat`, {
     status,
+    // A newly detected current replay may provide a stronger *claim*.
+    // The server must verify it against this account's exact replay identity.
+    sessionKey: buildNativeSessionKey(),
     mediaMimeType: nativeStreamState.mediaMimeType,
     thumbnailUrl,
   });
