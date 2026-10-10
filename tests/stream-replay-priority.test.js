@@ -130,3 +130,13 @@ test("terminal media quota or shed does not auto-restart another recorder for sa
   assert.match(rendererSource, /if \(autoNativeTerminalSuppressedSessionKey === buildNativeSessionKey\(\)\) return/);
   assert.match(rendererSource, /if \(shouldStop\) autoNativeTerminalSuppressedSessionKey = null/);
 });
+
+test("unsupported codec and oversized chunks are terminal video-only, not endless replay queue retries", () => {
+  assert.match(mainSource, /STREAM_CHUNK_TOO_LARGE/);
+  assert.match(mainSource, /STREAM_FORMAT_UNSUPPORTED/);
+  assert.match(mainSource, /terminalStreamStop: true/);
+  assert.match(rendererSource, /Video bitrate exceeds upload limit; game monitoring continues/);
+  assert.match(rendererSource, /Video codec rejected by server; game monitoring continues/);
+  assert.match(rendererSource, /await endNativeStream\(/);
+  assert.match(rendererSource, /\{ drainUploads: false \}/);
+});
