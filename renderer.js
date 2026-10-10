@@ -805,7 +805,7 @@ function captureNativeThumbnail() {
   return canvas.toDataURL("image/jpeg", 0.58);
 }
 
-async function streamJson(path, body = {}) {
+async function streamJson(path, body = {}, options = {}) {
   const result = await window.watcherApi.streamJson({
     baseUrl: getStreamingBaseUrl(),
     path,
@@ -814,6 +814,9 @@ async function streamJson(path, body = {}) {
   });
 
   if (!result?.ok) {
+    // An ended camera is a terminal video state, not a temporary 409 outage.
+    if (options.allowEndedStream && result?.status === 409 &&
+        result?.data?.stream?.status === "ended") return result.data;
     throw new Error(result?.error || result?.data?.detail || "Streaming request failed.");
   }
 
@@ -1156,6 +1159,13 @@ async function uploadNativeChunk(streamId, sequence, blob) {
     return;
   }
 
+  if (result?.terminalVideoStop) {
+    await endNativeStream("server_video_terminal", { drainUploads: false });
+    setNativeReadout("Video stopped by server safety limit.",
+      result.reason || "Recording quota, media format, or game finality.");
+    return;
+  }
+
   if (result?.terminalMediaShed) {
     const reason =
       result.reason ||
@@ -1315,12 +1325,16 @@ function queueNativeChunkUpload(streamId, sequence, blob) {
           consecutiveUploadFailures: failures,
           errorMessage: error.message || String(error),
         });
-        if (failures >= 5) {
+        if (failures >= 5 && nativeStreamState.stream?.id === streamId) {
           handleNativeStreamError("Stream upload keeps failing.", error.message || String(error), {
             streamId,
             sequence,
             consecutiveUploadFailures: failures,
           });
+          // A broken video uploader must not continue capturing indefinitely.
+          // Only video stops; the replay monitoring pipeline keeps running.
+          void endNativeStream("repeated_video_upload_failure", { drainUploads: false })
+            .catch(() => undefined);
         }
       } finally {
         updateNativeStreamState({
@@ -1351,7 +1365,7 @@ async function sendNativeHeartbeat(streamId, status = "live") {
     sessionKey: buildNativeSessionKey(),
     mediaMimeType: nativeStreamState.mediaMimeType,
     thumbnailUrl,
-  });
+  }, { allowEndedStream: true });
 
   // Do not apply a stale response from a session already replaced locally.
   if (nativeStreamState.stream?.id !== streamId) return;
