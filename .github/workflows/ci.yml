@@ -40,3 +40,46 @@ jobs:
       # This remains a required hard-failing security gate; do not bypass it.
       - name: Audit dependencies
         run: npm audit --audit-level=high
+
+  windows-video-package:
+    name: Windows NSIS and portable packaging smoke
+    runs-on: windows-latest
+    timeout-minutes: 30
+    # No release, signing secret, GitHub release, or deployment permission.
+    permissions:
+      contents: read
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+    steps:
+      - name: Checkout Watcher candidate
+        uses: actions/checkout@v4
+      - name: Set up Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "npm"
+      - name: Install exact dependencies
+        run: npm ci
+      - name: Verify Windows JavaScript and video contracts
+        run: |
+          npm run lint
+          npm test
+      - name: Build both unsigned Windows candidates without publishing
+        run: npm run dist:win -- --publish never
+      - name: Verify NSIS and portable executable outputs
+        shell: pwsh
+        run: |
+          $binaries = @(Get-ChildItem -Path dist -Filter "*.exe" -File)
+          $installers = @($binaries | Where-Object { $_.Name -match "Setup" })
+          $portables = @($binaries | Where-Object { $_.Name -notmatch "Setup" })
+          if ($installers.Count -lt 1 -or $portables.Count -lt 1) {
+            throw "Both NSIS Setup and separate portable Windows .exe artifacts must exist."
+          }
+          foreach ($binary in $binaries) {
+            if ($binary.Length -lt 1000000) {
+              throw "Windows candidate unexpectedly small: $($binary.Name)"
+            }
+            Get-FileHash -Algorithm SHA256 -Path $binary.FullName |
+              Select-Object Algorithm, Hash, Path | Format-Table -AutoSize
+          }
+          Write-Output "Unsigned Windows package smoke passed; no artifact was published."
