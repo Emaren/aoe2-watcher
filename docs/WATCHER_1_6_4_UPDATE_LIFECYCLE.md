@@ -245,3 +245,12 @@ certification and physical Windows canaries are separate gates.
 
 The original Watcher CI dependency-security audit remains unchanged and
 release-blocking. No vulnerabilities are exempted by this smoke lane.
+
+Windows package qualification initially found two existing replay-monitor
+generation tests that used POSIX-literal `/test/dir/file` state-entry
+identities even when the Node `path` module was Win32. The test fixtures now
+use `path.join` for both state-entry lookups and simulated missing-file
+identity. The assertions remain intact: stopped monitors must not overtake a
+new owner's state and concurrent monitors must keep the replay-busy fence
+until all finish. A green Windows rerun and actual unsigned package output
+are required before this is called a passed package smoke.
