@@ -15,6 +15,14 @@ sensitivity: "internal"
 
 # aoe2-watcher
 
+## v1.6.4 release candidate — not yet published
+
+Watcher **1.6.4** is being built with Television WOLO source selection, optional native video capture, replay-priority bandwidth controls, safer update handoff and improved Windows packaging certification. The candidate version is present in `package.json` and `package-lock.json` so test binaries self-identify correctly; **v1.6.3 remains the published download** until signed media, updater feed, compatible backend and physical Windows pilot are independently certified.
+
+**Upgrading 1.5.10 installations:** both the archived v1.5.10 tag and this candidate read user settings from Electron's `userData/watcher-config.json` under the same application identity and use the same generic feed `https://aoe2war.com/downloads`. An installed Windows NSIS build supports update discovery and installer-driven relaunch; Windows portable requires manual replacement. A direct jump across versions is semver-eligible, but successful signed install/relaunch and settings continuity **must be verified on a real installed v1.5.10 machine** before telling a user that their upgrade is automatic. If the original app cannot successfully update, offer the final verified 1.6.4 NSIS download as the fallback and re-pair only if persisted settings are unavailable; never overwrite or delete their replay folder.
+
+**Source/release safety:** the Watcher observes Steam RM/DM ratings only via provenance-qualified replay/account capture, while missing historical winners are evidence-gated in the backend. Upgrading alone does not retroactively decide unknown games or change financial custody. No release/tag/publication or production change is implied by this candidate build.
+
 ## v1.6.3 public release
 
 Watcher 1.6.3 is the current public release. The five-artifact publication gate completed for Windows Installer, Windows Portable, macOS DMG, macOS Direct ZIP, and Linux AppImage. The immutable `v1.6.3` release and its updater metadata were verified before publication.
