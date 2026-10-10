@@ -1342,6 +1342,8 @@ function queueNativeChunkUpload(streamId, sequence, blob) {
       try {
         await uploadNativeChunk(streamId, sequence, blob);
       } catch (error) {
+        // Old in-flight requests must not poison replacement camera counters.
+        if (nativeStreamState.stream?.id !== streamId) return;
         const failures = nativeStreamState.consecutiveUploadFailures + 1;
         updateNativeStreamState({
           uploadFailures: nativeStreamState.uploadFailures + 1,
@@ -1653,6 +1655,7 @@ async function startNativeStream(options = {}) {
 
     const heartbeatTimer = window.setInterval(() => {
       void sendNativeHeartbeat(stream.id, "live").catch((error) => {
+        if (nativeStreamState.stream?.id !== stream.id) return;
         const failures = nativeStreamState.heartbeatFailures + 1;
         updateNativeStreamState({
           heartbeatFailures: failures,
