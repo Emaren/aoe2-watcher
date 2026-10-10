@@ -75,3 +75,17 @@ test("automatic match capture re-scans sources and fails closed before MediaReco
   const request = renderer.indexOf("navigator.mediaDevices.getUserMedia(", guard);
   assert.ok(guard > 0 && request > guard, "No capture request may precede the automatic source guard.");
 });
+
+test("failed opt-in stream re-arms after true match-final evidence, never by upload timeout", () => {
+  const seam = renderer.slice(renderer.indexOf("async function endNativeStream("),
+    renderer.indexOf("function setReplayVideoPriority("));
+  assert.match(seam, /const completedAutoMatch = nativeStreamState\.autoStarted/);
+  assert.match(seam, /reason === "match_result_ready" \|\| reason === "match_observation_complete"/);
+  assert.match(seam, /const preserveIssue = reason !== "manual" && !completedAutoMatch/);
+  assert.match(seam, /autoStarted: false/);
+  const controller = renderer.slice(renderer.indexOf("async function manageAutomaticNativeStream("),
+    renderer.indexOf("function syncStreamCandidateFromRuntimeEvent("));
+  assert.match(controller, /AUTO_STREAM_STOP_RUNTIME_EVENTS\.has\(event\.type\)/);
+  assert.match(controller, /event\.resultReady === true/);
+  assert.doesNotMatch(controller, /final-candidate-accepted/);
+});
