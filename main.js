@@ -265,6 +265,8 @@ const resourceProfiler =
           ) > 0,
         activeReplay:
           Boolean(runtime.activeReplay),
+        monitorArmed:
+          Boolean(watcherHandle),
       };
     },
   });
