@@ -49,6 +49,9 @@ const LEGACY_DOMAIN_MIGRATIONS = [
 ];
 
 let activeWatcher = null;
+let activeWatcherGeneration = 0;
+const replayScansInFlight = new Set();
+const replayAdmissionsInFlight = new Set();
 let activeRecoveryScanTimer = null;
 let activeRecoveryScanInFlight = false;
 let activeUploadState = new Map();
@@ -1910,13 +1913,14 @@ function detectUnknownParseFields(payload, { isFinal = true } = {}) {
   return Array.from(found).slice(0, 30);
 }
 
-async function waitForFirstBytes(filePath, runtimeConfig) {
+async function waitForFirstBytes(filePath, runtimeConfig, sessionCurrent = () => true) {
   const startedAt = Date.now();
   let lastSize = null;
   let lastProgressEventAt = 0;
   let lastWaitingEventAt = 0;
 
   while (Date.now() - startedAt <= runtimeConfig.firstBytesTimeoutMs) {
+    if (!sessionCurrent()) return false;
     if (!fs.existsSync(filePath)) {
       log(`Replay disappeared before first parse: ${path.basename(filePath)}`, "warn");
       emitRuntimeEvent("skip-file-missing", {
@@ -1931,6 +1935,7 @@ async function waitForFirstBytes(filePath, runtimeConfig) {
 
     try {
       const stats = await fs.promises.stat(filePath);
+      if (!sessionCurrent()) return false;
       const now = Date.now();
       const payload = {
         filePath,
@@ -1962,6 +1967,7 @@ async function waitForFirstBytes(filePath, runtimeConfig) {
 
       lastSize = stats.size;
     } catch (err) {
+      if (!sessionCurrent()) return false;
       log(
         `Unable to inspect ${path.basename(filePath)} before live parse: ${err.message}`,
         "warn"
@@ -2933,7 +2939,27 @@ async function reopenFinalIfReplayGrew(filePath, entry, fingerprint) {
   return true;
 }
 
-async function monitorReplayFile(filePath, runtimeConfig) {
+function isWatcherSessionCurrent(generation) {
+  return Boolean(activeWatcher) && generation === activeWatcherGeneration;
+}
+
+function hasCurrentSessionWork(work) {
+  for (const entry of work) {
+    if (isWatcherSessionCurrent(entry.generation)) return true;
+  }
+  return false;
+}
+
+function hasActiveReplayMonitor() {
+  for (const entry of activeUploadState.values()) {
+    if (entry.monitoring === true) return true;
+  }
+  return false;
+}
+
+async function monitorReplayFile(filePath, runtimeConfig, generation = null) {
+  const sessionCurrent = () => generation === null || isWatcherSessionCurrent(generation);
+  if (!sessionCurrent()) return;
   if (!shouldHandle(filePath, runtimeConfig)) {
     log(`Ignoring non-replay file: ${path.basename(filePath)}`, "warn");
     emitRuntimeEvent("skip-unknown", {
@@ -2973,6 +2999,7 @@ async function monitorReplayFile(filePath, runtimeConfig) {
       entry,
       runtimeConfig
     );
+    if (!sessionCurrent()) return;
     if (finalReplayShortCircuit) {
       log(
         `Skipping monitor for ${path.basename(filePath)} because replay already matches final upload state (${finalReplayShortCircuit.reason}).`
@@ -2999,13 +3026,15 @@ async function monitorReplayFile(filePath, runtimeConfig) {
       fileName: path.basename(filePath),
     });
     log(`Starting monitor loop for ${path.basename(filePath)}.`);
-    if (!(await waitForFirstBytes(filePath, runtimeConfig))) {
+    if (!(await waitForFirstBytes(filePath, runtimeConfig, sessionCurrent))) {
+      if (!sessionCurrent()) return;
       log(
         `Stopping monitor for ${path.basename(filePath)} before upload because byte floor was not reached.`,
         "warn"
       );
       return;
     }
+    if (!sessionCurrent()) return;
 
     if (runtimeConfig.initialLiveDelayMs > 0) {
       log(
@@ -3017,6 +3046,7 @@ async function monitorReplayFile(filePath, runtimeConfig) {
     }
 
     while (true) {
+      if (!sessionCurrent()) return;
       if (!fs.existsSync(filePath)) {
         log(`Replay removed before final upload: ${path.basename(filePath)}`, "warn");
         return;
@@ -3027,7 +3057,9 @@ async function monitorReplayFile(filePath, runtimeConfig) {
 
       try {
         fingerprint = await getFileFingerprint(filePath);
+        if (!sessionCurrent()) return;
       } catch (err) {
+        if (!sessionCurrent()) return;
         log(`Unable to inspect ${path.basename(filePath)}: ${err.message}`, "error");
         emitRuntimeEvent("watcher-error", {
           filePath,
@@ -3091,6 +3123,7 @@ async function monitorReplayFile(filePath, runtimeConfig) {
 
       if (changed) {
         await reopenFinalIfReplayGrew(filePath, entry, fingerprint);
+        if (!sessionCurrent()) return;
         entry.lastObservedFingerprint = fingerprint;
         entry.lastChangeAt = now;
 
@@ -3134,6 +3167,7 @@ async function monitorReplayFile(filePath, runtimeConfig) {
           fingerprint,
           now
         );
+        if (!sessionCurrent()) return;
 
         if (!readiness.ready) {
           if (shouldEmitFinalDeferral(entry, readiness.reason)) {
@@ -3214,7 +3248,7 @@ async function monitorReplayFile(filePath, runtimeConfig) {
   } finally {
     entry.monitoring = false;
 
-    if (monitorStarted) {
+    if (monitorStarted && sessionCurrent()) {
       emitRuntimeEvent("monitor-stop", {
         filePath,
         fileName: path.basename(filePath),
@@ -3224,7 +3258,19 @@ async function monitorReplayFile(filePath, runtimeConfig) {
   }
 }
 
-async function onFileDetected(eventType, filePath, runtimeConfig) {
+async function onFileDetected(eventType, filePath, runtimeConfig, generation = activeWatcherGeneration) {
+  if (!isWatcherSessionCurrent(generation)) return;
+  const admission = { generation };
+  replayAdmissionsInFlight.add(admission);
+  try {
+    return await onFileDetectedForSession(eventType, filePath, runtimeConfig, generation);
+  } finally {
+    replayAdmissionsInFlight.delete(admission);
+    if (isWatcherSessionCurrent(generation)) emitRuntimeEvent("replay-admission-complete", {});
+  }
+}
+
+async function onFileDetectedForSession(eventType, filePath, runtimeConfig, generation) {
   if (!shouldHandle(filePath, runtimeConfig)) {
     return;
   }
@@ -3257,6 +3303,7 @@ async function onFileDetected(eventType, filePath, runtimeConfig) {
     entry,
     runtimeConfig
   );
+  if (!isWatcherSessionCurrent(generation)) return;
   if (finalReplayShortCircuit) {
     log(
       `Ignoring ${eventType} event for ${fileName} because replay already matches final upload state (${finalReplayShortCircuit.reason}).`
@@ -3277,7 +3324,8 @@ async function onFileDetected(eventType, filePath, runtimeConfig) {
     fileName,
     eventType,
   });
-  void monitorReplayFile(filePath, runtimeConfig).catch((err) => {
+  void monitorReplayFile(filePath, runtimeConfig, generation).catch((err) => {
+    if (!isWatcherSessionCurrent(generation)) return;
     log(`Replay monitor crashed for ${fileName}: ${err.message || err}`, "error");
     emitRuntimeEvent("watcher-error", {
       filePath,
@@ -3310,15 +3358,32 @@ function shouldRecoverUnknownReplayCandidate(entry, candidate, nowMs = Date.now(
 
 async function scanRecentGrowingReplay(
   runtimeConfig,
-  { emitCompletion = true } = {}
+  { emitCompletion = true, generation = activeWatcherGeneration } = {}
+) {
+  if (!isWatcherSessionCurrent(generation)) return false;
+  const scan = { generation };
+  replayScansInFlight.add(scan);
+  try {
+    return await scanRecentGrowingReplayForSession(runtimeConfig, { emitCompletion, generation });
+  } finally {
+    replayScansInFlight.delete(scan);
+    if (isWatcherSessionCurrent(generation)) emitRuntimeEvent("replay-scan-complete", {});
+  }
+}
+
+async function scanRecentGrowingReplayForSession(
+  runtimeConfig,
+  { emitCompletion, generation }
 ) {
   let entries;
   try {
     entries = await fs.promises.readdir(runtimeConfig.watchDir, { withFileTypes: true });
   } catch (error) {
+    if (!isWatcherSessionCurrent(generation)) return false;
     emitRuntimeEvent("watcher-error", { detail: `Initial replay scan failed: ${error.message}` });
     return false;
   }
+  if (!isWatcherSessionCurrent(generation)) return false;
 
   const cutoff = Date.now() - RECENT_LIVE_CANDIDATE_MS;
   const candidates = [];
@@ -3328,6 +3393,7 @@ async function scanRecentGrowingReplay(
     if (!shouldHandle(filePath, runtimeConfig)) continue;
     try {
       const stats = await fs.promises.stat(filePath);
+      if (!isWatcherSessionCurrent(generation)) return false;
 
       const fingerprint =
         `${stats.size}:${Math.floor(stats.mtimeMs)}`;
@@ -3385,6 +3451,7 @@ async function scanRecentGrowingReplay(
         fingerprint: candidate.fingerprint,
       }
     );
+    if (!isWatcherSessionCurrent(generation)) return false;
 
     if (finalReplayShortCircuit) {
       continue;
@@ -3412,7 +3479,8 @@ async function scanRecentGrowingReplay(
     await onFileDetected(
       "recovery-scan",
       candidate.filePath,
-      runtimeConfig
+      runtimeConfig,
+      generation
     );
 
     return true;
@@ -3425,8 +3493,10 @@ async function scanRecentGrowingReplay(
   for (const candidate of candidates.slice(0, 3)) {
     const existingEntry = activeUploadState.get(candidate.filePath);
     await sleep(LIVE_CANDIDATE_GROWTH_CHECK_MS);
+    if (!isWatcherSessionCurrent(generation)) return false;
     try {
       const next = await fs.promises.stat(candidate.filePath);
+      if (!isWatcherSessionCurrent(generation)) return false;
       const grew = next.size > candidate.size || next.mtimeMs > candidate.mtimeMs;
       const freshUnknown = shouldRecoverUnknownReplayCandidate(
         existingEntry,
@@ -3446,6 +3516,7 @@ async function scanRecentGrowingReplay(
           grew ? "initial-scan" : "recovery-scan",
           candidate.filePath,
           runtimeConfig,
+          generation,
         );
         return true;
       }
@@ -3463,9 +3534,9 @@ async function scanRecentGrowingReplay(
   return false;
 }
 
-async function runRecoveryScan(runtimeConfig) {
+async function runRecoveryScan(runtimeConfig, generation = activeWatcherGeneration) {
   if (
-    !activeWatcher ||
+    !isWatcherSessionCurrent(generation) ||
     activeRuntimeStatus.activeReplay ||
     activeRecoveryScanInFlight
   ) {
@@ -3477,7 +3548,9 @@ async function runRecoveryScan(runtimeConfig) {
   try {
     const recovered = await scanRecentGrowingReplay(runtimeConfig, {
       emitCompletion: false,
+      generation,
     });
+    if (!isWatcherSessionCurrent(generation)) return false;
 
     if (recovered) {
       log(
@@ -3492,6 +3565,7 @@ async function runRecoveryScan(runtimeConfig) {
 
     return recovered;
   } catch (error) {
+    if (!isWatcherSessionCurrent(generation)) return false;
     log(
       `Recovery replay scan failed: ${error.message || error}`,
       "warn"
@@ -3503,7 +3577,7 @@ async function runRecoveryScan(runtimeConfig) {
 
     return false;
   } finally {
-    activeRecoveryScanInFlight = false;
+    if (isWatcherSessionCurrent(generation)) activeRecoveryScanInFlight = false;
   }
 }
 
@@ -4121,6 +4195,7 @@ async function importHistoricalReplays(config = {}, options = {}, hooks = {}) {
 
 
 function stopWatching() {
+  activeWatcherGeneration += 1;
   if (activeRecoveryScanTimer) {
     clearInterval(activeRecoveryScanTimer);
     activeRecoveryScanTimer = null;
@@ -4139,6 +4214,7 @@ function stopWatching() {
 
   activeWatcher = null;
   activeRuntimeStatus.monitorAttached = false;
+  activeRuntimeStatus.activeReplay = false;
   activeUploadState = new Map();
   activeUploadKeys = new Set();
   activeSettlementStatePath = null;
@@ -4148,6 +4224,7 @@ function stopWatching() {
 
 function startWatching(config = {}, hooks = {}) {
   stopWatching();
+  const generation = activeWatcherGeneration;
   setRuntimeHooks(hooks);
 
   const runtimeConfig = buildRuntimeConfig(config);
@@ -4224,7 +4301,7 @@ function startWatching(config = {}, hooks = {}) {
         persistent: true,
       },
       (eventType, rawFileName) => {
-        if (!activeWatcher) {
+        if (!isWatcherSessionCurrent(generation)) {
           return;
         }
 
@@ -4233,7 +4310,7 @@ function startWatching(config = {}, hooks = {}) {
         // without retaining watchers on every historical replay.
         if (!rawFileName) {
           if (!activeRuntimeStatus.activeReplay) {
-            void scanRecentGrowingReplay(runtimeConfig);
+            void scanRecentGrowingReplay(runtimeConfig, { generation });
           }
           return;
         }
@@ -4259,8 +4336,10 @@ function startWatching(config = {}, hooks = {}) {
         void onFileDetected(
           replayEventType,
           filePath,
-          runtimeConfig
+          runtimeConfig,
+          generation
         ).catch((error) => {
+          if (!isWatcherSessionCurrent(generation)) return;
           log(
             `Replay directory event failed for ${fileName}: ${error.message || error}`,
             "error"
@@ -4302,10 +4381,10 @@ function startWatching(config = {}, hooks = {}) {
     ),
   });
 
-  void scanRecentGrowingReplay(runtimeConfig);
+  void scanRecentGrowingReplay(runtimeConfig, { generation });
 
   activeRecoveryScanTimer = setInterval(() => {
-    void runRecoveryScan(runtimeConfig);
+    void runRecoveryScan(runtimeConfig, generation);
   }, runtimeConfig.recoveryScanIntervalMs);
 
   log(
@@ -4340,7 +4419,11 @@ module.exports = {
   inspectReplayFolder,
   selectPreferredReplayFolder,
   shouldSwitchReplayFolder,
-  getRuntimeStatus: () => ({ ...activeRuntimeStatus }),
+  getRuntimeStatus: () => ({
+    ...activeRuntimeStatus,
+    activeReplay: activeRuntimeStatus.activeReplay || hasCurrentSessionWork(replayAdmissionsInFlight) || hasActiveReplayMonitor(),
+    replayScanInFlight: hasCurrentSessionWork(replayScansInFlight),
+  }),
   getFileFingerprint,
   getLiveUploadCooldownMs,
   hasReviewRoutedReplayFingerprint,

@@ -99,9 +99,49 @@ jobs:
           description: AoE2HDBets Watcher
           description-url: https://aoe2war.com
 
+      - name: Verify signed and timestamped Windows release binaries
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $version = (node -p "require('./package.json').version").Trim()
+          $expectedNames = @(
+            "AoE2HDBets Watcher Setup $version.exe",
+            "AoE2HDBets Watcher $version.exe"
+          )
+          $files = @(Get-ChildItem -Path "build" -Filter "*.exe" -File)
+          if ($files.Count -ne $expectedNames.Count) {
+            throw "Expected exactly two signed Windows binaries; got $($files.Count)"
+          }
+          $actualNames = @($files | ForEach-Object { $_.Name } | Sort-Object)
+          $wantedNames = @($expectedNames | Sort-Object)
+          if (($actualNames -join "|") -cne ($wantedNames -join "|")) {
+            throw "Signed Windows artifact filenames or version do not match package authority"
+          }
+          $rows = @()
+          foreach ($file in $files) {
+            if ($file.Length -lt 1000000) {
+              throw "Signed Windows binary is unexpectedly small: $($file.Name)"
+            }
+            $signature = Get-AuthenticodeSignature -FilePath $file.FullName
+            if ($signature.Status -ne [System.Management.Automation.SignatureStatus]::Valid) {
+              throw "Invalid Authenticode signature on $($file.Name): $($signature.Status)"
+            }
+            if ($null -eq $signature.SignerCertificate) {
+              throw "Missing signing certificate on $($file.Name)"
+            }
+            if ($null -eq $signature.TimeStamperCertificate) {
+              throw "Missing verified RFC3161 timestamp on $($file.Name)"
+            }
+            $digest = (Get-FileHash -Path $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            $rows += "$digest  $($file.Name)"
+            Write-Host "SIGNED/TIMESTAMPED $($file.Name): sha256=$digest"
+          }
+          $rows | Set-Content -Path "build/SIGNED_WINDOWS_SHA256.txt" -Encoding utf8
+
       - name: Upload signed EXEs
         uses: actions/upload-artifact@v4
         with:
           name: signed-windows-watcher
           path: |
             build/**/*.exe
+            build/SIGNED_WINDOWS_SHA256.txt

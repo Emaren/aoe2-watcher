@@ -16,9 +16,15 @@ const {
   powerMonitor,
   shell,
   Tray,
+  autoUpdater: nativeAutoUpdater,
 } = require("electron");
 const { autoUpdater } = require("electron-updater");
 const { version: WATCHER_VERSION } = require("./package.json");
+const {
+  getUpdateCapability,
+  isStableNewerVersion,
+  verifyMacUpdateIdentity,
+} = require("./updatePolicy");
 const {
   createDurableTelemetryQueue,
   createRuntimeEventCoalescer,
@@ -143,11 +149,13 @@ const networkPriorityArbiter =
 
 let mainWindow = null;
 let tray = null;
+let appQuitRequested = false;
 let runtimeInitialized = false;
 let watcherHandle = null;
 let cachedConfig = null;
 let cachedFolderStatus = null;
 let nativeStreamActive = false;
+let nativeStreamRequestsInFlight = 0;
 let watcherSession = 0;
 let importSession = 0;
 let rendererReady = false;
@@ -165,6 +173,16 @@ let updateState = createUpdateState();
 let updateCheckInFlight = false;
 let updateEventsConfigured = false;
 let updateRecheckTimer = null;
+let updateInstallPromise = null;
+let updateHandoffActive = false;
+let updateHandoffContext = null;
+let updateHandoffRequested = false;
+let updateQuitRecoveryRequired = false;
+let updateInstallerFailed = false;
+let nativeMacUpdateReady = false;
+let nativeMacStageBinding = null;
+let nativeMacStageFailed = false;
+let macUpdateIdentity = null;
 let lastStreamHandoff = null;
 let monitorWatchdogTimer = null;
 let monitorReattachAttempts = 0;
@@ -210,6 +228,8 @@ const RESOURCE_IDLE_SAMPLE_MS = Math.max(
 );
 const recentUiLogs = [];
 let resourceProfileTimer = null;
+let runtimeJournalLastError = null;
+const runtimeJournalPendingWrites = [];
 let runtimeEventJournalBuffer = "";
 let runtimeEventJournalBufferBytes = 0;
 let runtimeEventJournalFlushTimer = null;
@@ -245,6 +265,8 @@ const resourceProfiler =
           ) > 0,
         activeReplay:
           Boolean(runtime.activeReplay),
+        monitorArmed:
+          Boolean(watcherHandle),
       };
     },
   });
@@ -343,14 +365,83 @@ function createUpdateState(patch = {}) {
 }
 
 function requiresManualUpdateInstall() {
-  return process.platform === "darwin" && !MAC_AUTO_UPDATE_ENABLED;
+  return !getWatcherUpdateCapability().automatic;
+}
+
+function getWatcherUpdateCapability() {
+  if (updateInstallerFailed) {
+    return { automatic: false, manualReason: "installer_handoff_failed" };
+  }
+  if (process.platform === "darwin" && nativeMacStageFailed) {
+    return { automatic: false, manualReason: "mac_native_staging_failed" };
+  }
+  if (process.platform === "darwin" && MAC_AUTO_UPDATE_ENABLED && app.isPackaged && !macUpdateIdentity) {
+    macUpdateIdentity = verifyMacUpdateIdentity(process.execPath);
+  }
+  return getUpdateCapability({
+    platform: process.platform,
+    isPackaged: app.isPackaged,
+    macAutoUpdateEnabled: MAC_AUTO_UPDATE_ENABLED,
+    macSignatureVerified: macUpdateIdentity?.verified === true,
+    appImagePath: process.env.APPIMAGE,
+    portableExecutablePath: process.env.PORTABLE_EXECUTABLE_FILE,
+  });
+}
+
+function syncAutoInstallOnQuit() {
+  if (!autoUpdater) return;
+  // On macOS, stage Squirrel through its public events before any quit request.
+  // A void quitAndInstall call while staging registers a non-cancelable callback.
+  autoUpdater.autoInstallOnAppQuit = getWatcherUpdateCapability().automatic &&
+    process.platform !== "darwin" && updateState.downloaded &&
+    updateState.status !== "error" && !updateHandoffActive && !isWatcherUpdateBusy();
+}
+
+function failMacUpdateStaging(error) {
+  // Squirrel staging is not publicly cancelable. Do not reuse a failed stage
+  // for a later candidate or let a late native event request quit.
+  nativeMacStageFailed = true;
+  nativeMacUpdateReady = false;
+  autoUpdater.autoDownload = false;
+  setManualUpdateState("mac_native_staging_failed", error);
+}
+
+function bindMacUpdateStage(version) {
+  if (nativeMacStageBinding || nativeMacStageFailed) return false;
+  try {
+    const feedURL = nativeAutoUpdater.getFeedURL();
+    const url = new URL(feedURL);
+    if (url.protocol !== "http:" || url.hostname !== "127.0.0.1" || !url.port || url.pathname !== "/") {
+      throw new Error("Native update feed could not be bound to this Mac update.");
+    }
+    nativeMacStageBinding = Object.freeze({ version, feedURL });
+    return true;
+  } catch (error) {
+    failMacUpdateStaging(error);
+    return false;
+  }
+}
+
+function acceptMacNativeReadiness(updateURL) {
+  if (nativeMacStageFailed || !nativeMacStageBinding || !updateState.downloaded ||
+      updateState.manualInstall || updateState.status === "error" ||
+      nativeMacStageBinding.version !== updateState.updateVersion) return false;
+  try {
+    const feedURL = nativeAutoUpdater.getFeedURL();
+    const url = new URL(updateURL);
+    const feed = new URL(nativeMacStageBinding.feedURL);
+    return feedURL === nativeMacStageBinding.feedURL && url.origin === feed.origin &&
+      url.pathname.endsWith(".zip") && !url.username && !url.password;
+  } catch {
+    return false;
+  }
 }
 
 function getWatcherUpdateBlocker() {
   return getUpdateBlocker({
     runtimeStatus: getRuntimeStatus(),
     importRunning: Boolean(currentImportState?.isRunning),
-    nativeStreamActive,
+    nativeStreamActive: nativeStreamActive || nativeStreamRequestsInFlight > 0,
   });
 }
 
@@ -398,7 +489,7 @@ function setManualUpdateState(reason, error = null, info = {}) {
       logMessage:
         reason === "mac_signature_validation"
           ? "Mac updater could not validate this unsigned build. Download the latest watcher and replace the app."
-          : "Mac watcher update is ready. Download the latest watcher and replace the app.",
+          : "Watcher update is ready. Download the latest watcher and replace the app.",
       level: reason === "mac_signature_validation" ? "warn" : "info",
       telemetryEvent: reason === "mac_signature_validation" ? "watcher_update_error" : "watcher_update_available",
       telemetryPayload: {
@@ -553,6 +644,7 @@ function setUpdateState(patch = {}, options = {}) {
     ...patch,
     updatedAt: new Date().toISOString(),
   };
+  syncAutoInstallOnQuit();
 
   sendToRenderer("watcher:update-state", updateState);
   sendToRenderer("watcher:app-info", getAppInfo(loadConfig()));
@@ -585,7 +677,23 @@ function configureAutoUpdater() {
   }
 
   autoUpdater.autoDownload = !requiresManualUpdateInstall();
-  autoUpdater.autoInstallOnAppQuit = !requiresManualUpdateInstall();
+  autoUpdater.autoInstallOnAppQuit = false;
+  autoUpdater.autoRunAppAfterInstall = true;
+  autoUpdater.allowDowngrade = false;
+  autoUpdater.allowPrerelease = false;
+  const upstreamSupported = typeof autoUpdater.isUpdateSupported === "function"
+    ? autoUpdater.isUpdateSupported.bind(autoUpdater) : () => true;
+  // Generic feeds do not filter prereleases with allowPrerelease alone.
+  autoUpdater.isUpdateSupported = (info) =>
+    isStableNewerVersion(info?.version, WATCHER_VERSION) && upstreamSupported(info);
+
+  if (process.platform === "darwin" && nativeAutoUpdater) {
+    nativeAutoUpdater.on("update-downloaded", (_event, _notes, _name, _date, updateURL) => {
+      if (!acceptMacNativeReadiness(updateURL)) return;
+      nativeMacUpdateReady = true;
+      maybeInstallPendingWatcherUpdate("mac_native_update_verified");
+    });
+  }
 
   try {
     autoUpdater.setFeedURL({
@@ -619,8 +727,11 @@ function configureAutoUpdater() {
   });
 
   autoUpdater.on("update-available", (info = {}) => {
+    if (!isStableNewerVersion(info.version, WATCHER_VERSION)) return;
+    if (process.platform === "darwin" && nativeMacStageBinding) return;
+    nativeMacUpdateReady = false;
     if (requiresManualUpdateInstall()) {
-      setManualUpdateState("mac_manual_unsigned", null, info);
+      setManualUpdateState(getWatcherUpdateCapability().manualReason, null, info);
       return;
     }
 
@@ -678,17 +789,22 @@ function configureAutoUpdater() {
   });
 
   autoUpdater.on("update-downloaded", (info = {}) => {
+    if (!isStableNewerVersion(info.version, WATCHER_VERSION)) return;
+    if (process.platform === "darwin" && nativeMacStageBinding) return;
     if (requiresManualUpdateInstall()) {
-      setManualUpdateState("mac_manual_unsigned", null, info);
+      setManualUpdateState(getWatcherUpdateCapability().manualReason, null, info);
       return;
     }
 
-    const busy = isWatcherUpdateBusy();
+    const macStaging = process.platform === "darwin" && !nativeMacUpdateReady;
+    const busy = isWatcherUpdateBusy() || macStaging;
     setUpdateState(
       {
         supported: true,
         status: busy ? "pending_install" : "downloaded",
-        message: busy
+        message: macStaging
+          ? "Verifying the signed Mac update in the background."
+          : busy
           ? "Watcher update downloaded. It will install after active replay, import, or stream work finishes."
           : "Watcher update downloaded. Installing now.",
         updateVersion: info.version || null,
@@ -708,6 +824,18 @@ function configureAutoUpdater() {
       }
     );
 
+    if (macStaging) {
+      if (!bindMacUpdateStage(info.version)) return;
+      try {
+        // MacUpdater has already bound a verified ZIP to its local Squirrel
+        // feed before dispatching update-downloaded. Stage without requesting quit.
+        nativeAutoUpdater.checkForUpdates();
+      } catch (error) {
+        failMacUpdateStaging(error);
+      }
+      return;
+    }
+
     if (!busy) {
       setTimeout(() => {
         void installDownloadedWatcherUpdate(loadConfig(), {
@@ -719,7 +847,15 @@ function configureAutoUpdater() {
   });
 
   autoUpdater.on("error", (error) => {
+    if (restoreWatcherAfterUpdateFailure(error)) return;
+    if (process.platform === "darwin" && nativeMacStageBinding && !nativeMacUpdateReady) {
+      failMacUpdateStaging(error);
+      return;
+    }
     if (isMacSignatureValidationError(error)) {
+      nativeMacStageFailed = true;
+      nativeMacUpdateReady = false;
+      autoUpdater.autoDownload = false;
       setManualUpdateState("mac_signature_validation", error);
       return;
     }
@@ -751,6 +887,11 @@ async function checkForWatcherUpdates({ manual = false, config = loadConfig() } 
       status: "unsupported",
       message: "Auto-updates are unavailable in this build.",
     });
+  }
+
+  if (updateInstallPromise || updateHandoffActive || updateState.downloaded ||
+      updateState.status === "downloading" || updateState.status === "available") {
+    return updateState;
   }
 
   if (!app.isPackaged && process.env.AOE2_UPDATE_CHECK_IN_DEV !== "1") {
@@ -802,7 +943,7 @@ async function checkForWatcherUpdates({ manual = false, config = loadConfig() } 
     try {
       const latestRelease = await refreshWatcherRelease(config);
       if (latestRelease.updateAvailable) {
-        setManualUpdateState("mac_manual_unsigned", null, {
+        setManualUpdateState(getWatcherUpdateCapability().manualReason, null, {
           version: latestRelease.latestVersion,
           releaseName: latestRelease.label,
           updateUrl: latestRelease.updateUrl,
@@ -922,99 +1063,113 @@ function startBackgroundUpdateChecks() {
     }, UPDATE_RECHECK_MS);
 }
 
+function restoreWatcherAfterUpdateFailure(error) {
+  if (!updateHandoffActive) return false;
+  const context = updateHandoffContext;
+  updateHandoffActive = false;
+  updateHandoffContext = null;
+  // BaseUpdater may already have scheduled app.quit before an asynchronous
+  // installer error. Veto that stale quit once while this process can recover.
+  updateQuitRecoveryRequired = updateHandoffRequested;
+  const installerRequested = updateHandoffRequested;
+  updateHandoffRequested = false;
+  runtimeJournalQuitDrainStarted = false;
+  runtimeJournalQuitDrainComplete = false;
+  appQuitRequested = false;
+  if (installerRequested) {
+    // Some upstream installers retain a private quitAndInstallCalled flag after
+    // an asynchronous failure. A second void call can silently do nothing.
+    // Restore runtime, but never reset private state or retry that handoff.
+    updateInstallerFailed = true;
+    autoUpdater.autoDownload = false;
+    setManualUpdateState("installer_handoff_failed", error);
+  } else {
+    setUpdateState({
+      status: "error",
+      message: "Update preparation failed. Watcher is still running; retry when ready.",
+      error: error?.message || String(error),
+    }, { telemetryEvent: "watcher_update_error" });
+  }
+  if (context?.wasWatching && !watcherHandle) {
+    startCurrentWatcher(context.config, { preserveLog: true, startMessage: "Monitoring restored after update failure." });
+  }
+  if (runtimeInitialized) {
+    startMonitorWatchdog();
+    startTelemetryHeartbeat();
+    startBackgroundUpdateChecks();
+    startResourceProfiling();
+  }
+  return true;
+}
+
 async function installDownloadedWatcherUpdate(config = loadConfig(), options = {}) {
   configureAutoUpdater();
-
-  if (updateState.manualInstall || updateState.status === "manual_required") {
-    return {
-      ok: false,
-      manualRequired: true,
-      updateUrl:
-        updateState.manualDownloadUrl ||
-        getManualUpdateUrl(),
-      update: updateState,
-    };
+  if (updateInstallPromise) return updateInstallPromise;
+  if (updateHandoffActive) return { ok: true, installing: true, update: updateState };
+  if (requiresManualUpdateInstall() || updateState.manualInstall || updateState.status === "manual_required") {
+    return { ok: false, manualRequired: true, updateUrl: updateState.manualDownloadUrl || getManualUpdateUrl(), update: updateState };
   }
-
   if (!autoUpdater || !updateState.downloaded) {
-    return {
-      ok: false,
-      error: "No downloaded watcher update is ready to install.",
-      update: updateState,
-    };
+    return { ok: false, error: "No downloaded watcher update is ready to install.", update: updateState };
   }
-
-  emitUpdateTelemetry("watcher_update_install_requested", {
-    metadata: {
-      isWatching: Boolean(watcherHandle),
-      importRunning: Boolean(currentImportState?.isRunning),
-    },
-  }, config);
-
-  if (isWatcherUpdateBusy()) {
-    autoUpdater.autoInstallOnAppQuit = true;
-    setUpdateState(
-      {
-        status: "pending_install",
-        message: "Update ready. It will install after uploads/watching stop.",
-      },
-      {
-        logMessage: "Update is ready. It will install after uploads/watching stop.",
-        level: "warn",
-      }
-    );
-    return {
-      ok: true,
-      deferred: true,
-      update: updateState,
-    };
-  }
-
-  setUpdateState(
-    {
-      status: "installing",
-      message: "Installing watcher update now.",
-    },
-    {
-      logMessage: "Installing watcher update now...",
-      telemetryEvent: "watcher_update_install_started",
-      telemetryPayload: {
-        metadata: {
-          automatic: Boolean(options.automatic),
-          reason: options.reason || null,
-        },
-      },
-    }
-  );
-  stopMonitorWatchdog();
-  stopTelemetryHeartbeat();
-  stopBackgroundUpdateChecks();
-
-  if (watcherHandle) {
-    stopCurrentWatcher({
-      quiet: true,
-      allowPendingInstall: false,
+  if (isWatcherUpdateBusy() || (process.platform === "darwin" && !nativeMacUpdateReady)) {
+    setUpdateState({
+      status: "pending_install",
+      message: "Update ready. It will install after active work and update validation finish.",
     });
+    return { ok: true, deferred: true, update: updateState };
   }
 
-  // Do not let the generic before-quit drain interrupt Electron's updater
-  // shutdown sequence. The watcher is already stopped, so drain all journal
-  // evidence first and mark the quit path safe before handing control to
-  // quitAndInstall.
-  await flushRuntimeEventJournal();
-  flushRuntimeEventJournalSync();
-  runtimeJournalQuitDrainComplete = true;
+  // Serialize manual clicks, runtime idle events and the downloaded timer.
+  updateInstallPromise = Promise.resolve().then(async () => {
+    if (isWatcherUpdateBusy()) {
+      setUpdateState({ status: "pending_install" });
+      return { ok: true, deferred: true, update: updateState };
+    }
+    updateHandoffContext = { config, wasWatching: Boolean(watcherHandle) };
+    updateHandoffActive = true;
+    updateQuitRecoveryRequired = false;
+    try {
+      setUpdateState({ status: "installing", message: "Installing watcher update now.", error: null }, {
+        logMessage: "Installing watcher update now...",
+        telemetryEvent: "watcher_update_install_started",
+        telemetryPayload: { metadata: { automatic: Boolean(options.automatic), reason: options.reason || null } },
+      });
+      stopMonitorWatchdog();
+      stopTelemetryHeartbeat();
+      stopBackgroundUpdateChecks();
+      stopResourceProfiling();
+      if (watcherHandle) stopCurrentWatcher({ quiet: true, allowPendingInstall: false });
 
-  autoUpdater.quitAndInstall(false, true);
-
-  return {
-    ok: true,
-    installing: true,
-    update: updateState,
-  };
+      // Admission is fenced while asynchronous evidence is flushed. No new
+      // import, stream or monitor start may race the final idle observation.
+      await flushRuntimeEventJournal();
+      if (!updateHandoffActive) return { ok: false, error: updateState.error, update: updateState };
+      flushRuntimeEventJournalSync();
+      if (runtimeJournalLastError) throw runtimeJournalLastError;
+      if (isWatcherUpdateBusy()) throw new Error("Active work appeared during update handoff.");
+      runtimeJournalQuitDrainComplete = true;
+      appQuitRequested = true;
+      updateHandoffRequested = true;
+      autoUpdater.quitAndInstall(false, true);
+      // quitAndInstall is void. A synchronous error event restores runtime and
+      // invalidates this handoff; returning alone never proves activation.
+      if (!updateHandoffActive) return { ok: false, error: updateState.error, update: updateState };
+      return { ok: true, installing: true, activationVerified: false, update: updateState };
+    } catch (error) {
+      restoreWatcherAfterUpdateFailure(error);
+      return { ok: false, error: error?.message || String(error), update: updateState };
+    }
+  });
+  try {
+    return await updateInstallPromise;
+  } finally {
+    updateInstallPromise = null;
+  }
 }
 
 function maybeInstallPendingWatcherUpdate(reason) {
+  syncAutoInstallOnQuit();
   if (updateState.status !== "pending_install" || !updateState.downloaded || isWatcherUpdateBusy()) {
     return;
   }
@@ -1059,6 +1214,7 @@ function getDefaultConfig() {
     watcherId: process.env.AOE2_WATCHER_ID || "",
     launchAtLogin: true,
     autoStartWatching: true,
+    autoStreamMatches: false,
     lastImportSummary: null,
   };
 }
@@ -1476,9 +1632,8 @@ function buildReleaseStateFromPayload(payload, baseUrl) {
   const currentVersion = WATCHER_VERSION;
   const latestVersion = String(payload?.version || "").trim();
   const artifact = pickReleaseArtifact(payload);
-  const comparison = latestVersion ? compareVersions(currentVersion, latestVersion) : 0;
-  const updateAvailable = Boolean(latestVersion && comparison < 0);
-  const isLatest = Boolean(latestVersion && comparison >= 0);
+  const updateAvailable = isStableNewerVersion(latestVersion, currentVersion);
+  const isLatest = latestVersion === currentVersion || isStableNewerVersion(currentVersion, latestVersion);
   const releaseUrl = toAbsoluteUrl(baseUrl, payload?.releaseUrl || DOWNLOAD_PAGE_PATH);
   const updateHref = artifact?.trackedHref || artifact?.downloadPath || payload?.downloadPath || DOWNLOAD_PAGE_PATH;
 
@@ -2482,6 +2637,7 @@ function formatAxiosError(error) {
 }
 
 async function postStreamJson(payload = {}) {
+  if (updateHandoffActive) throw new Error("Update handoff is in progress.");
   const config = loadConfig();
   const apiPath = getSafeStreamApiPath(payload.path);
   const method = String(payload.method || "POST").toUpperCase();
@@ -2491,32 +2647,46 @@ async function postStreamJson(payload = {}) {
     throw new Error("Streaming API host is missing.");
   }
 
-  const response = await axios({
-    method,
-    url: `${baseUrl}${apiPath}`,
-    timeout: TELEMETRY_TIMEOUT_MS,
-    data: payload.body || {},
-    headers: streamRequestHeaders(config, {
-      "content-type": "application/json",
-      accept: "application/json",
-    }),
-  });
+  nativeStreamRequestsInFlight += 1;
+  syncAutoInstallOnQuit();
+  try {
+    const response = await axios({
+      method,
+      url: `${baseUrl}${apiPath}`,
+      timeout: TELEMETRY_TIMEOUT_MS,
+      data: payload.body || {},
+      headers: streamRequestHeaders(config, {
+        "content-type": "application/json",
+        accept: "application/json",
+      }),
+    });
 
-  if (apiPath === "/api/streams/start" && response?.data?.stream?.id) {
-    nativeStreamActive = true;
-  } else if (/\/end$/.test(apiPath)) {
-    nativeStreamActive = false;
-    maybeInstallPendingWatcherUpdate("native_stream_ended");
+    if (apiPath === "/api/streams/start" && response?.data?.stream?.id) {
+      nativeStreamActive = true;
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.setBackgroundThrottling(false);
+      }
+    } else if (/\/end$/.test(apiPath)) {
+      nativeStreamActive = false;
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.setBackgroundThrottling(loadConfig().autoStreamMatches !== true);
+      }
+      maybeInstallPendingWatcherUpdate("native_stream_ended");
+    }
+
+    return {
+      ok: true,
+      status: response.status,
+      data: response.data,
+    };
+  } finally {
+    nativeStreamRequestsInFlight -= 1;
+    maybeInstallPendingWatcherUpdate("native_stream_request_finished");
   }
-
-  return {
-    ok: true,
-    status: response.status,
-    data: response.data,
-  };
 }
 
 async function postStreamChunk(payload = {}) {
+  if (updateHandoffActive) return { ok: false, error: "Update handoff is in progress." };
   const config = loadConfig();
   const streamId = Number(payload.streamId);
   const sequence = Number(payload.sequence);
@@ -2567,6 +2737,8 @@ async function postStreamChunk(payload = {}) {
 
   const baseUrl = normalizeBaseUrl(payload.baseUrl || getStreamWebBaseUrl(config));
 
+  nativeStreamRequestsInFlight += 1;
+  syncAutoInstallOnQuit();
   try {
     resourceProfiler.recordNetworkBytes(
       buffer.length,
@@ -2630,8 +2802,26 @@ async function postStreamChunk(payload = {}) {
       };
     }
 
+    // A terminal video cap / format / ended response must not enter the
+    // generic retry loop, which would keep screen capture running.
+    const code = String(responseData?.code || "");
+    if (responseData?.terminal === true &&
+        ["STREAM_STORAGE_LIMIT", "STREAM_CHUNK_TOO_LARGE",
+          "STREAM_FORMAT_UNSUPPORTED", "STREAM_ALREADY_ENDED"].includes(code) &&
+        [409, 413, 415].includes(error?.response?.status)) {
+      return {
+        ok: false,
+        terminalVideoStop: true,
+        status: error.response.status,
+        reason: code,
+        data: responseData,
+      };
+    }
+
     throw error;
   } finally {
+    nativeStreamRequestsInFlight -= 1;
+    maybeInstallPendingWatcherUpdate("native_stream_chunk_finished");
     networkPriorityArbiter
       .unregisterStreamUpload(
         controller
@@ -2933,147 +3123,74 @@ function scheduleRuntimeEventJournalFlush() {
 }
 
 function flushRuntimeEventJournal() {
-  if (!runtimeEventJournalBuffer) {
+  if (!runtimeEventJournalBuffer && runtimeJournalPendingWrites.length === 0) {
     return runtimeEventJournalFlushChain;
   }
-
-  const chunk =
-    runtimeEventJournalBuffer;
-  const chunkBytes =
-    runtimeEventJournalBufferBytes;
-
+  const chunk = runtimeEventJournalBuffer;
   runtimeEventJournalBuffer = "";
   runtimeEventJournalBufferBytes = 0;
-
   if (runtimeEventJournalFlushTimer) {
-    clearTimeout(
-      runtimeEventJournalFlushTimer
-    );
-    runtimeEventJournalFlushTimer =
-      null;
+    clearTimeout(runtimeEventJournalFlushTimer);
+    runtimeEventJournalFlushTimer = null;
   }
 
-  runtimeEventJournalFlushChain =
-    runtimeEventJournalFlushChain
-      .then(async () => {
-        const journalPath =
-          getRuntimeEventJournalPath();
-
-        await fs.promises.mkdir(
-          path.dirname(journalPath),
-          {
-            recursive: true,
-          }
-        );
-
-        await rotateRuntimeEventJournalIfNeeded(
-          journalPath,
-          chunkBytes
-        );
-
-        await fs.promises.appendFile(
-          journalPath,
-          chunk,
-          "utf8"
-        );
-      })
-      .catch((error) => {
-        console.warn(
-          `Watcher runtime journal flush failed: ${
-            error.message || error
-          }`
-        );
-      });
-
+  runtimeEventJournalFlushChain = runtimeEventJournalFlushChain.then(async () => {
+    // Keep failed chunks ahead of newer events; a transient disk error must
+    // neither drop evidence nor permanently disable a later update retry.
+    if (chunk) runtimeJournalPendingWrites.push(chunk);
+    const journalPath = getRuntimeEventJournalPath();
+    await fs.promises.mkdir(path.dirname(journalPath), { recursive: true });
+    while (runtimeJournalPendingWrites.length > 0) {
+      const pending = runtimeJournalPendingWrites[0];
+      await rotateRuntimeEventJournalIfNeeded(journalPath, Buffer.byteLength(pending, "utf8"));
+      await fs.promises.appendFile(journalPath, pending, "utf8");
+      runtimeJournalPendingWrites.shift();
+    }
+    runtimeJournalLastError = null;
+  }).catch((error) => {
+    runtimeJournalLastError = error;
+    console.warn(`Watcher runtime journal flush failed: ${error.message || error}`);
+  });
   return runtimeEventJournalFlushChain;
 }
 
 function flushRuntimeEventJournalSync() {
-  if (!runtimeEventJournalBuffer) {
-    return;
-  }
-
-  const chunk =
-    runtimeEventJournalBuffer;
-
+  if (runtimeEventJournalBuffer) runtimeJournalPendingWrites.push(runtimeEventJournalBuffer);
   runtimeEventJournalBuffer = "";
   runtimeEventJournalBufferBytes = 0;
-
   if (runtimeEventJournalFlushTimer) {
-    clearTimeout(
-      runtimeEventJournalFlushTimer
-    );
-    runtimeEventJournalFlushTimer =
-      null;
+    clearTimeout(runtimeEventJournalFlushTimer);
+    runtimeEventJournalFlushTimer = null;
   }
-
+  if (runtimeJournalPendingWrites.length === 0) return;
   try {
-    const journalPath =
-      getRuntimeEventJournalPath();
-
-    fs.mkdirSync(
-      path.dirname(journalPath),
-      {
-        recursive: true,
-      }
-    );
-
-    const incomingBytes =
-      Buffer.byteLength(
-        chunk,
-        "utf8"
-      );
-
-    let currentBytes = 0;
-    try {
-      currentBytes =
-        fs.statSync(
-          journalPath
-        ).size;
-    } catch (error) {
-      if (error?.code !== "ENOENT") {
-        throw error;
-      }
-    }
-
-    if (
-      currentBytes +
-        incomingBytes >
-      RUNTIME_EVENT_JOURNAL_MAX_BYTES
-    ) {
-      const rotated =
-        `${journalPath}.1`;
-
-      fs.rmSync(
-        rotated,
-        {
-          force: true,
-        }
-      );
-
+    const journalPath = getRuntimeEventJournalPath();
+    fs.mkdirSync(path.dirname(journalPath), { recursive: true });
+    while (runtimeJournalPendingWrites.length > 0) {
+      const pending = runtimeJournalPendingWrites[0];
+      const incomingBytes = Buffer.byteLength(pending, "utf8");
+      let currentBytes = 0;
       try {
-        fs.renameSync(
-          journalPath,
-          rotated
-        );
+        currentBytes = fs.statSync(journalPath).size;
       } catch (error) {
-        if (error?.code !== "ENOENT") {
-          throw error;
+        if (error?.code !== "ENOENT") throw error;
+      }
+      if (currentBytes + incomingBytes > RUNTIME_EVENT_JOURNAL_MAX_BYTES) {
+        const rotated = `${journalPath}.1`;
+        fs.rmSync(rotated, { force: true });
+        try {
+          fs.renameSync(journalPath, rotated);
+        } catch (error) {
+          if (error?.code !== "ENOENT") throw error;
         }
       }
+      fs.appendFileSync(journalPath, pending, "utf8");
+      runtimeJournalPendingWrites.shift();
     }
-
-    fs.appendFileSync(
-      journalPath,
-      chunk,
-      "utf8"
-    );
+    runtimeJournalLastError = null;
   } catch (error) {
-    console.warn(
-      `Watcher runtime journal final flush failed: ${
-        error.message || error
-      }`
-    );
+    runtimeJournalLastError = error;
+    console.warn(`Watcher runtime journal final flush failed: ${error.message || error}`);
   }
 }
 
@@ -3152,12 +3269,9 @@ function handleWatcherRuntimeEvent(event) {
   sendToRenderer("watcher:runtime-event", event);
   emitTelemetryForRuntimeEvent(event);
 
-  if (
-    event.type === "monitor-stop" ||
-    event.type === "final-settle-observation-complete"
-  ) {
-    maybeInstallPendingWatcherUpdate(event.type);
-  }
+  // The runtime status already reflects this event. Check every completion
+  // family, including final review and upload failures, without adding a timer.
+  maybeInstallPendingWatcherUpdate(event.type);
 }
 
 function focusMainWindow() {
@@ -3270,6 +3384,7 @@ function startCurrentWatcher(
   config,
   { preserveLog = false, startMessage = "Start Watching clicked." } = {}
 ) {
+  if (updateHandoffActive) return false;
   watcherSession += 1;
 
   stopCurrentWatcher({ quiet: true, allowPendingInstall: false });
@@ -3313,6 +3428,7 @@ function startCurrentWatcher(
 }
 
 async function runHistoricalImport({ source, filePaths = [] }) {
+  if (updateHandoffActive) return { ok: false, error: "Update handoff is in progress.", state: currentImportState };
   if (currentImportState.isRunning) {
     return {
       ok: false,
@@ -3660,11 +3776,27 @@ function createWindow({ showOnReady = true } = {}) {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
-      backgroundThrottling: true,
+      backgroundThrottling: loadConfig().autoStreamMatches !== true,
     },
   });
 
   mainWindow.loadFile(path.join(__dirname, "index.html"));
+
+  mainWindow.on("close", (event) => {
+    if (
+      !appQuitRequested &&
+      loadConfig().autoStreamMatches === true
+    ) {
+      event.preventDefault();
+      mainWindow?.hide();
+      if (process.platform === "darwin" && app.dock) {
+        app.dock.hide();
+      }
+      appendLog(
+        "Dashboard hidden; automatic Television WOLO capture remains armed."
+      );
+    }
+  });
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     try {
@@ -3969,6 +4101,11 @@ function bootWatcherApp() {
   ipcMain.handle("watcher:save-config", async (_event, config) => {
     const previous = loadConfig();
     const saved = saveConfig(config);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.setBackgroundThrottling(
+        saved.autoStreamMatches !== true && !nativeStreamActive
+      );
+    }
     const launchState = applyLaunchAtLogin(saved);
 
     appendLog("Settings saved locally.");
@@ -4223,7 +4360,7 @@ function bootWatcherApp() {
     return { ok: true };
   });
 
-  initializeWatcherRuntime();
+  const runtimeConfig = initializeWatcherRuntime();
 
   const loginState = app.getLoginItemSettings();
   const launchInBackground =
@@ -4235,6 +4372,12 @@ function bootWatcherApp() {
 
   if (launchInBackground) {
     appendLog("Started in low-resource background mode.");
+    if (runtimeConfig.autoStreamMatches === true) {
+      createWindow({ showOnReady: false });
+      appendLog(
+        "Hidden capture renderer armed for automatic Television WOLO streaming."
+      );
+    }
     if (process.platform === "darwin" && app.dock) {
       app.dock.hide();
     }
@@ -4258,6 +4401,17 @@ app.on("activate", () => {
 });
 
 app.on("before-quit", (event) => {
+  if (updateQuitRecoveryRequired) {
+    event.preventDefault();
+    updateQuitRecoveryRequired = false;
+    return;
+  }
+  if (updateState.downloaded && updateState.status !== "error" && !updateHandoffActive && !requiresManualUpdateInstall()) {
+    event.preventDefault();
+    void installDownloadedWatcherUpdate(loadConfig(), { automatic: true, reason: "safe_app_quit" });
+    return;
+  }
+  appQuitRequested = true;
   clearRendererBootWatchdog();
   rendererReady = false;
   rendererHealth =

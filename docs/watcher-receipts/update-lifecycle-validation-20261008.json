@@ -1,0 +1,112 @@
+{
+  "authority": {
+    "artifact_promotion": false,
+    "deployment": false,
+    "production_mutation": false,
+    "release": false
+  },
+  "base_head": "a54e9935b05b2cb5ec7988523e3303819c9171e2",
+  "boundaries": {
+    "custom_cache_cleanup_implemented": false,
+    "electron_sandbox_weakened": false,
+    "installed_watcher_untouched": true,
+    "package_version_bumped": false,
+    "packaged_platform_activation_verified": false,
+    "replay_truth_control_executed": false,
+    "signature_gate_weakened": false,
+    "tests_use_fake_os_network_updater": true
+  },
+  "branch": "feature/watcher-1.6.4-auto-television",
+  "file_sha256": {
+    "README.md": "89f10bc85cf1f88a2df368bca4f50444d2230d05ae61d251972618a1db45f9c7",
+    "docs/WATCHER_1_6_4_UPDATE_LIFECYCLE.md": "db86b9d3387e783a5d2bc0dedc4491b1fa2ad114d84f2c65f20b897ecfe0cc89",
+    "main.js": "d3105afd155fa0386560d942a7dbe8e760253f0af52bfb46355cf6f25c081649",
+    "package.json": "6b199ae878f33ac1a9cc5d0dbbe8384cdf1a18a269ffd1b45232e84b78d854b5",
+    "renderer.js": "7c470fdda1002c8341af9db2d13a3a72952057b772372545c5b5e18476fbf95c",
+    "resourceProfile.js": "d73f7d760277220290854c9d9fea74eb6485abbbe9d7a84d59c479227e537e89",
+    "runtimePolicy.js": "b37b838f957ecfdec4888f13c127dc0c0ac0d323f4f0684b7e49285be0d76a67",
+    "tests/auto-television-stream.test.js": "ec1ab7b3ae3ed31b02ca694e901c94f99abcde7551a70f667e5890be5402f531",
+    "tests/resource-profile.test.js": "d868230dbb6ce325de3953419fcec6de56c0e9e221256acde2eee8b9a5a39765",
+    "tests/runtime-journal.test.js": "5f77add9133084e8621def1232951bddd7a64371b388dcab63b5e030e1c7e12a",
+    "tests/runtime-lifecycle.test.js": "c2026d0813f15e1904b5fe534309c8da5547e7840efb32e055db8166d8253e7a",
+    "tests/runtime-policy.test.js": "f4d43b52a024a2d665e127940f783b8c12a120ce866f3d6bb0a2425d82bc157b",
+    "tests/update-lifecycle.test.js": "71a437838e7987cb8c6b40d7eddbaa76e743b72d5a787ee262366ec5db0a8b69",
+    "tests/update-policy.test.js": "834f78107a027f7f481c00f47c05d007cc051feeaaca52f8cd394ee63cd5449b",
+    "tests/update-presentation.test.js": "c2007a478bedaeb59a13a72c6f19ef805a5f0dcf71c66cba4769b0d2eadef078",
+    "tests/watcher-session-lifecycle.test.js": "f5be5e7a771a80488400724dc5da200b16efd6f5d6b3aceb316990e4c01bbdd5",
+    "updatePolicy.js": "ade9ecc24c5377567674d1085b2c673c54b9820c53e88b5dc025d946ffd0e982",
+    "watcher.js": "83fee71c4202565865445b50e08222177561eb1424f83b30865b04d79ec1eca9"
+  },
+  "installed_tools": {
+    "electron": "35.1.4",
+    "electron-builder": "24.13.3",
+    "electron-updater": "6.8.9"
+  },
+  "kind": "watcher-source-lifecycle-validation",
+  "live_process_observation": {
+    "duplicate_main_observed": false,
+    "helpers": [
+      {
+        "cpu_percent": 0.0,
+        "pid": 593,
+        "ppid": 581,
+        "role": "gpu",
+        "rss_kib": 18400
+      },
+      {
+        "cpu_percent": 0.0,
+        "pid": 594,
+        "ppid": 581,
+        "role": "network_service",
+        "rss_kib": 12176,
+        "sandboxed": true
+      }
+    ],
+    "live_teardown_executed": false,
+    "main": {
+      "cpu_percent": 0.0,
+      "pid": 581,
+      "ppid": 1,
+      "rss_kib": 67088
+    },
+    "observed_at": "2026-10-08T15:27:11Z",
+    "orphan_helper_observed": false
+  },
+  "observed_at": "2026-10-08T15:56:43.701219+00:00",
+  "package_version": "1.6.3",
+  "remaining_validation": [
+    "Use declared frozen Electron/electron-builder toolchain in isolated packaged platform update canaries.",
+    "Prove actual binary replacement, relaunch, pairing/config survival and helper teardown.",
+    "Mac release pipeline must emit Developer ID signed/notarized electron-builder ZIP and valid latest-mac.yml.",
+    "No public post-activation updater cache cleanup API or universal atomic rollback was established."
+  ],
+  "schema_version": 1,
+  "validation": {
+    "full": {
+      "command": "npm test",
+      "exit_code": 0,
+      "failed": 0,
+      "passed": 185,
+      "skipped": 0,
+      "tests": 185
+    },
+    "independent_focused": {
+      "failed": 0,
+      "includes": [
+        "39 lifecycle",
+        "10 update policy",
+        "5 runtime journal"
+      ],
+      "passed": 54,
+      "tests": 54
+    },
+    "lint": {
+      "command": "npm run lint",
+      "exit_code": 0
+    },
+    "whitespace": {
+      "command": "git diff --check",
+      "exit_code": 0
+    }
+  }
+}

@@ -11,9 +11,9 @@
       "owner": "aoe2war-watcher",
       "path": "README.md",
       "review_interval_days": 60,
-      "reviewed_at": "2026-09-29",
+      "reviewed_at": "2026-10-10",
       "sensitivity": "internal",
-      "sha256": "e3ae5f13bc1871bb274195f3d97a64a00390184d9838ea4e6f561bfc788852ec",
+      "sha256": "a47684f3bd2c78227361d36227672dc97669888a3cdc2ae69db3b38d2a1a431c",
       "source_of_truth": "git",
       "status": "active",
       "systems": [
@@ -36,7 +36,7 @@
       "review_interval_days": 0,
       "reviewed_at": "2026-07-26",
       "sensitivity": "internal",
-      "sha256": "db434e8f3a295b680d840a0c7a3b7b902a3d4baeabfd481fefe4ab1d71a683ec",
+      "sha256": "46f44d8d8ae7847847edb94be5dad2aff4896b6091c70d53de7dc242f0e4cf13",
       "source_of_truth": "generated",
       "status": "generated",
       "systems": [
@@ -90,12 +90,34 @@
       ],
       "title": "Watcher 1.6.3 Development",
       "type": "working"
+    },
+    {
+      "audience": [
+        "developers",
+        "operators",
+        "ai-agents"
+      ],
+      "authority": "watcher-update-lifecycle-contract",
+      "id": "aoe2war.aoe2-watcher.docs-watcher-1-6-4-update-lifecycle",
+      "owner": "aoe2war-watcher",
+      "path": "docs/WATCHER_1_6_4_UPDATE_LIFECYCLE.md",
+      "review_interval_days": 30,
+      "reviewed_at": "2026-10-08",
+      "sensitivity": "internal",
+      "sha256": "037e7e053abf2f5b5b708db5695af9fcf3fc754184759ebd98b77e87c607490c",
+      "source_of_truth": "git",
+      "status": "active",
+      "systems": [
+        "aoe2-watcher"
+      ],
+      "title": "Watcher 1.6.4 Update Lifecycle Development",
+      "type": "working"
     }
   ],
   "generated_at": "2026-08-04T02:09:37Z",
   "implementation_baseline": {
-    "branch": "feature/watcher-1.6.3-development",
-    "commit": "a806975f7c68011e3fd911d6cb9d57eb0527c263"
+    "branch": "feature/watcher-1.6.4-video-test-ux-20261010",
+    "commit": "b4318ac0efb219bc2512daff7cca2514fe11c203"
   },
   "owner": "aoe2war-watcher",
   "repo": "aoe2-watcher",

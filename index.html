@@ -977,7 +977,7 @@
 
             <div class="hero-actions">
               <button id="startWatchingBtn" class="button primary">Start Watching</button>
-              <button id="streamMatchBtn" class="button secondary" disabled>Start Stream</button>
+              <button id="streamMatchBtn" class="button secondary" type="button" disabled>Stream My Game</button>
               <button id="scanImportBtn" class="button secondary">Scan &amp; Import Replays</button>
               <button id="stopWatchingBtn" class="button danger">Stop Watching</button>
             </div>
@@ -985,7 +985,7 @@
             <div class="stream-panel">
               <div class="stream-top">
                 <div>
-                  <div class="eyebrow">Streamer</div>
+                  <div class="eyebrow">Live Video · Television WOLO</div>
                   <div id="streamTitleText" class="stream-title">Watcher stream</div>
                 </div>
                 <div id="streamStatePill" class="badge neutral">Idle</div>
@@ -1002,10 +1002,10 @@
                   Sources
                 </button>
                 <button id="startNativeStreamBtn" class="button primary slim" type="button">
-                  Go Live
+                  Start Video
                 </button>
                 <button id="stopNativeStreamBtn" class="button danger slim" type="button">
-                  Stop
+                  Stop Video
                 </button>
                 <button id="openBrowserStreamBtn" class="button ghost slim" type="button">
                   Browser
@@ -1024,6 +1024,7 @@
                 </button>
               </div>
 
+              <p class="panel-copy" id="streamCostNote">Video is optional and starts only when you choose it (or explicitly enable automatic video). Select the game window or display, then Start Video. Streaming uses additional CPU/GPU and upload bandwidth; power cost depends on your PC and is not measured by Watcher.</p>
               <details id="streamReadoutDetails" class="stream-readout">
                 <summary id="streamReadoutSummary">Idle.</summary>
                 <div id="streamReadoutDetail">Pick a source when a watcher match is ready.</div>
@@ -1178,6 +1179,11 @@
                       <span>Automatically watch my AoE2 HD games when the Watcher starts.</span>
                     </label>
 
+                    <label class="checkbox-shell" for="autoStreamMatchesInput">
+                      <input id="autoStreamMatchesInput" type="checkbox" />
+                      <span>Automatically stream detected matches to Television WOLO. This captures the selected AoE2 window/display until the match ends.</span>
+                    </label>
+
                   </div>
                 </details>
               </div>
@@ -1328,6 +1334,10 @@
                 <div class="diagnostic-row">
                   <strong>Power signal</strong>
                   <span id="resourcePowerText" title="CPU and processor-wakeup proxy; portable per-process watts are not exposed by Electron.">Measuring…</span>
+                </div>
+                <div class="diagnostic-row">
+                  <strong>Resource modes (observed)</strong>
+                  <span id="resourceCohortsText" title="In-session Watcher-only observations; not whole-PC CPU or electricity, and not controlled before/after causal comparisons.">No workload samples yet.</span>
                 </div>
                 <div class="diagnostic-row">
                   <strong>Pairing handoff</strong>
