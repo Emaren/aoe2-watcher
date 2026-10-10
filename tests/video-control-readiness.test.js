@@ -8,8 +8,8 @@ const renderer = fs.readFileSync(path.join(__dirname, "..", "renderer.js"), "utf
 
 test("watcher main and streamer actions name video explicitly", () => {
   assert.match(html, /id="streamMatchBtn"[^>]*>Stream My Game</);
-  assert.match(html, /id="startNativeStreamBtn"[\\s\\S]*?Start Video/);
-  assert.match(html, /id="stopNativeStreamBtn"[\\s\\S]*?Stop Video/);
+  assert.match(html, /id="startNativeStreamBtn"[\s\S]*?Start Video/);
+  assert.match(html, /id="stopNativeStreamBtn"[\s\S]*?Stop Video/);
   assert.match(renderer, /"Stream My Game"/);
   assert.match(renderer, /"Pair Watcher to Stream"/);
   assert.match(renderer, /"Video Live"/);
@@ -27,8 +27,8 @@ test("stream modes describe codec target, not measured network/power", () => {
   assert.match(renderer, /mode.videoBitsPerSecond \* 3600 \/ 8_000_000_000/);
   assert.match(renderer, /GB\/hour video target \(before overhead\)/);
   assert.match(renderer, /not a network measurement or an electricity estimate/);
-  assert.match(renderer, /key: "stable"[\\s\\S]*?videoBitsPerSecond: 1400000/);
-  assert.match(renderer, /key: "sharp"[\\s\\S]*?videoBitsPerSecond: 2600000/);
+  assert.match(renderer, /key: "stable"[\s\S]*?videoBitsPerSecond: 1400000/);
+  assert.match(renderer, /key: "sharp"[\s\S]*?videoBitsPerSecond: 2600000/);
 });
 
 test("both video entry points use the same native capture function", () => {
