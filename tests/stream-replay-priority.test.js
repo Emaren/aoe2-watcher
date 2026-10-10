@@ -121,3 +121,12 @@ test("video quota and pre-ended streams are terminal, never retried as transient
   assert.ok(terminalAt >= 0 && retryAt > terminalAt);
   assert.match(rendererSource, /\{ drainUploads: false \}/);
 });
+
+test("terminal media quota or shed does not auto-restart another recorder for same match", () => {
+  assert.match(rendererSource, /let autoNativeTerminalSuppressedSessionKey = null/);
+  assert.match(rendererSource, /if \(nativeStreamState\.autoStarted && result\?\.terminalStreamStop\)/);
+  assert.match(rendererSource, /if \(result\?\.terminalMediaShed\) \{/);
+  assert.match(rendererSource, /autoNativeTerminalSuppressedSessionKey = buildNativeSessionKey\(\)/);
+  assert.match(rendererSource, /if \(autoNativeTerminalSuppressedSessionKey === buildNativeSessionKey\(\)\) return/);
+  assert.match(rendererSource, /if \(shouldStop\) autoNativeTerminalSuppressedSessionKey = null/);
+});
