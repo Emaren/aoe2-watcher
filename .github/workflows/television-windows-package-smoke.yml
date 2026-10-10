@@ -50,7 +50,7 @@ jobs:
           assert(fs.existsSync(unpacked), "Missing Windows unpacked directory");
           const appArchive = path.join(unpacked, "resources", "app.asar");
           assert(fs.existsSync(appArchive), "Missing app.asar");
-          const files = asar.listPackage(appArchive).map(p => p.replace(/\\/g, "/").replace(/^\\//,""));
+          const files = asar.listPackage(appArchive).map(p => p.replaceAll(String.fromCharCode(92), "/").split("/").filter(Boolean).join("/"));
           for (const needed of ["main.js", "renderer.js", "televisionCapturePolicy.js", "index.html", "preload.js"]) {
             assert(files.includes(needed), "Missing required packaged file: " + needed);
           }
