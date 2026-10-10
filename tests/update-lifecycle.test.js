@@ -688,7 +688,7 @@ test("macOS staging rejects native readiness for a different outer candidate ver
   h.api.setWatcher(true);
   h.api.configure();
   await h.event("update-downloaded");
-  h.api.setState({ updateVersion: "1.6.5" });
+  h.api.setState({ updateVersion: "1.6.6" });
   h.nativeUpdater.emit("update-downloaded", {}, "", "", new Date(0), "http://127.0.0.1:43210/update.zip");
   await Promise.resolve();
   await h.fireInstallTimer();
