@@ -380,3 +380,24 @@ installers. These certificate checks do **not** establish a working installed
 v1.5.10→1.6.4 updater migration, video permissions, resource consumption,
 or compatible server media ingestion. Those independent canaries remain
 required before public promotion.
+
+## Updater-native macOS ZIP source gate (2026-10-10)
+
+The candidate now builds an electron-builder `zip` target **in addition to**
+the separate `dmg` and README-wrapped `aoe2hdbets-watcher-direct.zip`.
+Only the builder ZIP is eligible for the native macOS update channel.
+`scripts/verify-mac-updater.cjs` requires one distinct versioned arm64
+updater ZIP, a matching `latest-mac.yml` default path and files entry, and
+byte-derived SHA-512 equality for **both** manifest digest fields. It rejects
+manual ZIP substitution, missing/ambiguous payloads, wrong versions and
+tampered hashes before the release workflow uploads candidates.
+
+The macOS unsigned CI lane and non-Windows release build invoke that guard
+and preserve the native ZIP. **Source/unsigned package integrity is not
+developer signing, notarization or an installed update canary.** The web
+production release promoter and final immutable publication inventory must
+also include and verify the updater ZIP **before** updating
+`latest-mac.yml` (tracked in app-prodn issue #464). Do not flip macOS
+in-app automatic updates until signed/notarized payload and real installed
+old-to-new upgrade receipts exist.
+
