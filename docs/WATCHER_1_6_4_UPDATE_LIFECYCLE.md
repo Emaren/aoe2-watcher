@@ -186,6 +186,15 @@ Source titles are only heuristic evidence; future packaged canaries must
 verify actual Windows desktop-capture identity and activity. Source
 admission does not prove battle identity, teams or game finality.
 
+A separate bounded recovery seam prevents one broken video recording from
+poisoning later matches: an opted-in auto-stream that entered `error` stays
+diagnosable during its game, but authoritative
+`match_result_ready` or `match_observation_complete` stops and re-arms
+capture to `idle` for the **next** detected game. No idle time or file
+quietness is treated as match completion. This is not an unbounded
+mid-game retry, and a server media-shed still ends current video immediately.
+
+
 Operator priorities for subsequent passes: correlated capture start/stop
 receipts, bounded CPU/memory/encode telemetry, upload and viewer quality
 metrics, long-match admission/storage ceilings, and consent-based diagnostics.
