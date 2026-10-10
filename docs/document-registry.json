@@ -36,7 +36,7 @@
       "review_interval_days": 0,
       "reviewed_at": "2026-07-26",
       "sensitivity": "internal",
-      "sha256": "ae2139de31a13d43a02958bcb236312589b6844afed9122a99e7b1b2383e44fa",
+      "sha256": "44a2536e9f285fcb13777035cdfe3dd5db36560fbec86bbc59d4339f68ceeada",
       "source_of_truth": "generated",
       "status": "generated",
       "systems": [
@@ -104,7 +104,7 @@
       "review_interval_days": 30,
       "reviewed_at": "2026-10-09",
       "sensitivity": "internal",
-      "sha256": "2b375031c3603979829aa312fec385963c1774429c21be9f6612a2b95d990e6e",
+      "sha256": "87f07f1be128880083e125bd395a94bbf954756f86e36ba4b54bd49de49fc542",
       "source_of_truth": "git",
       "status": "active",
       "systems": [
@@ -117,7 +117,7 @@
   "generated_at": "2026-08-04T02:09:37Z",
   "implementation_baseline": {
     "branch": "feature/watcher-1.6.4-stream-terminal-control-20261009",
-    "commit": "c1ad871f743dabf9ec0fd5b7b4deb349542cc193"
+    "commit": "d26d15730b68bcd4e10f5e445f6ac14d23a7be07"
   },
   "owner": "aoe2war-watcher",
   "repo": "aoe2-watcher",
