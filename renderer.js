@@ -1196,6 +1196,8 @@ async function uploadNativeChunk(streamId, sequence, blob) {
     updateNativeStreamState({
       readout: replayFinal ? "Match finished. Video saved." :
         code === "STREAM_STORAGE_LIMIT" ? "Video storage limit reached; game monitoring continues." :
+        code === "STREAM_CHUNK_TOO_LARGE" ? "Video bitrate exceeds upload limit; game monitoring continues." :
+        code === "STREAM_FORMAT_UNSUPPORTED" ? "Video codec rejected by server; game monitoring continues." :
         "Video session already closed. Game monitoring continues.",
       detail,
     });
