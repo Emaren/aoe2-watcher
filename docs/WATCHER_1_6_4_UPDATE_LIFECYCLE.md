@@ -229,3 +229,19 @@ a two-user broadcast, replay-to-video session matching, multi-view playback,
 multi-hour storage, or auto-updater activation have been packaged and canaried.
 No installed users, source versions, release artifacts, production
 recordings or Wolo accounts are modified by this development-only pass.
+
+## Windows x64 packaging proof (development CI, October 9)
+
+The dedicated `Watcher Windows television packaging smoke` GitHub Actions
+workflow runs on `windows-latest` with the frozen npm lockfile. It compiles
+the JavaScript and complete Node test inventory on Windows, builds an unsigned
+unpublished `win-unpacked` artifact via electron-builder, and checks that
+`app.asar` really contains the entrypoint, renderer, preload, UI and
+`televisionCapturePolicy.js`. It also verifies the release version remains
+at 1.6.3 and that an executable was produced. This is a build proof only;
+the workflow does not release packages, start the actual game, play WebM
+through AoE2WAR, validate audio or test updater activation. Signed installer
+certification and physical Windows canaries are separate gates.
+
+The original Watcher CI dependency-security audit remains unchanged and
+release-blocking. No vulnerabilities are exempted by this smoke lane.
