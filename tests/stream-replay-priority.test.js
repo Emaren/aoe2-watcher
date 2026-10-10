@@ -108,3 +108,16 @@ test("server media-shed response is terminal before generic chunk failure", () =
     /Video stopped to protect replay and API traffic\./,
   );
 });
+
+test("video quota and pre-ended streams are terminal, never retried as transient failures", () => {
+  assert.match(mainSource, /responseData\?\.code === "STREAM_STORAGE_LIMIT"/);
+  assert.match(mainSource, /responseData\?\.code === "STREAM_ALREADY_ENDED"/);
+  assert.match(mainSource, /terminalStreamStop: true/);
+  assert.match(rendererSource, /result\?\.terminalStreamStop \|\| result\?\.data\?\.finality === "replay_final"/);
+  assert.match(rendererSource, /"Video storage limit reached; game monitoring continues\."/);
+  assert.match(rendererSource, /await endNativeStream\(\s*replayFinal \? "match_result_ready" : "server_terminal_video"/);
+  const terminalAt = rendererSource.indexOf("if (result?.terminalStreamStop");
+  const retryAt = rendererSource.indexOf("if (!result?.ok)", terminalAt);
+  assert.ok(terminalAt >= 0 && retryAt > terminalAt);
+  assert.match(rendererSource, /\{ drainUploads: false \}/);
+});
