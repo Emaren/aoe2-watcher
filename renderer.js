@@ -823,6 +823,39 @@ async function streamJson(path, body = {}, options = {}) {
   return result.data || {};
 }
 
+// Outbound video diagnostics must never carry arbitrary window titles, paths,
+ // track labels or free-form transport errors. Preserve the machine evidence
+ // needed for remote triage without shipping personal desktop context.
+function safeNativeVideoTelemetry(values = {}) {
+  const numeric = new Set([
+    "streamId", "sequence", "elapsedMs", "blobSize", "chunkCount",
+    "lastChunkBytes", "uploadFailures", "consecutiveUploadFailures",
+    "heartbeatFailures", "uploadQueueLength", "lastUploadLatencyMs",
+    "droppedChunks", "priorityYieldedChunks", "videoBitrate", "frameRate",
+    "chunkTimesliceMs", "retryAfterSeconds", "captureWidth",
+    "captureHeight", "captureFrameRate", "sourceCount", "windowCount",
+    "screenCount", "trackCount",
+  ]);
+  const tokens = new Set([
+    "sourceKind", "sourceType", "captureMode", "mode", "modeLabel",
+    "reason", "status", "mimeType", "code", "artifact",
+  ]);
+  const booleans = new Set(["autoStarted", "thumbnailUpdated"]);
+  const output = {};
+  for (const [key, value] of Object.entries(values || {}).slice(0, 48)) {
+    if (numeric.has(key) && Number.isSafeInteger(value) &&
+        value >= 0 && value <= 1_000_000_000_000) {
+      output[key] = value;
+    } else if (tokens.has(key) && typeof value === "string" &&
+        /^[a-zA-Z0-9_.:-]{1,80}$/.test(value)) {
+      output[key] = value;
+    } else if (booleans.has(key) && typeof value === "boolean") {
+      output[key] = value;
+    }
+  }
+  return output;
+}
+
 async function sendNativeStreamEvent(eventType, metadata = {}) {
   try {
     const mode = getNativeStreamMode();
@@ -839,9 +872,7 @@ async function sendNativeStreamEvent(eventType, metadata = {}) {
           : "",
       captureMode: nativeStreamState.mode,
       mediaMimeType: nativeStreamState.mediaMimeType,
-      metadata: {
-        title: buildNativeStreamTitle(),
-        sourceName: nativeStreamState.sourceName,
+      metadata: safeNativeVideoTelemetry({
         sourceKind: nativeStreamState.sourceKind,
         sourceType: "watcher_native",
         modeLabel: mode.label,
@@ -859,7 +890,7 @@ async function sendNativeStreamEvent(eventType, metadata = {}) {
         droppedChunks: nativeStreamState.droppedChunks,
         priorityYieldedChunks: nativeStreamState.priorityYieldedChunks,
         ...metadata,
-      },
+      }),
     });
   } catch {
     // Streaming telemetry should never block the user's local stream controls.
