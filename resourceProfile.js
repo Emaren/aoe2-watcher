@@ -226,6 +226,9 @@ function createResourceProfiler({
   let streamUploadBytes = 0;
   let sessionPeakCpuPercent = 0;
   let sessionPeakWorkingSetMb = 0;
+  // Constant-memory evidence by workload state. Observations are the Watcher's
+  // Electron process tree, not the host game or an incremental watt meter.
+  const workloadCohorts = new Map();
 
   function recordNetworkBytes(bytes, kind = "other") {
     const amount =
@@ -317,10 +320,37 @@ function createResourceProfiler({
           Boolean(workload.uploadActive),
       });
 
+    const phase = workload.streamActive
+      ? "streaming"
+      : workload.importRunning || workload.uploadActive
+        ? "replay_transfer"
+        : workload.activeReplay
+          ? "game_detected"
+          : workload.monitorArmed
+            ? "monitoring"
+            : "idle";
+
+    if (summary.processCount > 0) {
+      const previous = workloadCohorts.get(phase) || {
+        phase, samples: 0, cpuSum: 0, memorySum: 0,
+        networkSum: 0, cpuPeak: 0, memoryPeak: 0,
+      };
+      workloadCohorts.set(phase, {
+        phase,
+        samples: previous.samples + 1,
+        cpuSum: previous.cpuSum + summary.cpuPercent,
+        memorySum: previous.memorySum + summary.workingSetMb,
+        networkSum: previous.networkSum + networkMbps,
+        cpuPeak: Math.max(previous.cpuPeak, summary.cpuPercent),
+        memoryPeak: Math.max(previous.memoryPeak, summary.workingSetMb),
+      });
+    }
+
     const next = {
       sampledAt:
         new Date(sampledAtMs).toISOString(),
       ...summary,
+      workloadPhase: phase,
       networkMbps,
       networkBytesThisSample:
         networkDeltaBytes,
@@ -333,6 +363,8 @@ function createResourceProfiler({
           Boolean(workload.uploadActive),
         activeReplay:
           Boolean(workload.activeReplay),
+        monitorArmed:
+          Boolean(workload.monitorArmed),
       },
       powerSignal,
     };
@@ -372,6 +404,7 @@ function createResourceProfiler({
           importRunning: false,
           uploadActive: false,
           activeReplay: false,
+          monitorArmed: false,
         },
         powerSignal:
           classifyPowerSignal(),
@@ -398,6 +431,17 @@ function createResourceProfiler({
           sessionPeakWorkingSetMb,
           1
         ),
+      workloadCohorts: [...workloadCohorts.values()].map((cohort) => ({
+        phase: cohort.phase,
+        samples: cohort.samples,
+        avgCpuPercent: round(cohort.cpuSum / cohort.samples, 2),
+        avgWorkingSetMb: round(cohort.memorySum / cohort.samples, 1),
+        avgUploadMbps: round(cohort.networkSum / cohort.samples, 3),
+        peakCpuPercent: round(cohort.cpuPeak, 2),
+        peakWorkingSetMb: round(cohort.memoryPeak, 1),
+        // Explicitly no causal attribution to streaming or electricity.
+        watts: null,
+      })),
       sessionNetworkBytes:
         totalNetworkBytes,
       replayUploadBytes,
