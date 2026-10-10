@@ -19,7 +19,7 @@ Repository ID: `aoe2-watcher`
 
 Documentation owner: `aoe2war-watcher`
 
-Implementation baseline: `feature/watcher-1.6.4-tv-source-safety-20261009` at `e9af44752dd6bb5849fd07b73bcae9c5b0abb657`
+Implementation baseline: `feature/watcher-1.6.4-tv-source-safety-20261009` at `0b4ac5d5dfd45e16c57b64ad30f657befff98bee`
 
 The implementation baseline identifies the code commit described by this documentation. Documentation-only commits may follow it without creating a self-referential registry hash.
 
