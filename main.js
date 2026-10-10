@@ -2802,6 +2802,22 @@ async function postStreamChunk(payload = {}) {
       };
     }
 
+    // A terminal video cap / format / ended response must not enter the
+    // generic retry loop, which would keep screen capture running.
+    const code = String(responseData?.code || "");
+    if (responseData?.terminal === true &&
+        ["STREAM_STORAGE_LIMIT", "STREAM_CHUNK_TOO_LARGE",
+          "STREAM_FORMAT_UNSUPPORTED", "STREAM_ALREADY_ENDED"].includes(code) &&
+        [409, 413, 415].includes(error?.response?.status)) {
+      return {
+        ok: false,
+        terminalVideoStop: true,
+        status: error.response.status,
+        reason: code,
+        data: responseData,
+      };
+    }
+
     throw error;
   } finally {
     nativeStreamRequestsInFlight -= 1;
