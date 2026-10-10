@@ -19,7 +19,7 @@ Repository ID: `aoe2-watcher`
 
 Documentation owner: `aoe2war-watcher`
 
-Implementation baseline: `feature/watcher-1.6.4-stream-terminal-control-20261009` at `c1ad871f743dabf9ec0fd5b7b4deb349542cc193`
+Implementation baseline: `feature/watcher-1.6.4-stream-terminal-control-20261009` at `d26d15730b68bcd4e10f5e445f6ac14d23a7be07`
 
 The implementation baseline identifies the code commit described by this documentation. Documentation-only commits may follow it without creating a self-referential registry hash.
 
