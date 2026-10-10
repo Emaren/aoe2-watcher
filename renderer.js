@@ -1139,6 +1139,10 @@ async function uploadNativeChunk(streamId, sequence, blob) {
     bytes: await blob.arrayBuffer(),
   });
 
+  // A delayed response belongs to its original stream. Never mutate or
+  // terminate a replacement broadcaster because its predecessor replied.
+  if (nativeStreamState.stream?.id !== streamId) return;
+
   if (
     result?.priorityYield
   ) {
@@ -1204,7 +1208,9 @@ async function uploadNativeChunk(streamId, sequence, blob) {
     lastChunkBytes: blob.size,
     consecutiveUploadFailures: 0,
     lastUploadLatencyMs: uploadLatencyMs,
-    readout: `Live. Chunk ${sequence} published (${Math.round(blob.size / 1024)} KB).`,
+    readout: result.data.chunkCreated
+      ? `Live. Chunk ${sequence} stored (${Math.round(blob.size / 1024)} KB).`
+      : `Live. Chunk ${sequence} already safely stored.`,
     detail: `${nativeStreamState.sourceName || "Capture source"} · ${uploadLatencyMs} ms upload · queue ${nativeStreamState.uploadQueueLength}`,
   });
 
@@ -1347,6 +1353,8 @@ async function sendNativeHeartbeat(streamId, status = "live") {
     thumbnailUrl,
   });
 
+  // Do not apply a stale response from a session already replaced locally.
+  if (nativeStreamState.stream?.id !== streamId) return;
   if (data.finality === "replay_final" || data.stream?.status === "ended") {
     // Replay finality is server-owned. End *only video* immediately; the
     // Watcher's replay result pipeline remains authoritative and running.
