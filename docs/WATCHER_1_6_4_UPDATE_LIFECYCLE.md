@@ -234,3 +234,30 @@ game retention, media decoding, or public video latency.
 
 The matching Television site/API must be deployed as a coordinated release.
 Never infer deployability or real 2-hour quality from Node tests alone.
+
+## Native Windows build parity gate (2026-10-10)
+
+The 1.6.4 development PR's GitHub Actions CI now runs two mandatory
+independent jobs: Linux runtime/contracts/audit/packaging, and
+`windows-latest` full Node contracts plus actual **NSIS installer** and
+**portable Windows EXE** packaging. The Windows job uses pinned npm
+dependencies, never invokes the production website, never publishes binaries,
+prints SHA-256 hashes for both candidate executables, and explicitly disables
+certificate discovery for the **unsigned packaging smoke**. Passing it
+establishes a native Windows build and contract pass, **not** a signed
+installer, updater activation, actual AoE2 capture or video throughput test.
+
+The first Windows run exposed two POSIX-only path literals in
+`tests/watcher-session-lifecycle.test.js`. On Windows they looked up
+different internal replay-entry keys because real `path.join` uses Windows
+separators. The test now constructs its paths with the platform-native
+path utility; **all original behavior assertions remain active**, including
+stopped-monitor generation fencing and multiple simultaneous monitors.
+The rerun [#38065672095](https://github.com/Emaren/aoe2-watcher/actions/runs/38065672095)
+passed both Linux and Windows jobs. No 1.6.4 binary was published.
+
+Before tagging stable 1.6.4, separately certify signed installer content,
+protected update metadata and safe relaunch; a trusted physical Windows
+pilot must exercise camera permissions, real two-POV matching, uninterrupted
+recording, CPU/RAM/bandwidth, finalization and failover on a compatible
+deployed Television backend. The production Watcher remains 1.6.3 until then.
