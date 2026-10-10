@@ -44,6 +44,7 @@ jobs:
           rm -rf dist
           npm run dist:mac
           npm run dist:manual-zip
+          npm run verify:mac-updater
 
       - name: Upload macOS release
         uses: actions/upload-artifact@v4
@@ -54,6 +55,7 @@ jobs:
             dist/AoE2HDBets Watcher-${{ steps.package.outputs.version }}-arm64.dmg
             dist/AoE2HDBets Watcher-${{ steps.package.outputs.version }}-arm64.dmg.blockmap
             dist/aoe2hdbets-watcher-direct.zip
+            dist/*-arm64*.zip
             dist/latest-mac.yml
 
   linux:
