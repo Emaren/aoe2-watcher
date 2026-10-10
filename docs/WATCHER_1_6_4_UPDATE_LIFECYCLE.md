@@ -291,3 +291,41 @@ observation accepted by the deployed backend. Redact secrets and
 personal local paths from shared receipts. Fall back to manual installer
 if any gate fails and never delete or reprocess old replays to force a
 success indicator.
+
+## Coordinated Television rollout and safe roll-forward
+
+1. Reconcile the stacked Television WOLO V3 application work (tracked in
+   AoE2WAR web PR #460) and the separate admin-only Zodiac RM/DM evidence
+   audit (web PR #461) through the **normal protected merge and Finish**
+   release lane. A green web build is not a deployed compatible API.
+2. Before directing Watcher 1.6.4 to production, independently verify its
+   bearer-key/SteamID provenance contract with the deployed ingest API;
+   ensure the actual media directory is on the intended **mounted volume**,
+   not VPS root. Measure capacity for per-POV two-hour videos and retain the
+   postgame minimum. Default limits and codec targets alone do not prove a
+   two-hour video can be retained.
+3. Build and certify five **real release artifacts**: Windows signed and
+   timestamped NSIS + portable, macOS package and direct ZIP, and Linux
+   AppImage. Bind each to immutable checksums and release metadata. The
+   current CI-only Windows unsigned artifacts expire after two days and must
+   never be placed into the public updater feed.
+4. Run a **legacy Windows v1.5.10 NSIS** canary followed by a portable
+   migration canary, confirming retained userData config, API key, watcher
+   identity, replay path, Steam rating receipt signature, benign helper
+   teardown, and actual post-install version. The old executable must be
+   tested as shipped; passing a 1.6.4 simulated update test is insufficient.
+5. Conduct at least one multi-POV native Windows battle canary against the
+   deployed media backend and verify first browser frame, 15-minute postgame
+   protection, native viewer diagnostics, CPU/RAM/network usage and measured
+   actual bytes per hour. Field acceptance remains distinct from code CI.
+6. Only after those gates publish the immutable 1.6.4 assets and compatible
+   `latest.yml` / website `/api/watcher/release` metadata in the correct
+   order, with checksum checks from **outside** the build job.
+   Never point users at a version without real downloadable assets.
+
+If a newly published version fails after clients update, **roll forward**
+to repaired 1.6.5 or use a separately verified manual installer. The
+stable updater forbids downgrade; changing a feed back to 1.6.3 is not a
+reliable rollback for clients already on 1.6.4. An incident response must
+preserve the replay folder, pending upload identity, journal evidence, and
+all matched/unmatched WOLO financial invariants.
