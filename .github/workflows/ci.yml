@@ -132,6 +132,8 @@ jobs:
         run: npm run dist:mac -- --publish never
       - name: Build direct ZIP from exact same macOS app bundle
         run: npm run dist:manual-zip
+      - name: Verify updater-native macOS ZIP and manifest integrity
+        run: npm run verify:mac-updater
       - name: Check DMG/ZIP artifacts, safe readme and content hashes
         shell: bash
         run: |
@@ -151,7 +153,7 @@ jobs:
             exit 1
           fi
           unzip -p "${zip_files[0]}" "AoE2HDBets Watcher Direct/README.txt" | grep -Fq "Developer ID signed and Apple notarized"
-          shasum -a 256 "${dmg_files[@]}" "${zip_files[@]}" | tee dist/MACOS_TEST_ONLY_SHA256.txt
+          shasum -a 256 "${dmg_files[@]}" "${zip_files[@]}" dist/*"$version"*arm64*.zip | tee dist/MACOS_TEST_ONLY_SHA256.txt
       - name: Preserve two-day unsigned macOS test artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -159,6 +161,8 @@ jobs:
           path: |
             dist/*.dmg
             dist/aoe2hdbets-watcher-direct.zip
+            dist/*-arm64*.zip
+            dist/latest-mac.yml
             dist/MACOS_TEST_ONLY_SHA256.txt
           if-no-files-found: error
           retention-days: 2
