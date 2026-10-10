@@ -981,7 +981,13 @@ async function endNativeStream(reason = "manual", options = {}) {
   }
 
   const activeStream = nativeStreamState.stream;
-  const preserveIssue = reason !== "manual" && nativeStreamState.status === "error";
+  // A failed automatic stream must remain diagnosable during the current
+  // match, but terminal completion re-arms capture for the NEXT match.
+  // Otherwise one lost source locks the user's persistent opt-in forever.
+  const completedAutoMatch = nativeStreamState.autoStarted &&
+    (reason === "match_result_ready" || reason === "match_observation_complete");
+  const preserveIssue = reason !== "manual" && !completedAutoMatch &&
+    nativeStreamState.status === "error";
   const drainUploads = options.drainUploads !== false;
   nativeStreamEnding = true;
   nativeStreamLastThumbnailAt = 0;
