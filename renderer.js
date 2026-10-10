@@ -1330,6 +1330,17 @@ async function sendNativeHeartbeat(streamId, status = "live") {
     thumbnailUrl,
   });
 
+  if (data.finality === "replay_final" || data.stream?.status === "ended") {
+    // Replay finality is server-owned. End *only video* immediately; the
+    // Watcher's replay result pipeline remains authoritative and running.
+    void endNativeStream("server_replay_final", { drainUploads: false }).then(() => {
+      setNativeReadout("Game complete. Video capture stopped.", "Replay monitoring continues.");
+    }).catch((error) => {
+      handleNativeStreamError("Video finality stop failed.", error.message || String(error));
+    });
+    return;
+  }
+
   updateNativeStreamState({
     stream: data.stream || nativeStreamState.stream,
     lastHeartbeatAt: Date.now(),
@@ -1602,6 +1613,7 @@ async function startNativeStream(options = {}) {
     });
 
     await sendNativeHeartbeat(stream.id, "live");
+    if (nativeStreamState.status !== "live" || nativeStreamEnding) return;
     void sendNativeStreamEvent("stream_started", {
       streamId: stream.id,
       sourceName: selectedSource.name,
