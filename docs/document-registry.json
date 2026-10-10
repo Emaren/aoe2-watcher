@@ -36,7 +36,7 @@
       "review_interval_days": 0,
       "reviewed_at": "2026-07-26",
       "sensitivity": "internal",
-      "sha256": "ff81af7832e64d5220c568690d5dd19578218ece8771563d7bb6d6a14b39bd9b",
+      "sha256": "b40cd8ce77102e229cc263d19be39d38d37f21b0f22ffd7f16a6c473b440c044",
       "source_of_truth": "generated",
       "status": "generated",
       "systems": [
@@ -117,7 +117,7 @@
   "generated_at": "2026-08-04T02:09:37Z",
   "implementation_baseline": {
     "branch": "feature/watcher-1.6.4-tv-source-safety-20261009",
-    "commit": "0b4ac5d5dfd45e16c57b64ad30f657befff98bee"
+    "commit": "e56ecfc0ec594520519b35da9cbff67301f49cf1"
   },
   "owner": "aoe2war-watcher",
   "repo": "aoe2-watcher",
