@@ -39,3 +39,15 @@ test("Watcher keeps exact current replay candidate and refuses time/window name 
   assert.match(source, /sessionKey: buildNativeSessionKey\(\),\s*mediaMimeType:/);
   assert.doesNotMatch(helper, /candidate\?\.filePath \|\|/);
 });
+
+test("server replay-final heartbeat terminates only capture, never the replay monitoring authority", () => {
+  const heartbeatAt = source.indexOf("async function sendNativeHeartbeat(");
+  const next = source.indexOf("\nfunction handleNativeStreamError(", heartbeatAt);
+  assert.ok(heartbeatAt > 0 && next > heartbeatAt);
+  const heartbeat = source.slice(heartbeatAt,next);
+  assert.match(heartbeat, /data\.finality === "replay_final" \|\| data\.stream\?\.status === "ended"/);
+  assert.match(heartbeat, /endNativeStream\("server_replay_final", \{ drainUploads: false \}\)/);
+  assert.match(heartbeat, /Replay monitoring continues/);
+  assert.doesNotMatch(heartbeat, /stopWatching\(|stopCurrentWatcher\(/);
+  assert.match(source, /await sendNativeHeartbeat\(stream\.id, "live"\);\s*if \(nativeStreamState\.status !== "live" \|\| nativeStreamEnding\) return/);
+});
