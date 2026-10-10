@@ -8,7 +8,7 @@ systems: ["aoe2-watcher"]
 audience: ["developers","operators","ai-agents"]
 source_of_truth: "git"
 authority: "watcher-update-lifecycle-contract"
-reviewed_at: "2026-10-08"
+reviewed_at: "2026-10-09"
 review_interval_days: 30
 sensitivity: "internal"
 ---
@@ -148,3 +148,56 @@ with zero failures or skips; lint and `git diff --check` passed. A separate
 review reran the 39 lifecycle, 10 update-policy and 5 journal tests (54 passed).
 The exact implementation/test file digests and validation observations are
 preserved in `watcher-receipts/update-lifecycle-validation-20261008.json`.
+
+## October 9: privacy-first automatic source admission
+
+The development-only branch `feature/watcher-1.6.4-tv-source-safety-20261009`
+introduces `televisionCapturePolicy.js`, a small dependency-free pure module
+consumed by both Electron main and the unprivileged renderer. It is explicitly
+listed in the electron-builder packaged-file allowlist for NSIS, Windows
+portable, macOS DMG and Linux AppImage and checked by `npm run lint`.
+
+When a new replay event requests **automatic** Television WOLO capture:
+
+- The renderer obtains a *fresh* source listing; an old user selection is
+  never sufficient.
+- Only an explicit AoE2 HD **game window** with a valid `window:` capture
+  identity can be selected. A screen, browser, AoE2WAR page, Discord/OBS
+  control room, Steam launcher or a generic desktop/window fails closed.
+  Familiar Windows HD names include `Age of Empires II HD`,
+  `Age2HD.exe`, `AoK HD.exe` and `AoE2 HD`.
+- When a safe game window cannot be determined, **no capture request or
+  video-session creation occurs**. Local status explains the limitation and
+  existing authenticated `stream_error` telemetry emits reason
+  `auto_capture_no_verified_game_window`. Its source-count values are
+  bounded and do not authorize ingestion, winning results, financial activity
+  or a remote screen-sharing session.
+- The manually initiated screen/window capture pathway remains available,
+  including for exclusive fullscreen Windows titles where the game window is
+  not independently capturable. Manual screen capture is an explicit act;
+  automatic opt-in never expands it to untrusted desktop pixels.
+- Permission diagnostics distinguish Windows from macOS, and the next
+  replay-detection event can retry admission without repeatedly capturing
+  inappropriate windows.
+
+This is a source implementation and pure-policy regression pass, **not**
+a Windows installer test or proof that every fullscreen game is detectable.
+Source titles are only heuristic evidence; future packaged canaries must
+verify actual Windows desktop-capture identity and activity. Source
+admission does not prove battle identity, teams or game finality.
+
+A separate bounded recovery seam prevents one broken video recording from
+poisoning later matches: an opted-in auto-stream that entered `error` stays
+diagnosable during its game, but authoritative
+`match_result_ready` or `match_observation_complete` stops and re-arms
+capture to `idle` for the **next** detected game. No idle time or file
+quietness is treated as match completion. This is not an unbounded
+mid-game retry, and a server media-shed still ends current video immediately.
+
+
+Operator priorities for subsequent passes: correlated capture start/stop
+receipts, bounded CPU/memory/encode telemetry, upload and viewer quality
+metrics, long-match admission/storage ceilings, and consent-based diagnostics.
+Automatic remote control or recording of unrelated desktop activity is not
+part of this policy. Video may shed under pressure; replay upload retains
+priority and must not block or change competitive authority.

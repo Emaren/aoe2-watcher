@@ -36,7 +36,7 @@
       "review_interval_days": 0,
       "reviewed_at": "2026-07-26",
       "sensitivity": "internal",
-      "sha256": "01ac5d31effee287e88aa3851b8748264e489d745ea90fe0f272996c1f640c68",
+      "sha256": "b40cd8ce77102e229cc263d19be39d38d37f21b0f22ffd7f16a6c473b440c044",
       "source_of_truth": "generated",
       "status": "generated",
       "systems": [
@@ -102,9 +102,9 @@
       "owner": "aoe2war-watcher",
       "path": "docs/WATCHER_1_6_4_UPDATE_LIFECYCLE.md",
       "review_interval_days": 30,
-      "reviewed_at": "2026-10-08",
+      "reviewed_at": "2026-10-09",
       "sensitivity": "internal",
-      "sha256": "db86b9d3387e783a5d2bc0dedc4491b1fa2ad114d84f2c65f20b897ecfe0cc89",
+      "sha256": "e7d2dba8c168eae766143261d52556971ac54d566df2c57f567333e04a2fa4db",
       "source_of_truth": "git",
       "status": "active",
       "systems": [
@@ -116,8 +116,8 @@
   ],
   "generated_at": "2026-08-04T02:09:37Z",
   "implementation_baseline": {
-    "branch": "feature/watcher-1.6.4-auto-television",
-    "commit": "8e900649f5be80406505223ef255392366e050f3"
+    "branch": "feature/watcher-1.6.4-tv-source-safety-20261009",
+    "commit": "e56ecfc0ec594520519b35da9cbff67301f49cf1"
   },
   "owner": "aoe2war-watcher",
   "repo": "aoe2-watcher",

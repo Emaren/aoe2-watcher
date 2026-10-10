@@ -766,13 +766,17 @@ function describeCaptureStartError(error, source, mode) {
   const message = error?.message || String(error || "Capture failed.");
   const name = error?.name || "";
   if (/permission|denied|notallowed/i.test(`${name} ${message}`)) {
-    return "macOS blocked capture. Allow screen recording for AoE2HDBets Watcher, then reopen it.";
+    return isMacPlatform()
+      ? "macOS blocked capture. Allow Screen Recording for AoE2HDBets Watcher, then reopen it."
+      : "Windows blocked video capture. Check display/game capture permissions and restart AoE2 HD if needed.";
   }
   if (source?.kind === "window" && mode.preferredKind !== "screen") {
     return "That window may disappear in full-screen play. Switch to Full Screen mode and try again.";
   }
   if (source?.kind === "screen") {
-    return "Display capture could not open. Check macOS Screen Recording permission, then refresh sources.";
+    return isMacPlatform()
+      ? "Display capture could not open. Check macOS Screen Recording permission, then refresh sources."
+      : "Display capture could not open. Re-select your Windows display and retry.";
   }
   return message;
 }
@@ -977,7 +981,13 @@ async function endNativeStream(reason = "manual", options = {}) {
   }
 
   const activeStream = nativeStreamState.stream;
-  const preserveIssue = reason !== "manual" && nativeStreamState.status === "error";
+  // A failed automatic stream must remain diagnosable during the current
+  // match, but terminal completion re-arms capture for the NEXT match.
+  // Otherwise one lost source locks the user's persistent opt-in forever.
+  const completedAutoMatch = nativeStreamState.autoStarted &&
+    (reason === "match_result_ready" || reason === "match_observation_complete");
+  const preserveIssue = reason !== "manual" && !completedAutoMatch &&
+    nativeStreamState.status === "error";
   const drainUploads = options.drainUploads !== false;
   nativeStreamEnding = true;
   nativeStreamLastThumbnailAt = 0;
@@ -1366,13 +1376,36 @@ async function startNativeStream(options = {}) {
     return;
   }
 
+  // Automatic video must revalidate the CURRENT AoE2 window on each match.
+  // Stale desktop selections, browser windows and generic screens cannot
+  // become automatic broadcast sources. Manual screen sharing is separate.
   let sources = nativeStreamState.sources;
-  if (sources.length === 0) {
+  if (autoStarted || sources.length === 0) {
     sources = await refreshNativeStreamSources();
   }
 
   const mode = getNativeStreamMode();
-  const selectedSource = pickNativeStreamSource(sources, nativeStreamState.selectedSourceId, mode);
+  const selectedSource = autoStarted
+    ? window.televisionCapturePolicy?.selectAutomaticSource(
+        sources, nativeStreamState.selectedSourceId
+      ) || null
+    : pickNativeStreamSource(sources, nativeStreamState.selectedSourceId, mode);
+
+  if (autoStarted && !selectedSource) {
+    updateNativeStreamState({
+      status: "idle",
+      busy: false,
+      readout: "Automatic video waiting for an AoE2 HD game window.",
+      detail: "Privacy guard: browser, desktop, Steam launcher and unrecognized windows will not be broadcast. Select an AoE2 window or use manual screen sharing for fullscreen play.",
+    });
+    void sendNativeStreamEvent("stream_error", {
+      reason: "auto_capture_no_verified_game_window",
+      sourceCount: sources.length,
+      candidateGameWindowCount: 0,
+      errorMessage: "Automatic capture skipped: no identifiable AoE2 game window.",
+    });
+    return;
+  }
   if (!selectedSource) {
     handleNativeStreamError("No capture source found.", "Open AoE2HD, Steam, or CrossOver, then refresh sources.");
     return;
