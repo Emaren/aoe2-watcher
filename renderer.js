@@ -105,6 +105,7 @@ const els = {
   resourceWakeupsText: document.getElementById("resourceWakeupsText"),
   resourceNetworkText: document.getElementById("resourceNetworkText"),
   resourcePowerText: document.getElementById("resourcePowerText"),
+  resourceCohortsText: document.getElementById("resourceCohortsText"),
   importPhaseText: document.getElementById("importPhaseText"),
   importDetailText: document.getElementById("importDetailText"),
   importSummaryText: document.getElementById("importSummaryText"),
@@ -1958,6 +1959,22 @@ function renderDiagnostics() {
       profile
         ? `${formatResourceMbps(profile.networkMbps)} · avg ${formatResourceMbps(profile.averageNetworkMbps)}`
         : "Measuring…";
+  }
+
+  if (els.resourceCohortsText) {
+    const cohorts = Array.isArray(profile?.workloadCohorts)
+      ? profile.workloadCohorts.filter(cohort => cohort && Number(cohort.samples) > 0)
+      : [];
+    const labels = {
+      idle: "Idle", monitoring: "Monitoring", game_detected: "Game detected",
+      replay_transfer: "Replay upload", streaming: "Streaming video",
+    };
+    els.resourceCohortsText.textContent = cohorts.length
+      ? cohorts.map(cohort => `${labels[cohort.phase] || "Other"}: ` +
+          `${cohort.samples} samples · ${formatResourcePercent(cohort.avgCpuPercent)} CPU · ` +
+          `${formatResourceMb(cohort.avgWorkingSetMb)} RAM · ${formatResourceMbps(cohort.avgUploadMbps)} payload`)
+        .join("  |  ")
+      : "No workload samples yet.";
   }
 
   if (els.resourcePowerText) {
