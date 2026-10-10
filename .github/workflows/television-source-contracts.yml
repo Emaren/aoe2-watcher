@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feature/watcher-1.6.4-tv-source-safety-20261009
+      - feature/watcher-1.6.4-stream-terminal-control-20261009
   pull_request:
     paths:
       - "televisionCapturePolicy.js"
