@@ -640,7 +640,12 @@ function describeNativeMode(mode = getNativeStreamMode()) {
   const bitrateMbps = mode.videoBitsPerSecond
     ? `${(mode.videoBitsPerSecond / 1000000).toFixed(1)} Mbps`
     : "auto bitrate";
-  return `${mode.label} ${mode.detail} · ${bitrateMbps} · ${STREAM_CHUNK_TIMESLICE_MS / 1000}s chunks`;
+  // A codec target is not a network measurement or an electricity estimate.
+  const targetGbPerHour = mode.videoBitsPerSecond
+    ? (mode.videoBitsPerSecond * 3600 / 8_000_000_000).toFixed(2)
+    : null;
+  return `${mode.label} ${mode.detail} · ${bitrateMbps} · ${STREAM_CHUNK_TIMESLICE_MS / 1000}s chunks` +
+    (targetGbPerHour ? ` · ~${targetGbPerHour} GB/hour video target (before overhead)` : "");
 }
 
 function countStreamSources(sources = nativeStreamState.sources) {
@@ -2110,6 +2115,14 @@ function renderButtons() {
   if (els.streamMatchBtn) {
     els.streamMatchBtn.disabled =
       nativeStreamState.busy || nativeStreamState.status === "live" || !hasWatcherKey();
+    els.streamMatchBtn.textContent = nativeStreamState.status === "live"
+      ? "Video Live"
+      : nativeStreamState.busy
+        ? "Starting Video…"
+        : !hasWatcherKey()
+          ? "Pair Watcher to Stream"
+          : "Stream My Game";
+    els.streamMatchBtn.title = "Choose a capture source and start sending video to Television WOLO.";
   }
   if (els.openBrowserStreamBtn) {
     els.openBrowserStreamBtn.disabled = !hasStreamCandidate();
@@ -2123,6 +2136,12 @@ function renderButtons() {
   }
   if (els.stopNativeStreamBtn) {
     els.stopNativeStreamBtn.disabled = nativeStreamState.status !== "live" && nativeStreamState.status !== "starting";
+    els.stopNativeStreamBtn.textContent = "Stop Video";
+  }
+  if (els.startNativeStreamBtn) {
+    els.startNativeStreamBtn.textContent = nativeStreamState.status === "live"
+      ? "Video Live"
+      : nativeStreamState.busy ? "Starting…" : "Start Video";
   }
 }
 
@@ -2201,7 +2220,7 @@ function polishStaticUiCopy() {
   }
 
   if (els.streamMatchBtn) {
-    els.streamMatchBtn.textContent = "Start Stream";
+    els.streamMatchBtn.textContent = "Stream My Game";
   }
 
   if (els.openBrowserStreamBtn) {
