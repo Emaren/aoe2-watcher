@@ -2801,6 +2801,26 @@ async function postStreamChunk(payload = {}) {
       };
     }
 
+    if (
+      responseData?.terminal === true &&
+      (
+        (error?.response?.status === 413 &&
+          responseData?.code === "STREAM_STORAGE_LIMIT") ||
+        (error?.response?.status === 409 &&
+          responseData?.code === "STREAM_ALREADY_ENDED")
+      )
+    ) {
+      return {
+        ok: false,
+        terminalStreamStop: true,
+        terminalCode: responseData.code,
+        status: error.response.status,
+        reason: typeof responseData.detail === "string"
+          ? responseData.detail.slice(0, 240)
+          : "Server ended this video session.",
+      };
+    }
+
     throw error;
   } finally {
     nativeStreamRequestsInFlight -= 1;
