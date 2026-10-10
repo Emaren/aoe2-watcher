@@ -36,7 +36,7 @@
       "review_interval_days": 0,
       "reviewed_at": "2026-07-26",
       "sensitivity": "internal",
-      "sha256": "01ac5d31effee287e88aa3851b8748264e489d745ea90fe0f272996c1f640c68",
+      "sha256": "ce2c38fe1bf0f46f0ff754aed4580d9be896488040caf548b7c6f10058e71b97",
       "source_of_truth": "generated",
       "status": "generated",
       "systems": [
@@ -104,7 +104,7 @@
       "review_interval_days": 30,
       "reviewed_at": "2026-10-08",
       "sensitivity": "internal",
-      "sha256": "db86b9d3387e783a5d2bc0dedc4491b1fa2ad114d84f2c65f20b897ecfe0cc89",
+      "sha256": "f2a252ffbe8c9d61bb835e55d7b76d6ac3fb8a299891ac5e233d6de5baa0bcc6",
       "source_of_truth": "git",
       "status": "active",
       "systems": [
@@ -116,8 +116,8 @@
   ],
   "generated_at": "2026-08-04T02:09:37Z",
   "implementation_baseline": {
-    "branch": "feature/watcher-1.6.4-auto-television",
-    "commit": "8e900649f5be80406505223ef255392366e050f3"
+    "branch": "feature/watcher-1.6.4-video-test-ux-20261010",
+    "commit": "1c26731fb3cb5cfd9120fe9bd69fab41893ce05e"
   },
   "owner": "aoe2war-watcher",
   "repo": "aoe2-watcher",
