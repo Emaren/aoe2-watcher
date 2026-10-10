@@ -201,3 +201,68 @@ metrics, long-match admission/storage ceilings, and consent-based diagnostics.
 Automatic remote control or recording of unrelated desktop activity is not
 part of this policy. Video may shed under pressure; replay upload retains
 priority and must not block or change competitive authority.
+
+## October 9: terminal media transport coordination
+
+Development branch: `feature/watcher-1.6.4-stream-terminal-control-20261009`,
+stacked on the safe automatic-source PR. Companion site branch:
+`feature/television-v1-terminal-stream-contract-20261009`.
+
+An authenticated chunk upload can now receive explicit video-only terminal
+signals from the web application: `STREAM_STORAGE_LIMIT` (413),
+`STREAM_ALREADY_ENDED` (409), the preexisting `STREAM_MEDIA_SHED`
+(409), or the normal `finality: replay_final` response. The main process
+normalizes these codes before the renderer's ordinary chunk retry logic.
+On receipt, video capture stops without canceling the replay monitor;
+the renderer reports actionable readout and a bounded authenticated event.
+
+For opted-in capture, terminal media-shed/quota/ended responses record a
+suppression key for the **current detected match**, so duplicate
+`replay-detected` notifications cannot open repeated rejected video streams.
+The key is cleared by existing authoritative final-observation/stop events,
+not by a timeout or an assumed winner. This is intentionally fail-closed:
+players may need to start a separate manual stream if automatic capture
+cannot identify a game window or exhausted quota.
+
+Never represent these code-level tests as evidence that Windows NSIS capture,
+a two-user broadcast, replay-to-video session matching, multi-view playback,
+multi-hour storage, or auto-updater activation have been packaged and canaried.
+No installed users, source versions, release artifacts, production
+recordings or Wolo accounts are modified by this development-only pass.
+
+## Windows x64 packaging proof (development CI, October 9)
+
+The dedicated `Watcher Windows television packaging smoke` GitHub Actions
+workflow runs on `windows-latest` with the frozen npm lockfile. It compiles
+the JavaScript and complete Node test inventory on Windows, builds an unsigned
+unpublished `win-unpacked` artifact via electron-builder, and checks that
+`app.asar` really contains the entrypoint, renderer, preload, UI and
+`televisionCapturePolicy.js`. It also verifies the release version remains
+at 1.6.3 and that an executable was produced. This is a build proof only;
+the workflow does not release packages, start the actual game, play WebM
+through AoE2WAR, validate audio or test updater activation. Signed installer
+certification and physical Windows canaries are separate gates.
+
+The original Watcher CI dependency-security audit remains unchanged and
+release-blocking. No vulnerabilities are exempted by this smoke lane.
+
+Windows package qualification initially found two existing replay-monitor
+generation tests that used POSIX-literal `/test/dir/file` state-entry
+identities even when the Node `path` module was Win32. The test fixtures now
+use `path.join` for both state-entry lookups and simulated missing-file
+identity. The assertions remain intact: stopped monitors must not overtake a
+new owner's state and concurrent monitors must keep the replay-busy fence
+until all finish. A green Windows rerun and actual unsigned package output
+are required before this is called a passed package smoke.
+
+## Hard-media-format terminal contract
+
+The companion web branch `feature/television-v1-upload-protocol-20261009`
+also returns terminal HTTP 413 `STREAM_CHUNK_TOO_LARGE` for oversized
+chunks, and HTTP 415 `STREAM_FORMAT_UNSUPPORTED` for non-WebM media.
+Watcher 1.6.4's unreleased transport now recognizes these separately from
+temporary I/O failures, and stops **only video** with a specific user-facing
+readout. The replay monitor and proof upload are not cancelled or retried
+as part of a video failure. The affected stream is ended on the server,
+with previous chunks retained for the limited normal retention period.
+No OS-wide screen access or hidden background recording is authorized.

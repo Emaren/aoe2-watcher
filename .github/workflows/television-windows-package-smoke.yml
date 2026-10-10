@@ -1,0 +1,64 @@
+name: Watcher Windows television packaging smoke
+
+on:
+  push:
+    branches:
+      - feature/watcher-1.6.4-stream-terminal-control-20261009
+  pull_request:
+    paths:
+      - "main.js"
+      - "renderer.js"
+      - "televisionCapturePolicy.js"
+      - "preload.js"
+      - "index.html"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/television-windows-package-smoke.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  windows-package:
+    name: Windows x64 unsigned package integrity
+    runs-on: windows-latest
+    timeout-minutes: 35
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      ELECTRON_BUILDER_ALLOW_UNRESOLVED_DEPENDENCIES: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Install exact dependencies
+        run: npm ci
+      - name: Run source contracts on Windows
+        run: npm run lint && npm test
+      - name: Package Windows unpacked artifact without publishing
+        run: npm run pack -- --win --x64 --publish never
+      - name: Verify packaged Watcher contains capture safety policy and supporting files
+        shell: pwsh
+        run: |
+          @'
+          const assert = require("node:assert/strict");
+          const fs = require("node:fs");
+          const path = require("node:path");
+          const asar = require("@electron/asar");
+          const unpacked = path.join(process.cwd(), "dist", "win-unpacked");
+          assert(fs.existsSync(unpacked), "Missing Windows unpacked directory");
+          const appArchive = path.join(unpacked, "resources", "app.asar");
+          assert(fs.existsSync(appArchive), "Missing app.asar");
+          const files = asar.listPackage(appArchive).map(p => p.replaceAll(String.fromCharCode(92), "/").split("/").filter(Boolean).join("/"));
+          for (const needed of ["main.js", "renderer.js", "televisionCapturePolicy.js", "index.html", "preload.js"]) {
+            assert(files.includes(needed), "Missing required packaged file: " + needed);
+          }
+          const packageData = JSON.parse(asar.extractFile(appArchive, "package.json").toString("utf8"));
+          assert.equal(packageData.version, "1.6.3", "Never bump release version from test branch");
+          assert(fs.readdirSync(unpacked).some(n => n.endsWith(".exe")), "Missing Windows executable");
+          console.log("Windows x64 app.asar includes all tested capture modules; package is unsigned and unpublished.");
+          '@ | node
+      # Package checks do not certify Windows game capture, update, media
+      # permissions or installed user flows. Original dependency-audit CI
+      # remains release-blocking.

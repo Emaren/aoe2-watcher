@@ -108,3 +108,35 @@ test("server media-shed response is terminal before generic chunk failure", () =
     /Video stopped to protect replay and API traffic\./,
   );
 });
+
+test("video quota and pre-ended streams are terminal, never retried as transient failures", () => {
+  assert.match(mainSource, /"STREAM_STORAGE_LIMIT", "STREAM_CHUNK_TOO_LARGE"/);
+  assert.match(mainSource, /responseData\?\.code === "STREAM_ALREADY_ENDED"/);
+  assert.match(mainSource, /terminalStreamStop: true/);
+  assert.match(rendererSource, /result\?\.terminalStreamStop \|\| result\?\.data\?\.finality === "replay_final"/);
+  assert.match(rendererSource, /"Video storage limit reached; game monitoring continues\."/);
+  assert.match(rendererSource, /await endNativeStream\(\s*replayFinal \? "match_result_ready" : "server_terminal_video"/);
+  const terminalAt = rendererSource.indexOf("if (result?.terminalStreamStop");
+  const retryAt = rendererSource.indexOf("if (!result?.ok)", terminalAt);
+  assert.ok(terminalAt >= 0 && retryAt > terminalAt);
+  assert.match(rendererSource, /\{ drainUploads: false \}/);
+});
+
+test("terminal media quota or shed does not auto-restart another recorder for same match", () => {
+  assert.match(rendererSource, /let autoNativeTerminalSuppressedSessionKey = null/);
+  assert.match(rendererSource, /if \(nativeStreamState\.autoStarted && result\?\.terminalStreamStop\)/);
+  assert.match(rendererSource, /if \(result\?\.terminalMediaShed\) \{/);
+  assert.match(rendererSource, /autoNativeTerminalSuppressedSessionKey = buildNativeSessionKey\(\)/);
+  assert.match(rendererSource, /if \(autoNativeTerminalSuppressedSessionKey === buildNativeSessionKey\(\)\) return/);
+  assert.match(rendererSource, /if \(shouldStop\) autoNativeTerminalSuppressedSessionKey = null/);
+});
+
+test("unsupported codec and oversized chunks are terminal video-only, not endless replay queue retries", () => {
+  assert.match(mainSource, /STREAM_CHUNK_TOO_LARGE/);
+  assert.match(mainSource, /STREAM_FORMAT_UNSUPPORTED/);
+  assert.match(mainSource, /terminalStreamStop: true/);
+  assert.match(rendererSource, /Video bitrate exceeds upload limit; game monitoring continues/);
+  assert.match(rendererSource, /Video codec rejected by server; game monitoring continues/);
+  assert.match(rendererSource, /await endNativeStream\(/);
+  assert.match(rendererSource, /\{ drainUploads: false \}/);
+});

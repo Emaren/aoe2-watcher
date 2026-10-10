@@ -287,6 +287,7 @@ let nativeVideoUploadGeneration = 0;
 let replayVideoPriorityActive = false;
 let replayPriorityPausedRecorder = false;
 let autoNativeStreamStartPending = false;
+let autoNativeTerminalSuppressedSessionKey = null;
 let nativeStreamEnding = false;
 let watchDirStatus = {
   exists: false,
@@ -1152,6 +1153,9 @@ async function uploadNativeChunk(streamId, sequence, blob) {
   }
 
   if (result?.terminalMediaShed) {
+    if (nativeStreamState.autoStarted) {
+      autoNativeTerminalSuppressedSessionKey = buildNativeSessionKey();
+    }
     const reason =
       result.reason ||
       "server_media_shed";
@@ -1169,6 +1173,33 @@ async function uploadNativeChunk(streamId, sequence, blob) {
       detail: retryAfterSeconds > 0
         ? `${reason} · Start a fresh stream after about ${retryAfterSeconds}s.`
         : `${reason} · Start a fresh stream after pressure clears.`,
+    });
+    return;
+  }
+
+  if (result?.terminalStreamStop || result?.data?.finality === "replay_final") {
+    if (nativeStreamState.autoStarted && result?.terminalStreamStop) {
+      autoNativeTerminalSuppressedSessionKey = buildNativeSessionKey();
+    }
+    const replayFinal = result?.data?.finality === "replay_final";
+    const code = replayFinal ? "STREAM_REPLAY_FINAL" : result.terminalCode;
+    const detail = replayFinal
+      ? "Replay finality confirmed; video recording ended normally."
+      : result.reason || "Server closed this video session.";
+    void sendNativeStreamEvent("stream_error", {
+      streamId, sequence, reason: code, errorMessage: detail,
+    });
+    await endNativeStream(
+      replayFinal ? "match_result_ready" : "server_terminal_video",
+      { drainUploads: false }
+    );
+    updateNativeStreamState({
+      readout: replayFinal ? "Match finished. Video saved." :
+        code === "STREAM_STORAGE_LIMIT" ? "Video storage limit reached; game monitoring continues." :
+        code === "STREAM_CHUNK_TOO_LARGE" ? "Video bitrate exceeds upload limit; game monitoring continues." :
+        code === "STREAM_FORMAT_UNSUPPORTED" ? "Video codec rejected by server; game monitoring continues." :
+        "Video session already closed. Game monitoring continues.",
+      detail,
     });
     return;
   }
@@ -1659,6 +1690,9 @@ async function manageAutomaticNativeStream(event) {
     event.isFinal !== true;
 
   if (shouldStart) {
+    // Quota/shed is a terminal decision for the current game. Never generate
+    // new streams for the same match from duplicate watcher-detection events.
+    if (autoNativeTerminalSuppressedSessionKey === buildNativeSessionKey()) return;
     if (
       !watcherState.isWatching ||
       !hasWatcherKey() ||
@@ -1686,6 +1720,7 @@ async function manageAutomaticNativeStream(event) {
   const shouldStop =
     trustedFinal || AUTO_STREAM_STOP_RUNTIME_EVENTS.has(event.type);
 
+  if (shouldStop) autoNativeTerminalSuppressedSessionKey = null;
   if (
     shouldStop &&
     nativeStreamState.autoStarted &&
