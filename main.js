@@ -2805,7 +2805,9 @@ async function postStreamChunk(payload = {}) {
       responseData?.terminal === true &&
       (
         (error?.response?.status === 413 &&
-          responseData?.code === "STREAM_STORAGE_LIMIT") ||
+          ["STREAM_STORAGE_LIMIT", "STREAM_CHUNK_TOO_LARGE"].includes(responseData?.code)) ||
+        (error?.response?.status === 415 &&
+          responseData?.code === "STREAM_FORMAT_UNSUPPORTED") ||
         (error?.response?.status === 409 &&
           responseData?.code === "STREAM_ALREADY_ENDED")
       )
