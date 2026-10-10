@@ -82,4 +82,26 @@ jobs:
             Get-FileHash -Algorithm SHA256 -Path $binary.FullName |
               Select-Object Algorithm, Hash, Path | Format-Table -AutoSize
           }
-          Write-Output "Unsigned Windows package smoke passed; no artifact was published."
+          $version = (node -p "require('./package.json').version").Trim()
+          if ($version -ne "1.6.4") { throw "Wrong candidate version: $version" }
+          if (@($binaries | Where-Object { -not $_.Name.Contains($version) }).Count) {
+            throw "Candidate filename and version disagree."
+          }
+          if (-not (Test-Path "dist/latest.yml")) { throw "Updater latest.yml is missing." }
+          if (-not (Select-String -Path "dist/latest.yml" -SimpleMatch -Pattern "version: $version" -Quiet)) {
+            throw "Updater latest.yml version mismatch."
+          }
+          $binaries | ForEach-Object {
+            "$((Get-FileHash -Algorithm SHA256 -Path $_.FullName).Hash.ToLowerInvariant())  $($_.Name)"
+          } | Set-Content -Path "dist/WINDOWS_TEST_ONLY_SHA256.txt" -Encoding utf8
+          Write-Output "Windows 1.6.4 package smoke passed. Still unsigned and unreleased."
+      - name: Preserve restricted 1.6.4 Windows test artifacts for two days
+        uses: actions/upload-artifact@v4
+        with:
+          name: watcher-1.6.4-windows-unsigned-test-only
+          path: |
+            dist/*.exe
+            dist/latest.yml
+            dist/WINDOWS_TEST_ONLY_SHA256.txt
+          if-no-files-found: error
+          retention-days: 2
