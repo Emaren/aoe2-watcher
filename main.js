@@ -52,6 +52,7 @@ const {
   stopWatching,
 } = require("./watcher");
 const { buildStreamHandoff } = require("./streamHandoff");
+const { isIdentifiableAoE2WindowName } = require("./televisionCapturePolicy");
 const {
   createNetworkPriorityArbiter,
 } = require("./networkPriority");
@@ -2827,20 +2828,7 @@ function isBrowserOrAoE2WarCaptureName(value) {
 }
 
 function isLikelyAoE2GameCaptureName(value) {
-  const name = String(value || "").toLowerCase();
-
-  if (isBrowserOrAoE2WarCaptureName(name)) {
-    return false;
-  }
-
-  return (
-    /age of empires\s*(ii|2)/i.test(name) ||
-    name.includes("age2hd") ||
-    name.includes("aok hd") ||
-    name.includes("aok hd.exe") ||
-    name.includes("age of kings") ||
-    /\baoe2(?:\s*hd)?\b/i.test(name)
-  );
+  return isIdentifiableAoE2WindowName(value);
 }
 
 function captureSourceScore(source) {
