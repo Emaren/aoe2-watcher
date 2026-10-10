@@ -329,3 +329,36 @@ stable updater forbids downgrade; changing a feed back to 1.6.3 is not a
 reliable rollback for clients already on 1.6.4. An incident response must
 preserve the replay folder, pending upload identity, journal evidence, and
 all matched/unmatched WOLO financial invariants.
+
+## Five-artifact packaging parity and macOS security (2026-10-10)
+
+The release candidate's GitHub Actions source CI now runs **four**
+independent jobs. In addition to the Linux Node contracts/security gate
+and native Windows NSIS+portable package job, the new **macOS arm64**
+job builds an unsigned DMG and derives the exact direct ZIP from the
+same macOS `.app` bundle. A separate **Linux x64** job builds the actual
+AppImage. Both assert exact `1.6.4` identity, nonempty output, safe
+installation instructions and SHA-256 hashes. Candidate artifacts are
+retained by Actions for **two days only** and are not published to the
+Watcher update channel. Unsigned packaging smoke is not proof of macOS
+Developer ID, Apple notarization, Windows Authenticode or physical
+replay/video capture.
+
+The macOS direct ZIP README previously included a command to remove
+Gatekeeper quarantine attributes when the app was unsigned. That
+instruction has been **removed**. The manual installation guide now
+requires the legitimate signed/notarized AoE2WAR release and directs
+users to stop if macOS reports untrusted, damaged or unverified code;
+users must not disable Gatekeeper or strip quarantine to install
+Watcher. The new regression test checks that unsafe workaround
+instructions do not reappear in the ZIP-builder source.
+
+**Residual release proof:** a production Mac bundle still needs the
+appropriate Developer ID signature and notarization, and its official
+upgrade ZIP and `latest-mac.yml` must be produced by a reviewed
+compatible electron-builder signing workflow, rather than assuming
+that the separately wrapped direct ZIP is updater-compatible.
+Electron-builder auto-update ZIP compatibility is a separate requirement
+from the manual ZIP. Do not publish either candidate to the generic
+download feed until official platform signatures, hashes, deployment,
+legacy upgrade and real media decode canaries pass.
