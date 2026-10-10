@@ -401,3 +401,29 @@ also include and verify the updater ZIP **before** updating
 in-app automatic updates until signed/notarized payload and real installed
 old-to-new upgrade receipts exist.
 
+## Official Mac release signing/notarization gate (2026-10-10)
+
+The **protected**, manually triggered `Build non-Windows Watcher Release`
+workflow differs from unsigned pull-request CI. It requires non-empty
+`CSC_LINK`, `CSC_KEY_PASSWORD`, `APPLE_ID`,
+`APPLE_APP_SPECIFIC_PASSWORD` and `APPLE_TEAM_ID` GitHub Actions secrets
+at release-build time. Electron-builder signs the hardened Mac application;
+the existing afterSign hook submits the app for notarization. The protected
+workflow additionally notarizes and staples its DMG.
+
+Before uploading release artifacts, `scripts/verify-mac-signed-release.sh`
+enforces a valid Developer ID Application signature and matching Apple team,
+Gatekeeper `Notarized Developer ID` verdict, app/DMG stapler proofs, and
+the native update ZIP's matching `latest-mac.yml` SHA-512. It extracts the
+native updater ZIP and separately verifies the contained app signature.
+The final release bytes also get a SHA-256 inventory. Missing credentials,
+notary rejection, unsigned bundles, mismatched team IDs or invalid updater
+bytes **stop** the official workflow; none may be classified as a trusted
+public release. Secrets must be configured in protected GitHub Actions
+settings; the repository does not reveal whether they are provisioned.
+
+Normal `Watcher CI` continues unsigned packaging smoke with no access to
+production signing credentials. Even a successful protected Mac release job
+does not prove installed legacy migration, native two-POV capture, or a safe
+public feed flip; those remain distinct certification gates.
+
