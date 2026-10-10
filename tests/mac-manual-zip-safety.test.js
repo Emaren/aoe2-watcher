@@ -14,7 +14,7 @@ test("direct ZIP readme never instructs bypassing macOS Gatekeeper or quarantine
   assert.match(zipSource, /Only install an AoE2WAR Watcher release downloaded from https:\/\/aoe2war\.com\//);
   assert.match(zipSource, /Developer ID signed and Apple notarized/);
   assert.match(zipSource, /Do not disable Gatekeeper, remove quarantine attributes, or bypass/);
-  assert.match(zipSource, /Do not delete or relocate them to upgrade/);
+  assert.match(zipSource, /do not delete or relocate them to upgrade/i);
 });
 test("direct ZIP remains an identifiable, versioned manual artifact", () => {
   assert.match(zipSource, /packageJson\.version/);
