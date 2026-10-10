@@ -82,3 +82,8 @@ test("renderer stops repeated failed video and handles ended-heartbeat 409 expli
   assert.match(renderer, /failures >= 5 && nativeStreamState\.stream\?\.id === streamId/);
   assert.match(renderer, /endNativeStream\("repeated_video_upload_failure", \{ drainUploads: false \}\)/);
 });
+
+test("replaced broadcaster is fenced from previous upload and heartbeat rejection counters", () => {
+  assert.match(renderer, /if \(nativeStreamState\.stream\?\.id !== streamId\) return;\s*const failures = nativeStreamState\.consecutiveUploadFailures/);
+  assert.match(renderer, /if \(nativeStreamState\.stream\?\.id !== stream\.id\) return;\s*const failures = nativeStreamState\.heartbeatFailures/);
+});
