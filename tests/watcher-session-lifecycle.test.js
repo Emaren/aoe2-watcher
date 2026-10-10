@@ -168,7 +168,7 @@ test("stopped byte-floor monitors cannot emit stale progress or clear new owners
   await h.tick();
   h.watchers[0].callback("change", "control.aoe2record");
   await h.tick();
-  const oldEntry = h.api.entry("/test/shared/control.aoe2record");
+  const oldEntry = h.api.entry(path.join("/test/shared", "control.aoe2record"));
   assert.equal(oldEntry.monitoring, true);
   assert.equal(h.api.status().activeReplay, true);
   assert.equal(h.sleeps.length, 1);
@@ -179,7 +179,7 @@ test("stopped byte-floor monitors cannot emit stale progress or clear new owners
   await h.tick();
   h.watchers[1].callback("change", "control.aoe2record");
   await h.tick();
-  const newEntry = h.api.entry("/test/shared/control.aoe2record");
+  const newEntry = h.api.entry(path.join("/test/shared", "control.aoe2record"));
   assert.notEqual(newEntry, oldEntry);
   assert.equal(newEntry.monitoring, true);
   const eventCount = h.events.length;
@@ -202,19 +202,19 @@ test("one monitor completing cannot declare idle while another current replay mo
   h.watchers[0].callback("change", "first.aoe2record");
   h.watchers[0].callback("change", "second.aoe2record");
   await h.tick();
-  assert.equal(h.api.entry("/test/current/first.aoe2record").monitoring, true);
-  assert.equal(h.api.entry("/test/current/second.aoe2record").monitoring, true);
+  assert.equal(h.api.entry(path.join("/test/current", "first.aoe2record")).monitoring, true);
+  assert.equal(h.api.entry(path.join("/test/current", "second.aoe2record")).monitoring, true);
   assert.equal(h.sleeps.length, 2);
 
-  h.missingFiles.add("/test/current/first.aoe2record");
+  h.missingFiles.add(path.join("/test/current", "first.aoe2record"));
   await h.releaseSleep();
-  assert.equal(h.api.entry("/test/current/first.aoe2record").monitoring, false);
-  assert.equal(h.api.entry("/test/current/second.aoe2record").monitoring, true);
+  assert.equal(h.api.entry(path.join("/test/current", "first.aoe2record")).monitoring, false);
+  assert.equal(h.api.entry(path.join("/test/current", "second.aoe2record")).monitoring, true);
   assert.equal(h.api.status().activeReplay, true);
   const firstStop = h.events.find((event) => event.type === "monitor-stop" && event.fileName === "first.aoe2record");
   assert.equal(firstStop.runtime.activeReplay, true);
 
-  h.missingFiles.add("/test/current/second.aoe2record");
+  h.missingFiles.add(path.join("/test/current", "second.aoe2record"));
   await h.releaseSleep();
   assert.equal(h.api.status().activeReplay, false);
   const finalStop = h.events.find((event) => event.type === "monitor-stop" && event.fileName === "second.aoe2record");

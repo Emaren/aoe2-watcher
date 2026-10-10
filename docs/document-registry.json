@@ -11,9 +11,9 @@
       "owner": "aoe2war-watcher",
       "path": "README.md",
       "review_interval_days": 60,
-      "reviewed_at": "2026-09-29",
+      "reviewed_at": "2026-10-10",
       "sensitivity": "internal",
-      "sha256": "89f10bc85cf1f88a2df368bca4f50444d2230d05ae61d251972618a1db45f9c7",
+      "sha256": "a47684f3bd2c78227361d36227672dc97669888a3cdc2ae69db3b38d2a1a431c",
       "source_of_truth": "git",
       "status": "active",
       "systems": [
@@ -36,7 +36,7 @@
       "review_interval_days": 0,
       "reviewed_at": "2026-07-26",
       "sensitivity": "internal",
-      "sha256": "01ac5d31effee287e88aa3851b8748264e489d745ea90fe0f272996c1f640c68",
+      "sha256": "46f44d8d8ae7847847edb94be5dad2aff4896b6091c70d53de7dc242f0e4cf13",
       "source_of_truth": "generated",
       "status": "generated",
       "systems": [
@@ -104,7 +104,7 @@
       "review_interval_days": 30,
       "reviewed_at": "2026-10-08",
       "sensitivity": "internal",
-      "sha256": "db86b9d3387e783a5d2bc0dedc4491b1fa2ad114d84f2c65f20b897ecfe0cc89",
+      "sha256": "037e7e053abf2f5b5b708db5695af9fcf3fc754184759ebd98b77e87c607490c",
       "source_of_truth": "git",
       "status": "active",
       "systems": [
@@ -116,8 +116,8 @@
   ],
   "generated_at": "2026-08-04T02:09:37Z",
   "implementation_baseline": {
-    "branch": "feature/watcher-1.6.4-auto-television",
-    "commit": "8e900649f5be80406505223ef255392366e050f3"
+    "branch": "feature/watcher-1.6.4-video-test-ux-20261010",
+    "commit": "b4318ac0efb219bc2512daff7cca2514fe11c203"
   },
   "owner": "aoe2war-watcher",
   "repo": "aoe2-watcher",

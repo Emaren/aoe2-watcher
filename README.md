@@ -8,16 +8,24 @@ systems: ["aoe2-watcher","api-prodn"]
 audience: ["developers","operators","ai-agents"]
 source_of_truth: "git"
 authority: "repository-entrypoint"
-reviewed_at: "2026-09-29"
+reviewed_at: "2026-10-10"
 review_interval_days: 60
 sensitivity: "internal"
 ---
 
 # aoe2-watcher
 
+## v1.6.4 public release
+
+Watcher 1.6.4 is the current public release. Its five principal download artifacts are SHA-256 certified and published: signed and timestamped Windows installer and portable builds, unsigned manual macOS DMG and direct ZIP downloads, and a Linux AppImage. The production download vault contains the exact certified artifacts. Automatic macOS updating is not claimed for these unsigned builds.
+
+**Upgrading 1.5.10 installations:** both the archived v1.5.10 tag and the 1.6.4 release read user settings from Electron's `userData/watcher-config.json` under the same application identity and use the same generic feed `https://aoe2war.com/downloads`. An installed Windows NSIS build supports update discovery and installer-driven relaunch; Windows portable requires manual replacement. A direct jump across versions is semver-eligible, but successful signed install/relaunch and settings continuity **must be verified on a real installed v1.5.10 machine** before telling a user that their upgrade is automatic. If the original app cannot successfully update, offer the final verified 1.6.4 NSIS download as the fallback and re-pair only if persisted settings are unavailable; never overwrite or delete their replay folder.
+
+**Source/release safety:** the Watcher observes Steam RM/DM ratings only via provenance-qualified replay/account capture, while missing historical winners are evidence-gated in the backend. Upgrading alone does not retroactively decide unknown games or change financial custody. The immutable v1.6.4 GitHub release is published. Website deployment remains separately governed.
+
 ## v1.6.3 public release
 
-Watcher 1.6.3 is the current public release. The five-artifact publication gate completed for Windows Installer, Windows Portable, macOS DMG, macOS Direct ZIP, and Linux AppImage. The immutable `v1.6.3` release and its updater metadata were verified before publication.
+Watcher 1.6.3 was a prior public release. The five-artifact publication gate completed for Windows Installer, Windows Portable, macOS DMG, macOS Direct ZIP, and Linux AppImage. The immutable `v1.6.3` release and its updater metadata were verified before publication.
 
 The release prevents duplicate monitor ownership for one replay, backs
 established live uploads from the initial fast cadence to a one-minute cadence,

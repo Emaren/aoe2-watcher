@@ -105,6 +105,7 @@ const els = {
   resourceWakeupsText: document.getElementById("resourceWakeupsText"),
   resourceNetworkText: document.getElementById("resourceNetworkText"),
   resourcePowerText: document.getElementById("resourcePowerText"),
+  resourceCohortsText: document.getElementById("resourceCohortsText"),
   importPhaseText: document.getElementById("importPhaseText"),
   importDetailText: document.getElementById("importDetailText"),
   importSummaryText: document.getElementById("importSummaryText"),
@@ -640,7 +641,12 @@ function describeNativeMode(mode = getNativeStreamMode()) {
   const bitrateMbps = mode.videoBitsPerSecond
     ? `${(mode.videoBitsPerSecond / 1000000).toFixed(1)} Mbps`
     : "auto bitrate";
-  return `${mode.label} ${mode.detail} · ${bitrateMbps} · ${STREAM_CHUNK_TIMESLICE_MS / 1000}s chunks`;
+  // A codec target is not a network measurement or an electricity estimate.
+  const targetGbPerHour = mode.videoBitsPerSecond
+    ? (mode.videoBitsPerSecond * 3600 / 8_000_000_000).toFixed(2)
+    : null;
+  return `${mode.label} ${mode.detail} · ${bitrateMbps} · ${STREAM_CHUNK_TIMESLICE_MS / 1000}s chunks` +
+    (targetGbPerHour ? ` · ~${targetGbPerHour} GB/hour video target (before overhead)` : "");
 }
 
 function countStreamSources(sources = nativeStreamState.sources) {
@@ -718,9 +724,14 @@ function buildNativeSessionKey() {
     candidate?.sessionKey ||
     candidate?.streamSession ||
     candidate?.fileName ||
-    candidate?.filePath ||
     `watcher:${appInfo?.sessionId || Date.now()}`;
-  return String(raw).trim().slice(0, 255);
+  const key = String(raw).trim().slice(0, 255);
+  // Never transmit a local SaveGame path as public battle identity.
+  // Unproven capture stays in an unlinked Watcher session.
+  if (/^(?:[a-z]:[\\/]|[/\\]{2}|[/]|file:\/\/)/i.test(key)) {
+    return `watcher:${appInfo?.sessionId || Date.now()}`;
+  }
+  return key;
 }
 
 function buildNativeStreamTitle() {
@@ -794,7 +805,7 @@ function captureNativeThumbnail() {
   return canvas.toDataURL("image/jpeg", 0.58);
 }
 
-async function streamJson(path, body = {}) {
+async function streamJson(path, body = {}, options = {}) {
   const result = await window.watcherApi.streamJson({
     baseUrl: getStreamingBaseUrl(),
     path,
@@ -803,10 +814,46 @@ async function streamJson(path, body = {}) {
   });
 
   if (!result?.ok) {
+    // An ended camera is a terminal video state, not a temporary 409 outage.
+    if (options.allowEndedStream && result?.status === 409 &&
+        result?.data?.stream?.status === "ended") return result.data;
     throw new Error(result?.error || result?.data?.detail || "Streaming request failed.");
   }
 
   return result.data || {};
+}
+
+// Outbound video diagnostics must never carry arbitrary window titles, paths,
+ // track labels or free-form transport errors. Preserve the machine evidence
+ // needed for remote triage without shipping personal desktop context.
+function safeNativeVideoTelemetry(values = {}) {
+  const numeric = new Set([
+    "streamId", "sequence", "elapsedMs", "blobSize", "chunkCount",
+    "lastChunkBytes", "uploadFailures", "consecutiveUploadFailures",
+    "heartbeatFailures", "uploadQueueLength", "lastUploadLatencyMs",
+    "droppedChunks", "priorityYieldedChunks", "videoBitrate", "frameRate",
+    "chunkTimesliceMs", "retryAfterSeconds", "captureWidth",
+    "captureHeight", "captureFrameRate", "sourceCount", "windowCount",
+    "screenCount", "trackCount",
+  ]);
+  const tokens = new Set([
+    "sourceKind", "sourceType", "captureMode", "mode", "modeLabel",
+    "reason", "status", "mimeType", "code", "artifact",
+  ]);
+  const booleans = new Set(["autoStarted", "thumbnailUpdated"]);
+  const output = {};
+  for (const [key, value] of Object.entries(values || {}).slice(0, 48)) {
+    if (numeric.has(key) && Number.isSafeInteger(value) &&
+        value >= 0 && value <= 1_000_000_000_000) {
+      output[key] = value;
+    } else if (tokens.has(key) && typeof value === "string" &&
+        /^[a-zA-Z0-9_.:-]{1,80}$/.test(value)) {
+      output[key] = value;
+    } else if (booleans.has(key) && typeof value === "boolean") {
+      output[key] = value;
+    }
+  }
+  return output;
 }
 
 async function sendNativeStreamEvent(eventType, metadata = {}) {
@@ -825,9 +872,7 @@ async function sendNativeStreamEvent(eventType, metadata = {}) {
           : "",
       captureMode: nativeStreamState.mode,
       mediaMimeType: nativeStreamState.mediaMimeType,
-      metadata: {
-        title: buildNativeStreamTitle(),
-        sourceName: nativeStreamState.sourceName,
+      metadata: safeNativeVideoTelemetry({
         sourceKind: nativeStreamState.sourceKind,
         sourceType: "watcher_native",
         modeLabel: mode.label,
@@ -845,7 +890,7 @@ async function sendNativeStreamEvent(eventType, metadata = {}) {
         droppedChunks: nativeStreamState.droppedChunks,
         priorityYieldedChunks: nativeStreamState.priorityYieldedChunks,
         ...metadata,
-      },
+      }),
     });
   } catch {
     // Streaming telemetry should never block the user's local stream controls.
@@ -1128,6 +1173,10 @@ async function uploadNativeChunk(streamId, sequence, blob) {
     bytes: await blob.arrayBuffer(),
   });
 
+  // A delayed response belongs to its original stream. Never mutate or
+  // terminate a replacement broadcaster because its predecessor replied.
+  if (nativeStreamState.stream?.id !== streamId) return;
+
   if (
     result?.priorityYield
   ) {
@@ -1138,6 +1187,13 @@ async function uploadNativeChunk(streamId, sequence, blob) {
       result.reason ||
         "replay_upload_priority"
     );
+    return;
+  }
+
+  if (result?.terminalVideoStop) {
+    await endNativeStream("server_video_terminal", { drainUploads: false });
+    setNativeReadout("Video stopped by server safety limit.",
+      result.reason || "Recording quota, media format, or game finality.");
     return;
   }
 
@@ -1163,20 +1219,39 @@ async function uploadNativeChunk(streamId, sequence, blob) {
     return;
   }
 
+  // HTTP 200 is not an acknowledgement that media reached disk: the
+  // server can return an authoritative replay-final response before writing.
+  // An old request from a replaced stream must not stop the new stream.
+  if (result?.data?.finality === "replay_final" ||
+      result?.data?.stream?.status === "ended" ||
+      result?.data?.code === "STREAM_ALREADY_ENDED") {
+    if (nativeStreamState.stream?.id === streamId) {
+      await endNativeStream("server_replay_final", { drainUploads: false });
+      setNativeReadout("Game complete. Video capture stopped.", "Replay watching continues.");
+    }
+    return;
+  }
   if (!result?.ok) {
     throw new Error(result?.error || result?.data?.detail || "Chunk upload failed.");
   }
+  if (typeof result?.data?.chunkCreated !== "boolean" ||
+      !Number.isSafeInteger(result?.data?.stream?.chunkCount)) {
+    // Never count unproven video acknowledgements as recorded media.
+    throw new Error("Stream upload acknowledgement was incomplete.");
+  }
 
   const uploadLatencyMs = Date.now() - uploadStartedAt;
-  const nextStream = result.data?.stream || nativeStreamState.stream;
-  const nextChunkCount = Math.max(nativeStreamState.chunkCount + 1, nextStream?.chunkCount || 0);
+  const nextStream = result.data.stream;
+  const nextChunkCount = Math.max(0, nextStream.chunkCount);
   updateNativeStreamState({
     stream: nextStream,
     chunkCount: nextChunkCount,
     lastChunkBytes: blob.size,
     consecutiveUploadFailures: 0,
     lastUploadLatencyMs: uploadLatencyMs,
-    readout: `Live. Chunk ${sequence} published (${Math.round(blob.size / 1024)} KB).`,
+    readout: result.data.chunkCreated
+      ? `Live. Chunk ${sequence} stored (${Math.round(blob.size / 1024)} KB).`
+      : `Live. Chunk ${sequence} already safely stored.`,
     detail: `${nativeStreamState.sourceName || "Capture source"} · ${uploadLatencyMs} ms upload · queue ${nativeStreamState.uploadQueueLength}`,
   });
 
@@ -1267,6 +1342,8 @@ function queueNativeChunkUpload(streamId, sequence, blob) {
       try {
         await uploadNativeChunk(streamId, sequence, blob);
       } catch (error) {
+        // Old in-flight requests must not poison replacement camera counters.
+        if (nativeStreamState.stream?.id !== streamId) return;
         const failures = nativeStreamState.consecutiveUploadFailures + 1;
         updateNativeStreamState({
           uploadFailures: nativeStreamState.uploadFailures + 1,
@@ -1281,12 +1358,16 @@ function queueNativeChunkUpload(streamId, sequence, blob) {
           consecutiveUploadFailures: failures,
           errorMessage: error.message || String(error),
         });
-        if (failures >= 5) {
+        if (failures >= 5 && nativeStreamState.stream?.id === streamId) {
           handleNativeStreamError("Stream upload keeps failing.", error.message || String(error), {
             streamId,
             sequence,
             consecutiveUploadFailures: failures,
           });
+          // A broken video uploader must not continue capturing indefinitely.
+          // Only video stops; the replay monitoring pipeline keeps running.
+          void endNativeStream("repeated_video_upload_failure", { drainUploads: false })
+            .catch(() => undefined);
         }
       } finally {
         updateNativeStreamState({
@@ -1312,9 +1393,25 @@ async function sendNativeHeartbeat(streamId, status = "live") {
 
   const data = await streamJson(`/api/streams/${streamId}/heartbeat`, {
     status,
+    // A newly detected current replay may provide a stronger *claim*.
+    // The server must verify it against this account's exact replay identity.
+    sessionKey: buildNativeSessionKey(),
     mediaMimeType: nativeStreamState.mediaMimeType,
     thumbnailUrl,
-  });
+  }, { allowEndedStream: true });
+
+  // Do not apply a stale response from a session already replaced locally.
+  if (nativeStreamState.stream?.id !== streamId) return;
+  if (data.finality === "replay_final" || data.stream?.status === "ended") {
+    // Replay finality is server-owned. End *only video* immediately; the
+    // Watcher's replay result pipeline remains authoritative and running.
+    void endNativeStream("server_replay_final", { drainUploads: false }).then(() => {
+      setNativeReadout("Game complete. Video capture stopped.", "Replay monitoring continues.");
+    }).catch((error) => {
+      handleNativeStreamError("Video finality stop failed.", error.message || String(error));
+    });
+    return;
+  }
 
   updateNativeStreamState({
     stream: data.stream || nativeStreamState.stream,
@@ -1558,6 +1655,7 @@ async function startNativeStream(options = {}) {
 
     const heartbeatTimer = window.setInterval(() => {
       void sendNativeHeartbeat(stream.id, "live").catch((error) => {
+        if (nativeStreamState.stream?.id !== stream.id) return;
         const failures = nativeStreamState.heartbeatFailures + 1;
         updateNativeStreamState({
           heartbeatFailures: failures,
@@ -1588,6 +1686,7 @@ async function startNativeStream(options = {}) {
     });
 
     await sendNativeHeartbeat(stream.id, "live");
+    if (nativeStreamState.status !== "live" || nativeStreamEnding) return;
     void sendNativeStreamEvent("stream_started", {
       streamId: stream.id,
       sourceName: selectedSource.name,
@@ -1955,6 +2054,22 @@ function renderDiagnostics() {
         : "Measuring…";
   }
 
+  if (els.resourceCohortsText) {
+    const cohorts = Array.isArray(profile?.workloadCohorts)
+      ? profile.workloadCohorts.filter(cohort => cohort && Number(cohort.samples) > 0)
+      : [];
+    const labels = {
+      idle: "Idle", monitoring: "Monitoring", game_detected: "Game detected",
+      replay_transfer: "Replay upload", streaming: "Streaming video",
+    };
+    els.resourceCohortsText.textContent = cohorts.length
+      ? cohorts.map(cohort => `${labels[cohort.phase] || "Other"}: ` +
+          `${cohort.samples} samples · ${formatResourcePercent(cohort.avgCpuPercent)} CPU · ` +
+          `${formatResourceMb(cohort.avgWorkingSetMb)} RAM · ${formatResourceMbps(cohort.avgUploadMbps)} payload`)
+        .join("  |  ")
+      : "No workload samples yet.";
+  }
+
   if (els.resourcePowerText) {
     const signal =
       profile?.powerSignal;
@@ -2110,6 +2225,14 @@ function renderButtons() {
   if (els.streamMatchBtn) {
     els.streamMatchBtn.disabled =
       nativeStreamState.busy || nativeStreamState.status === "live" || !hasWatcherKey();
+    els.streamMatchBtn.textContent = nativeStreamState.status === "live"
+      ? "Video Live"
+      : nativeStreamState.busy
+        ? "Starting Video…"
+        : !hasWatcherKey()
+          ? "Pair Watcher to Stream"
+          : "Stream My Game";
+    els.streamMatchBtn.title = "Choose a capture source and start sending video to Television WOLO.";
   }
   if (els.openBrowserStreamBtn) {
     els.openBrowserStreamBtn.disabled = !hasStreamCandidate();
@@ -2123,6 +2246,12 @@ function renderButtons() {
   }
   if (els.stopNativeStreamBtn) {
     els.stopNativeStreamBtn.disabled = nativeStreamState.status !== "live" && nativeStreamState.status !== "starting";
+    els.stopNativeStreamBtn.textContent = "Stop Video";
+  }
+  if (els.startNativeStreamBtn) {
+    els.startNativeStreamBtn.textContent = nativeStreamState.status === "live"
+      ? "Video Live"
+      : nativeStreamState.busy ? "Starting…" : "Start Video";
   }
 }
 
@@ -2201,7 +2330,7 @@ function polishStaticUiCopy() {
   }
 
   if (els.streamMatchBtn) {
-    els.streamMatchBtn.textContent = "Start Stream";
+    els.streamMatchBtn.textContent = "Stream My Game";
   }
 
   if (els.openBrowserStreamBtn) {

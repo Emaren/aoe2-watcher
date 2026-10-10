@@ -21,14 +21,11 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "24"
           cache: "npm"
 
       - name: Install dependencies
         run: npm ci
-
-      - name: Audit dependencies
-        run: npm audit --audit-level=high
 
       - name: Lint runtime JavaScript
         run: npm run lint
@@ -38,3 +35,174 @@ jobs:
 
       - name: Package smoke test
         run: npm run pack
+
+      # Run last so an external advisory does not hide local test failures.
+      # This remains a required hard-failing security gate; do not bypass it.
+      - name: Audit dependencies
+        run: npm audit --audit-level=high
+
+  windows-video-package:
+    name: Windows NSIS and portable packaging smoke
+    runs-on: windows-latest
+    timeout-minutes: 30
+    # No release, signing secret, GitHub release, or deployment permission.
+    permissions:
+      contents: read
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+    steps:
+      - name: Checkout Watcher candidate
+        uses: actions/checkout@v4
+      - name: Set up Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "npm"
+      - name: Install exact dependencies
+        run: npm ci
+      - name: Verify Windows JavaScript and video contracts
+        run: |
+          npm run lint
+          npm test
+      - name: Build both unsigned Windows candidates without publishing
+        run: npm run dist:win -- --publish never
+      - name: Verify NSIS and portable executable outputs
+        shell: pwsh
+        run: |
+          $binaries = @(Get-ChildItem -Path dist -Filter "*.exe" -File)
+          $installers = @($binaries | Where-Object { $_.Name -match "Setup" })
+          $portables = @($binaries | Where-Object { $_.Name -notmatch "Setup" })
+          if ($installers.Count -lt 1 -or $portables.Count -lt 1) {
+            throw "Both NSIS Setup and separate portable Windows .exe artifacts must exist."
+          }
+          foreach ($binary in $binaries) {
+            if ($binary.Length -lt 1000000) {
+              throw "Windows candidate unexpectedly small: $($binary.Name)"
+            }
+            Get-FileHash -Algorithm SHA256 -Path $binary.FullName |
+              Select-Object Algorithm, Hash, Path | Format-Table -AutoSize
+          }
+          $version = (node -p "require('./package.json').version").Trim()
+          if ($version -ne "1.6.4") { throw "Wrong candidate version: $version" }
+          if (@($binaries | Where-Object { -not $_.Name.Contains($version) }).Count) {
+            throw "Candidate filename and version disagree."
+          }
+          if (-not (Test-Path "dist/latest.yml")) { throw "Updater latest.yml is missing." }
+          if (-not (Select-String -Path "dist/latest.yml" -SimpleMatch -Pattern "version: $version" -Quiet)) {
+            throw "Updater latest.yml version mismatch."
+          }
+          $binaries | ForEach-Object {
+            "$((Get-FileHash -Algorithm SHA256 -Path $_.FullName).Hash.ToLowerInvariant())  $($_.Name)"
+          } | Set-Content -Path "dist/WINDOWS_TEST_ONLY_SHA256.txt" -Encoding utf8
+          Write-Output "Windows 1.6.4 package smoke passed. Still unsigned and unreleased."
+      - name: Preserve restricted 1.6.4 Windows test artifacts for two days
+        uses: actions/upload-artifact@v4
+        with:
+          name: watcher-1.6.4-windows-unsigned-test-only
+          path: |
+            dist/*.exe
+            dist/latest.yml
+            dist/WINDOWS_TEST_ONLY_SHA256.txt
+          if-no-files-found: error
+          retention-days: 2
+
+  macos-video-package:
+    name: macOS arm64 DMG and direct ZIP packaging smoke
+    runs-on: macos-latest
+    timeout-minutes: 35
+    permissions:
+      contents: read
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+    steps:
+      - name: Checkout Watcher candidate
+        uses: actions/checkout@v4
+      - name: Set up Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "npm"
+      - name: Install exact dependencies
+        run: npm ci
+      - name: Verify macOS source and update contracts
+        run: |
+          npm run lint
+          npm test
+      - name: Build unsigned macOS arm64 DMG without publishing
+        run: npm run dist:mac -- --publish never
+      - name: Build direct ZIP from exact same macOS app bundle
+        run: npm run dist:manual-zip
+      - name: Verify updater-native macOS ZIP and manifest integrity
+        run: npm run verify:mac-updater
+      - name: Check DMG/ZIP artifacts, safe readme and content hashes
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./package.json').version")"
+          test "$version" = "1.6.4"
+          shopt -s nullglob
+          dmg_files=(dist/*"$version"*arm64.dmg)
+          zip_files=(dist/aoe2hdbets-watcher-direct.zip)
+          test "${#dmg_files[@]}" -eq 1
+          test "${#zip_files[@]}" -eq 1
+          test -s "${dmg_files[0]}"
+          test -s "${zip_files[0]}"
+          test -d "dist/mac-arm64/AoE2HDBets Watcher.app"
+          if unzip -p "${zip_files[0]}" "AoE2HDBets Watcher Direct/README.txt" | grep -Eq 'xattr -dr|spctl --master-disable|If macOS blocks the unsigned app'; then
+            echo "Unsafe macOS installation instruction found" >&2
+            exit 1
+          fi
+          unzip -p "${zip_files[0]}" "AoE2HDBets Watcher Direct/README.txt" | grep -Fq "Developer ID signed and Apple notarized"
+          shasum -a 256 "${dmg_files[@]}" "${zip_files[@]}" dist/*"$version"*arm64*.zip | tee dist/MACOS_TEST_ONLY_SHA256.txt
+      - name: Preserve two-day unsigned macOS test artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: watcher-1.6.4-macos-unsigned-test-only
+          path: |
+            dist/*.dmg
+            dist/aoe2hdbets-watcher-direct.zip
+            dist/*-arm64*.zip
+            dist/latest-mac.yml
+            dist/MACOS_TEST_ONLY_SHA256.txt
+          if-no-files-found: error
+          retention-days: 2
+
+  linux-appimage-package:
+    name: Linux x64 AppImage packaging smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout Watcher candidate
+        uses: actions/checkout@v4
+      - name: Set up Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "npm"
+      - name: Install exact dependencies
+        run: npm ci
+      - name: Build AppImage without publishing
+        run: npm run dist:linux -- --publish never
+      - name: Verify versioned AppImage and its integrity
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./package.json').version")"
+          test "$version" = "1.6.4"
+          shopt -s nullglob
+          images=(dist/*"$version"*.AppImage)
+          test "${#images[@]}" -eq 1
+          test -s "${images[0]}"
+          test "$(stat -c %s "${images[0]}")" -gt 1000000
+          sha256sum "${images[@]}" | tee dist/LINUX_TEST_ONLY_SHA256.txt
+      - name: Preserve two-day unsigned Linux test artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: watcher-1.6.4-linux-unsigned-test-only
+          path: |
+            dist/*.AppImage
+            dist/LINUX_TEST_ONLY_SHA256.txt
+          if-no-files-found: error
+          retention-days: 2

@@ -1,6 +1,6 @@
 {
   "name": "aoe2-watcher",
-  "version": "1.6.3",
+  "version": "1.6.4",
   "description": "AoE2HDBets Replay Watcher",
   "author": "AoE2HDBets",
   "license": "ISC",
@@ -9,14 +9,15 @@
   "desktopName": "com.aoe2hdbets.watcher.desktop",
   "scripts": {
     "start": "electron main.js",
-    "lint": "node --check main.js && node --check watcher.js && node --check telemetryQueue.js && node --check networkPriority.js && node --check runtimePolicy.js && node --check updatePolicy.js && node --check resourceProfile.js && node --check rendererHealth.js && node --check runTests.js && node --check renderer.js && node --check preload.js && node --check scripts/sync-release-docs.mjs",
+    "lint": "node --check main.js && node --check watcher.js && node --check telemetryQueue.js && node --check networkPriority.js && node --check runtimePolicy.js && node --check updatePolicy.js && node --check resourceProfile.js && node --check rendererHealth.js && node --check runTests.js && node --check renderer.js && node --check preload.js && node --check scripts/sync-release-docs.mjs && node --check scripts/verify-mac-updater.cjs",
     "test": "node runTests.js",
     "build": "electron-builder",
     "pack": "electron-builder --dir",
-    "dist:mac": "electron-builder --mac dmg --arm64",
+    "dist:mac": "electron-builder --mac dmg zip --arm64",
     "dist:win": "electron-builder --win nsis portable --x64",
     "dist:linux": "electron-builder --linux AppImage --x64",
     "dist:manual-zip": "node scripts/build-manual-zip.mjs",
+    "verify:mac-updater": "node scripts/verify-mac-updater.cjs",
     "dist:release": "npm run dist:win && npm run dist:mac && npm run dist:manual-zip && npm run dist:linux",
     "docs:release-sync": "node scripts/sync-release-docs.mjs"
   },
@@ -55,7 +56,8 @@
     "mac": {
       "category": "public.app-category.utilities",
       "target": [
-        "dmg"
+        "dmg",
+        "zip"
       ],
       "icon": "build/icon.icns",
       "minimumSystemVersion": "12.0",
