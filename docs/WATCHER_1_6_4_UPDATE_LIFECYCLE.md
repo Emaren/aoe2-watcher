@@ -254,3 +254,15 @@ identity. The assertions remain intact: stopped monitors must not overtake a
 new owner's state and concurrent monitors must keep the replay-busy fence
 until all finish. A green Windows rerun and actual unsigned package output
 are required before this is called a passed package smoke.
+
+## Hard-media-format terminal contract
+
+The companion web branch `feature/television-v1-upload-protocol-20261009`
+also returns terminal HTTP 413 `STREAM_CHUNK_TOO_LARGE` for oversized
+chunks, and HTTP 415 `STREAM_FORMAT_UNSUPPORTED` for non-WebM media.
+Watcher 1.6.4's unreleased transport now recognizes these separately from
+temporary I/O failures, and stops **only video** with a specific user-facing
+readout. The replay monitor and proof upload are not cancelled or retried
+as part of a video failure. The affected stream is ended on the server,
+with previous chunks retained for the limited normal retention period.
+No OS-wide screen access or hidden background recording is authorized.
