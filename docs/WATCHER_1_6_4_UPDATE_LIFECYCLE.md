@@ -362,3 +362,21 @@ Electron-builder auto-update ZIP compatibility is a separate requirement
 from the manual ZIP. Do not publish either candidate to the generic
 download feed until official platform signatures, hashes, deployment,
 legacy upgrade and real media decode canaries pass.
+
+### Signed Windows artifact verification (2026-10-10)
+
+The existing `Sign Windows Watcher` GitHub Actions workflow uses the trusted
+Windows runner and Azure Artifact Signing, so the release does not require
+the operator to own a Windows computer merely to produce a signed installer.
+The 1.6.4 candidate tightens the **post-sign** gate: both versioned NSIS and
+portable EXEs must exist at the expected filenames, exceed the minimum byte
+size, have a `Valid` Authenticode chain, include both a signing certificate
+and RFC3161 timestamp certificate, and produce a SHA-256 inventory from the
+final **signed** bytes. Failure blocks the signed artifact upload.
+
+Windows release signing remains on the protected workflow, never a
+pull-request signing job. Unsigned CI artifacts are test-only, not public
+installers. These certificate checks do **not** establish a working installed
+v1.5.10→1.6.4 updater migration, video permissions, resource consumption,
+or compatible server media ingestion. Those independent canaries remain
+required before public promotion.
