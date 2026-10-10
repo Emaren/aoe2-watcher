@@ -1178,7 +1178,7 @@ async function uploadNativeChunk(streamId, sequence, blob) {
   }
 
   if (result?.terminalStreamStop || result?.data?.finality === "replay_final") {
-    if (nativeStreamState.autoStarted && result?.terminalCode === "STREAM_STORAGE_LIMIT") {
+    if (nativeStreamState.autoStarted && result?.terminalStreamStop) {
       autoNativeTerminalSuppressedSessionKey = buildNativeSessionKey();
     }
     const replayFinal = result?.data?.finality === "replay_final";
