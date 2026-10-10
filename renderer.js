@@ -1173,6 +1173,28 @@ async function uploadNativeChunk(streamId, sequence, blob) {
     return;
   }
 
+  if (result?.terminalStreamStop || result?.data?.finality === "replay_final") {
+    const replayFinal = result?.data?.finality === "replay_final";
+    const code = replayFinal ? "STREAM_REPLAY_FINAL" : result.terminalCode;
+    const detail = replayFinal
+      ? "Replay finality confirmed; video recording ended normally."
+      : result.reason || "Server closed this video session.";
+    void sendNativeStreamEvent("stream_error", {
+      streamId, sequence, reason: code, errorMessage: detail,
+    });
+    await endNativeStream(
+      replayFinal ? "match_result_ready" : "server_terminal_video",
+      { drainUploads: false }
+    );
+    updateNativeStreamState({
+      readout: replayFinal ? "Match finished. Video saved." :
+        code === "STREAM_STORAGE_LIMIT" ? "Video storage limit reached; game monitoring continues." :
+        "Video session already closed. Game monitoring continues.",
+      detail,
+    });
+    return;
+  }
+
   if (!result?.ok) {
     throw new Error(result?.error || result?.data?.detail || "Chunk upload failed.");
   }
