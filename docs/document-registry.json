@@ -36,7 +36,7 @@
       "review_interval_days": 0,
       "reviewed_at": "2026-07-26",
       "sensitivity": "internal",
-      "sha256": "b40cd8ce77102e229cc263d19be39d38d37f21b0f22ffd7f16a6c473b440c044",
+      "sha256": "4e5a23730448a9da6ae405b490e3735967fce055cb5fbe60aae7829009bd4335",
       "source_of_truth": "generated",
       "status": "generated",
       "systems": [
@@ -104,7 +104,7 @@
       "review_interval_days": 30,
       "reviewed_at": "2026-10-09",
       "sensitivity": "internal",
-      "sha256": "e7d2dba8c168eae766143261d52556971ac54d566df2c57f567333e04a2fa4db",
+      "sha256": "da90e2efb1be464cb5effacb1195956a90be11414540295956555a5b3a361a02",
       "source_of_truth": "git",
       "status": "active",
       "systems": [
@@ -116,8 +116,8 @@
   ],
   "generated_at": "2026-08-04T02:09:37Z",
   "implementation_baseline": {
-    "branch": "feature/watcher-1.6.4-tv-source-safety-20261009",
-    "commit": "e56ecfc0ec594520519b35da9cbff67301f49cf1"
+    "branch": "feature/watcher-1.6.4-stream-terminal-control-20261009",
+    "commit": "d7e6567227e952c6c57ef4cee30df0c3dd27222d"
   },
   "owner": "aoe2war-watcher",
   "repo": "aoe2-watcher",
