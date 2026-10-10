@@ -36,7 +36,7 @@
       "review_interval_days": 0,
       "reviewed_at": "2026-07-26",
       "sensitivity": "internal",
-      "sha256": "093417f268370d547df972801acf4c2f9eb7bfd98fd3213a97d44f94da07b692",
+      "sha256": "4e7cd9516b1936008a1fec8e07d8c91f9a12daea55aea9aa819e86d85bcc0ecb",
       "source_of_truth": "generated",
       "status": "generated",
       "systems": [
@@ -117,7 +117,7 @@
   "generated_at": "2026-08-04T02:09:37Z",
   "implementation_baseline": {
     "branch": "feature/watcher-1.6.4-video-test-ux-20261010",
-    "commit": "f2d78289383571c1fe9e00b28d904c7a7eb423bf"
+    "commit": "11457f780eafc6456cd934df2022f745fef27645"
   },
   "owner": "aoe2war-watcher",
   "repo": "aoe2-watcher",
