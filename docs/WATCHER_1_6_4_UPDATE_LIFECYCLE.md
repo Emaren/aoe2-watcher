@@ -196,3 +196,39 @@ video-only finality boundaries. Passing source CI **does not** certify
 install/update/relaunch, actual capture permissions, two linked independent
 Windows POVs, late-replay exact association, CPU/GPU/electricity impact, long
 game retention, media decoding, or public video latency.
+
+## Additional fail-closed video controls (2026-10-10)
+
+- **Truthful chunk receipts:** A successful HTTP status alone is not a media
+  receipt. Only the chunk endpoint's explicit `chunkCreated` boolean and
+  server-authoritative `stream.chunkCount` count as recorded video.
+  Idempotent duplicate WebM uploads retain the existing count. A 200 response
+  carrying `finality: replay_final` stops video-only capture instead of
+  recording a phantom additional chunk. Late responses from a prior stream
+  may not end or overwrite a replacement broadcaster.
+- **Terminal failures:** The main-process stream bridge recognizes
+  `STREAM_STORAGE_LIMIT`, `STREAM_CHUNK_TOO_LARGE`,
+  `STREAM_FORMAT_UNSUPPORTED`, `STREAM_ALREADY_ENDED`, and the existing
+  `STREAM_MEDIA_SHED` response contract. The renderer stops **video only**
+  for terminal responses; temporary HTTP 503 remains distinguishable.
+  Five consecutive recoverable video upload failures stop capture rather than
+  letting MediaRecorder run indefinitely. The normal replay watcher remains
+  attached.
+- **Heartbeat finality:** An authenticated HTTP 409 carrying an already-ended
+  stream is accepted only by the native stream heartbeat, not by arbitrary
+  watcher requests. Ended/replay-final states still stop video alone.
+- **Privacy-minimized telemetry:** Native video diagnostics leaving the app
+  are restricted to bounded machine fields such as stream ID, capture mode,
+  window-versus-screen kind, counters, reason codes, and timings.
+  Arbitrary desktop/window/source titles, track labels, local paths,
+  free-form exception messages, user-facing stream titles, and other
+  unreviewed metadata fields are not sent through the video event helper.
+  This is separate from the explicitly consented screen pixels.
+- **Automated evidence:** Executable unit tests simulate finality 200,
+  idempotent chunk acknowledgement, malformed successful replies,
+  stale responses, terminal 409/413/415, retryable 503, and arbitrary
+  privacy-sensitive metadata. They are regression evidence, not a live
+  signed Windows capture or installed update canary.
+
+The matching Television site/API must be deployed as a coordinated release.
+Never infer deployability or real 2-hour quality from Node tests alone.
