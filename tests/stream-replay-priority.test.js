@@ -110,7 +110,7 @@ test("server media-shed response is terminal before generic chunk failure", () =
 });
 
 test("video quota and pre-ended streams are terminal, never retried as transient failures", () => {
-  assert.match(mainSource, /responseData\?\.code === "STREAM_STORAGE_LIMIT"/);
+  assert.match(mainSource, /"STREAM_STORAGE_LIMIT", "STREAM_CHUNK_TOO_LARGE"/);
   assert.match(mainSource, /responseData\?\.code === "STREAM_ALREADY_ENDED"/);
   assert.match(mainSource, /terminalStreamStop: true/);
   assert.match(rendererSource, /result\?\.terminalStreamStop \|\| result\?\.data\?\.finality === "replay_final"/);
