@@ -1174,13 +1174,30 @@ async function uploadNativeChunk(streamId, sequence, blob) {
     return;
   }
 
+  // HTTP 200 is not an acknowledgement that media reached disk: the
+  // server can return an authoritative replay-final response before writing.
+  // An old request from a replaced stream must not stop the new stream.
+  if (result?.data?.finality === "replay_final" ||
+      result?.data?.stream?.status === "ended" ||
+      result?.data?.code === "STREAM_ALREADY_ENDED") {
+    if (nativeStreamState.stream?.id === streamId) {
+      await endNativeStream("server_replay_final", { drainUploads: false });
+      setNativeReadout("Game complete. Video capture stopped.", "Replay watching continues.");
+    }
+    return;
+  }
   if (!result?.ok) {
     throw new Error(result?.error || result?.data?.detail || "Chunk upload failed.");
   }
+  if (typeof result?.data?.chunkCreated !== "boolean" ||
+      !Number.isSafeInteger(result?.data?.stream?.chunkCount)) {
+    // Never count unproven video acknowledgements as recorded media.
+    throw new Error("Stream upload acknowledgement was incomplete.");
+  }
 
   const uploadLatencyMs = Date.now() - uploadStartedAt;
-  const nextStream = result.data?.stream || nativeStreamState.stream;
-  const nextChunkCount = Math.max(nativeStreamState.chunkCount + 1, nextStream?.chunkCount || 0);
+  const nextStream = result.data.stream;
+  const nextChunkCount = Math.max(0, nextStream.chunkCount);
   updateNativeStreamState({
     stream: nextStream,
     chunkCount: nextChunkCount,
