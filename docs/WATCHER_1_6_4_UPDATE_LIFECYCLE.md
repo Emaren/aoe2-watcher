@@ -202,7 +202,9 @@ game retention, media decoding, or public video latency.
 - **Truthful chunk receipts:** A successful HTTP status alone is not a media
   receipt. Only the chunk endpoint's explicit `chunkCreated` boolean and
   server-authoritative `stream.chunkCount` count as recorded video.
-  Idempotent duplicate WebM uploads retain the existing count. A 200 response
+  Idempotent duplicate WebM uploads retain the existing count.
+  Late rejected network uploads and heartbeats from a prior capture are
+  fenced out of the replacement capture's failure counters. A 200 response
   carrying `finality: replay_final` stops video-only capture instead of
   recording a phantom additional chunk. Late responses from a prior stream
   may not end or overwrite a replacement broadcaster.
