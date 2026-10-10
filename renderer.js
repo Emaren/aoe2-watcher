@@ -287,6 +287,7 @@ let nativeVideoUploadGeneration = 0;
 let replayVideoPriorityActive = false;
 let replayPriorityPausedRecorder = false;
 let autoNativeStreamStartPending = false;
+let autoNativeTerminalSuppressedSessionKey = null;
 let nativeStreamEnding = false;
 let watchDirStatus = {
   exists: false,
@@ -1152,6 +1153,9 @@ async function uploadNativeChunk(streamId, sequence, blob) {
   }
 
   if (result?.terminalMediaShed) {
+    if (nativeStreamState.autoStarted) {
+      autoNativeTerminalSuppressedSessionKey = buildNativeSessionKey();
+    }
     const reason =
       result.reason ||
       "server_media_shed";
@@ -1174,6 +1178,9 @@ async function uploadNativeChunk(streamId, sequence, blob) {
   }
 
   if (result?.terminalStreamStop || result?.data?.finality === "replay_final") {
+    if (nativeStreamState.autoStarted && result?.terminalCode === "STREAM_STORAGE_LIMIT") {
+      autoNativeTerminalSuppressedSessionKey = buildNativeSessionKey();
+    }
     const replayFinal = result?.data?.finality === "replay_final";
     const code = replayFinal ? "STREAM_REPLAY_FINAL" : result.terminalCode;
     const detail = replayFinal
@@ -1681,6 +1688,9 @@ async function manageAutomaticNativeStream(event) {
     event.isFinal !== true;
 
   if (shouldStart) {
+    // Quota/shed is a terminal decision for the current game. Never generate
+    // new streams for the same match from duplicate watcher-detection events.
+    if (autoNativeTerminalSuppressedSessionKey === buildNativeSessionKey()) return;
     if (
       !watcherState.isWatching ||
       !hasWatcherKey() ||
@@ -1708,6 +1718,7 @@ async function manageAutomaticNativeStream(event) {
   const shouldStop =
     trustedFinal || AUTO_STREAM_STOP_RUNTIME_EVENTS.has(event.type);
 
+  if (shouldStop) autoNativeTerminalSuppressedSessionKey = null;
   if (
     shouldStop &&
     nativeStreamState.autoStarted &&
