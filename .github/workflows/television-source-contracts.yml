@@ -1,0 +1,52 @@
+name: Watcher Television source contracts
+
+on:
+  push:
+    branches:
+      - feature/watcher-1.6.4-tv-source-safety-20261009
+  pull_request:
+    paths:
+      - "televisionCapturePolicy.js"
+      - "renderer.js"
+      - "main.js"
+      - "index.html"
+      - "package.json"
+      - "tests/television-source-policy.test.js"
+      - ".github/workflows/television-source-contracts.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  tv-source-contracts:
+    name: TV privacy, replay-priority and package contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Install exact frozen dependency graph
+        run: npm ci --ignore-scripts --no-audit
+      - name: Check runtime JavaScript syntax
+        run: npm run lint
+      - name: Run full Watcher contracts
+        run: npm test
+      - name: Verify documentation control
+        run: python3 scripts/docs_v2_check.py
+      - name: Verify Windows, Mac and Linux package inclusion
+        run: |
+          node - <<'JS'
+          const assert = require("node:assert/strict");
+          const pkg = require("./package.json");
+          assert(pkg.build.files.includes("televisionCapturePolicy.js"));
+          assert(pkg.build.files.includes("renderer.js"));
+          assert(pkg.build.files.includes("index.html"));
+          assert.equal(pkg.version, "1.6.3");
+          console.log("Source packaged on all electron-builder targets; no release version bump.");
+          JS
+      # This lane proves development contracts only. Standard Watcher CI's
+      # npm audit security gate remains authoritative and must be green
+      # before merge/release. No installer or live-device certification here.
