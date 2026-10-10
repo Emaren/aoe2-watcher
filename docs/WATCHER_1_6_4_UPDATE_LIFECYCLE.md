@@ -148,3 +148,51 @@ with zero failures or skips; lint and `git diff --check` passed. A separate
 review reran the 39 lifecycle, 10 update-policy and 5 journal tests (54 passed).
 The exact implementation/test file digests and validation observations are
 preserved in `watcher-receipts/update-lifecycle-validation-20261008.json`.
+
+## V1.6.4 Television integration hardening (2026-10-10 Git-only development)
+
+This section extends the **unreleased** 1.6.4 source with Television V3
+integration. The paired web counterpart is the dependent development
+branch `feature/television-v3-integrated-hardening-20261010`. Neither
+repository has been deployed or certified as a production video release.
+
+- Explicit video launch: **Stream My Game**, **Start Video**, **Video Live**,
+  **Stop Video**. Automatic match capture remains an independent opt-in
+  setting; opening the Watcher or the Television viewer does not silently
+  broadcast the user's desktop.
+- Three source profiles remain Stable 720p/15 at 1.4 Mbps, Full Screen
+  720p/18 at 1.8 Mbps, and Sharp 720p/24 at 2.6 Mbps. The UI reports
+  theoretical encoder bytes per hour **before overhead**, not real egress,
+  CPU impact or electricity. The companion server's proposed 3 GiB per-POV
+  default must still pass physical long-game and mounted-volume canaries.
+- The existing Electron sampler now accumulates **constant-memory local**
+  resource cohorts for idle, armed monitoring, detected game, replay
+  transfer and active streaming, including process-tree CPU%, working-set
+  RAM and observed outbound payload rate. These are observations of the
+  Watcher application, not the whole computer or a causal "extra watts"
+  estimate. No samples are manufactured when Electron process metrics are
+  unavailable; per-process power watts remain unknown.
+- Native session identity is derived from the current candidate's
+  session/replay, **never from an absolute local SaveGame path**. A
+  server-visible weak `watcher:` session stays unlinked until the web API
+  validates an exact replay/platform match owned by the authenticated
+  user. Heartbeats may submit a newly discovered stronger claim, but may
+  not bypass server authority. Never bind a current capture to a "recent"
+  older game by timestamp.
+- The authenticated heartbeat's `finality: replay_final` (or ended
+  stream status) stops only video capture; gameplay/replay monitoring
+  continues. A startup heartbeat that already reports finality cannot
+  emit a false newly-live broadcast.
+- CI now uses Node 24, runs lint/tests/packaging first, then a
+  **still hard-failing** high-severity security audit. The development-only
+  `http-cache-semantics` lock entry is upgraded to 4.3.0 with its npm
+  package-integrity digest. Residual moderate dependency advisories
+  remain to be separately reviewed; do not force Electron tooling
+  version jumps without signed cross-platform installer canaries.
+
+The Watcher Node suite includes executable native-session/path redaction,
+phase-separated resource metrics, false power-claim checks, and explicit
+video-only finality boundaries. Passing source CI **does not** certify
+install/update/relaunch, actual capture permissions, two linked independent
+Windows POVs, late-replay exact association, CPU/GPU/electricity impact, long
+game retention, media decoding, or public video latency.
