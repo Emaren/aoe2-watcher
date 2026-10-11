@@ -459,3 +459,41 @@ and platform-specific diagnostics. Source discovery, real macOS permission
 switch/relaunch, frame capture, server stream registration, and public playback
 still require an installed-client canary before claiming success. A GitHub PR
 is source-only and does not modify the immutable released 1.6.4 artifacts.
+
+### macOS native-picker fallback (source-only, unproven on an installed client)
+
+The Oct 10 Mac field evidence is now stronger: screen-recording permission
+was visibly enabled for the Watcher, the app was fully restarted, and the log
+still recorded `Stream source scan failed: Failed to get sources.`.
+Electron can reject a `desktopCapturer.getSources()` enumeration for reasons
+other than user consent. Do not declare the app unpermissioned based only on
+that generic Chromium error.
+
+A manual `Start Video` click, when source enumeration has failed and
+`nativeStreamState.sources` is empty, requests `getDisplayMedia({video, audio:false})`.
+On macOS 15+ Electron's experimental `useSystemPicker: true` path allows
+the OS to present the user-controlled screen/window picker without a successful
+`getSources` result first. The handler is installed before the Watcher
+window boots; on systems without the native picker its fallback is read-only
+screen enumeration, denied if unavailable. The fallback requires an explicit
+user gesture; automatic video never initiates an OS picker.
+
+Cancellation or denial must stop cleanly with no stream ID, replay restart,
+camera upload, or public playback claim. A chosen capture follows the
+unchanged `/api/streams/start`, MediaRecorder, bounded chunk, heartbeat and
+terminal-stop protocol. This is a field-test candidate only and is **not**
+a modification to immutable v1.6.4 release binaries.
+
+After building a canary, verify these milestones independently:
+1. User presses **Start Video**, sees the native chooser and selects the display.
+2. Local video preview contains actual game pixels and remains live on fullscreen transition.
+3. A `/api/streams/start` response includes a real stream ID for the match.
+4. Video chunks land, and Television WOLO binds to the same canonical battle.
+5. Playback succeeds after **Play**; closing/cancelling stops video but does not
+   interfere with `.aoe2record` monitoring or backlog.
+6. On macOS 14 or where the system picker is absent, capture fails with an
+   honest error and offers Browser Stream instead.
+
+Upstream reference: Electron
+https://www.electronjs.org/docs/latest/api/session#sessetdisplaymediarequesthandlerhandler-opts
+(and the documented experimental macOS 15+ limitation).
