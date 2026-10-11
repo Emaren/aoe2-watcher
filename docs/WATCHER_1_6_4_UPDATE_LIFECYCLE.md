@@ -524,3 +524,41 @@ remote admission is intentionally agreed with the server and regression
 tested. No replay state, capture, auth key or match-binding changes.
 The source change is a separate **stacked development candidate**; it is
 not an amendment to signed public v1.6.4 artifacts.
+
+### CrossOver / Wine macOS capture-source contract (next Watcher canary)
+
+Steam Age2HD through CrossOver/Wine may have no standalone native macOS
+window recognizable as the game. A source called `CrossOver` or `Steam`
+is *not proof* that selecting that window will show live game pixels.
+A visible game window can also disappear when the game changes into
+exclusive full screen.
+
+Watcher therefore uses a deterministic, test-covered source policy:
+- Explicitly selected capture source wins, regardless of bitrate/framerate
+  mode. If it disappears or its source ID changes, stop and request a
+  new selection. Never substitute another monitor silently.
+- Native macOS **Full Screen** mode (the macOS initial default) chooses a
+  display even if Wine momentarily exposes a game-named window. The user
+  must still grant macOS capture permission, and full display capture
+  includes **everything visible on the chosen monitor**.
+- Other modes prefer unmistakably AoE2-named native windows over wrappers;
+  on Mac, when no game window can be identified, choose the display
+  fallback. A browser or Watcher window is never the default.
+- On Windows, prefer a recognized game window. A deliberate Full Screen
+  mode can select a display; otherwise demand an explicit selection
+  instead of capturing an unrelated browser or launcher.
+- When Electron cannot enumerate any source, **only a user-initiated**
+  capture attempt may open the experimental macOS 15+ system picker.
+  Automatic background streaming cannot summon a permission dialog
+  or choose an arbitrary screen.
+- Human-friendly `Display selected` and `Choose a capture source`
+  labels are hints, never assertions that a playable frame, match
+  registration, or viewer decoding has succeeded.
+
+No platform uses OCR, window-title-to-battle identity, or privilege
+bypasses. Match linkage stays source-backed and separate from video.
+Windows native and Mac/CrossOver physical canaries are required before
+promoting this branch to an immutable signed release. `1.6.4` remains
+the last certified published version until the version transition follows
+Release OS / vault controls. Keep streaming opt-in, preserve replay-upload
+priority and never capture private windows without the user's choice.
