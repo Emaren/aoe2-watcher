@@ -683,7 +683,7 @@ function describeSourceDetail(source, mode = getNativeStreamMode()) {
 
   const base = `${sourceKindLabel(source)} · ${source.name}`;
   if (source.kind === "screen" && isMacPlatform()) {
-    return `${base}. Go Live, then switch to AoE2 full-screen.`;
+    return `${base}. CrossOver/Wine often hides the game window. This shares everything visible on that display; switch to AoE2 full-screen after Go Live.`;
   }
   if (source.kind === "screen") {
     return `${base}. Use this when the game window is full-screen.`;
@@ -934,9 +934,11 @@ async function refreshNativeStreamSources() {
       sourceName: selectedSource?.name || "",
       sourceKind: selectedSource?.kind || "",
       readout: sources.length
-        ? selectedSource?.kind === "screen" && isMacPlatform()
-          ? "Display capture ready for full-screen AoE2."
-          : `${sources.length} source${sources.length === 1 ? "" : "s"} ready.`
+        ? !selectedSource
+          ? "Choose a capture source before streaming."
+          : selectedSource.kind === "screen" && isMacPlatform()
+            ? "Display selected for full-screen CrossOver/AoE2."
+            : `${sources.length} source${sources.length === 1 ? "" : "s"} ready.`
         : "No capture sources found.",
       detail: selectedSource
         ? describeSourceDetail(selectedSource)
@@ -2309,7 +2311,6 @@ function renderNativeStreamState() {
   }
 
   if (sourceSelect) {
-    const currentValue = sourceSelect.value;
     sourceSelect.innerHTML = "";
     const placeholder = document.createElement("option");
     placeholder.value = "";
@@ -2342,11 +2343,13 @@ function renderNativeStreamState() {
 
   if (els.streamPreviewEmpty) {
     els.streamPreviewEmpty.hidden = Boolean(nativeStreamState.mediaStream);
-    els.streamPreviewEmpty.textContent = nativeStreamState.sources.length
+    els.streamPreviewEmpty.textContent = nativeStreamState.selectedSourceId
       ? nativeStreamState.sourceKind === "screen"
-        ? "Display ready"
-        : nativeStreamState.sourceName || "Source ready"
-      : "Refresh sources";
+        ? "Display ready — shares the full screen"
+        : nativeStreamState.sourceName || "Game window ready"
+      : nativeStreamState.sources.length
+        ? "Choose game window or display"
+        : "Refresh sources";
   }
 
   if (els.streamReadoutSummary) {
