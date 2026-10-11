@@ -31,9 +31,9 @@ test("old installed Windows Watcher has automatic update capability but portable
   assert.match(mainSource,/quitAndInstall\(false, true\)/);
   assert.match(appSource,/manual_required/);
   assert.match(readme,/v1\.5\.10/);
-  assert.match(readme,/Watcher 1\\.6\\.4 is the current public release\\./);
-  assert.match(readme,/must be verified on a real installed v1\\.5\\.10 machine/);
-  assert.doesNotMatch(readme,/Watcher 1\\.6\\.4 is not yet published/);
+  assert.match(readme,/Watcher 1\.6\.4 is the current public release\./);
+  assert.match(readme,/must be verified on a real installed v1\.5\.10 machine/);
+  assert.doesNotMatch(readme,/Watcher 1\.6\.4 is not yet published/);
 });
 test("legacy config and Replay Truth must not be reset as an upgrade shortcut", () => {
   assert.match(mainSource,/\.\.\.loadConfig\(\)/);
