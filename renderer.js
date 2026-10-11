@@ -776,6 +776,10 @@ function buildDesktopCaptureConstraints(sourceId, mode = getNativeStreamMode()) 
 function describeCaptureStartError(error, source, mode) {
   const message = error?.message || String(error || "Capture failed.");
   const name = error?.name || "";
+  if (source?.id === "macos-system-picker" &&
+      /abort|cancel|dismiss/i.test(`${name} ${message}`)) {
+    return "macOS screen sharing was cancelled. Press Start Video to choose a screen again.";
+  }
   if (/permission|denied|notallowed/i.test(`${name} ${message}`)) {
     return "macOS blocked capture. Allow screen recording for AoE2HDBets Watcher, then reopen it.";
   }
@@ -953,7 +957,10 @@ async function refreshNativeStreamSources() {
     updateNativeStreamState({
       busy: false,
       readout: "Source scan failed.",
-      detail: error.message || String(error),
+      detail: (error.message || String(error)) +
+        (isMacPlatform()
+          ? " · You can also press Start Video to try the macOS system screen picker."
+          : ""),
     });
     void sendNativeStreamEvent("stream_error", {
       errorMessage: "Source scan failed.",
