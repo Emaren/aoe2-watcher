@@ -93,3 +93,18 @@ test("isolated browser wiring and packaging prevent missing source-policy regres
   assert.ok(pkg.build.files.includes("captureSourcePolicy.js"));
   assert.match(pkg.scripts.lint, /node --check captureSourcePolicy\.js/);
 });
+
+test("multi-monitor CrossOver setups require an explicit display choice", () => {
+  const displays = [screen("screen:0:0"), screen("screen:1:0")];
+  for (const platform of ["darwin", "win32"]) {
+    const x = chooseCaptureSource([window("window:11", "CrossOver"), ...displays], {
+      platform, preferredKind: "screen",
+    });
+    assert.equal(x.source, null);
+    assert.equal(x.authority, "display_selection_required");
+    const picked = chooseCaptureSource(displays, {
+      platform, preferredKind: "screen", explicitSourceId: "screen:1:0",
+    });
+    assert.equal(picked.source.id, "screen:1:0");
+  }
+});
