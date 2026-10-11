@@ -15,6 +15,7 @@ const {
   Menu,
   powerMonitor,
   shell,
+  systemPreferences,
   Tray,
   autoUpdater: nativeAutoUpdater,
 } = require("electron");
@@ -52,6 +53,7 @@ const {
   stopWatching,
 } = require("./watcher");
 const { buildStreamHandoff } = require("./streamHandoff");
+const { readScreenCapturePermission, describeCaptureSourceFailure } = require("./captureSourceDiagnostics");
 const {
   createNetworkPriorityArbiter,
 } = require("./networkPriority");
@@ -4203,8 +4205,18 @@ function bootWatcherApp() {
   });
 
   ipcMain.handle("watcher:list-stream-sources", async () => {
+    let screenPermission = readScreenCapturePermission({ preferences: systemPreferences });
     try {
       const sources = await listDesktopCaptureSources();
+      screenPermission = readScreenCapturePermission({ preferences: systemPreferences });
+      if (sources.length === 0) {
+        return {
+          ok: false,
+          screenPermission,
+          error: describeCaptureSourceFailure("No capture sources returned", screenPermission),
+          sources: [],
+        };
+      }
       emitWatcherTelemetry("stream_sources_listed", {
         metadata: {
           sourceCount: sources.length,
@@ -4215,9 +4227,12 @@ function bootWatcherApp() {
       return {
         ok: true,
         sources,
+        screenPermission,
       };
     } catch (error) {
-      appendLog(`Stream source scan failed: ${error.message || error}`, "error");
+      screenPermission = readScreenCapturePermission({ preferences: systemPreferences });
+      const detail = describeCaptureSourceFailure(error, screenPermission);
+      appendLog(`Stream source scan failed: ${detail}`, "error");
       emitWatcherTelemetry("stream_error", {
         metadata: {
           source: "desktop_capturer",
@@ -4226,7 +4241,8 @@ function bootWatcherApp() {
       });
       return {
         ok: false,
-        error: error.message || "Stream source scan failed.",
+        error: detail,
+        screenPermission,
         sources: [],
       };
     }
