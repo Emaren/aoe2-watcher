@@ -53,8 +53,15 @@ function chooseCaptureSource(sources, { platform = "", explicitSourceId = "", pr
   return { source: null, authority: "manual_source_required" };
 }
 
-module.exports = {
+const captureSourcePolicy = Object.freeze({
   chooseCaptureSource,
   isExcludedFromAutomaticCapture,
   isRecognizedGameWindow,
-};
+});
+
+if (typeof module !== "undefined" && module.exports) {
+  module.exports = captureSourcePolicy;
+}
+if (typeof window !== "undefined") {
+  window.WatcherCaptureSourcePolicy = captureSourcePolicy;
+}
