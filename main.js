@@ -14,6 +14,7 @@ const {
   ipcMain,
   Menu,
   powerMonitor,
+  session,
   shell,
   systemPreferences,
   Tray,
@@ -2885,6 +2886,30 @@ function captureSourceScore(source) {
   return score;
 }
 
+// Electron/macOS 15+ can offer the OS-owned picker even when Chromium's
+// desktop source enumerator fails. The renderer requests it only from the
+// explicit Start Video user gesture; automatic video does not invoke it.
+function installMacDisplayPicker() {
+  if (process.platform !== "darwin") return;
+  session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
+    if (!request?.userGesture || !request?.videoRequested ||
+        !request?.frame || request.frame !== mainWindow?.webContents?.mainFrame) {
+      callback(null);
+      return;
+    }
+    // For pre-15 macOS, where the experimental native picker is not
+    // available, fail closed unless Chromium can enumerate a screen.
+    desktopCapturer.getSources({
+      types: ["screen"],
+      thumbnailSize: { width: 0, height: 0 },
+      fetchWindowIcons: false,
+    }).then(
+      (sources) => callback(sources.length ? { video: sources[0] } : null),
+      () => callback(null)
+    );
+  }, { useSystemPicker: true });
+}
+
 async function listDesktopCaptureSources() {
   const sources = await desktopCapturer.getSources({
     types: ["window", "screen"],
@@ -4478,6 +4503,7 @@ if (!gotSingleInstanceLock) {
   app.quit();
 } else {
   app.whenReady().then(() => {
+    installMacDisplayPicker();
     bootWatcherApp();
     powerMonitor.on("resume", () => {
       const config =
