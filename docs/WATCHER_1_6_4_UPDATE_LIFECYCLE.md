@@ -474,8 +474,9 @@ A manual `Start Video` click, when source enumeration has failed and
 On macOS 15+ Electron's experimental `useSystemPicker: true` path allows
 the OS to present the user-controlled screen/window picker without a successful
 `getSources` result first. The handler is installed before the Watcher
-window boots; on systems without the native picker its fallback is read-only
-screen enumeration, denied if unavailable. The fallback requires an explicit
+window boots; on systems without the native picker the display-media request is
+rejected instead of silently sharing an arbitrary first monitor. Watcher's
+explicitly chosen legacy getUserMedia screen source remains separate. The fallback requires an explicit
 user gesture; automatic video never initiates an OS picker.
 
 Cancellation or denial must stop cleanly with no stream ID, replay restart,
@@ -483,6 +484,13 @@ camera upload, or public playback claim. A chosen capture follows the
 unchanged `/api/streams/start`, MediaRecorder, bounded chunk, heartbeat and
 terminal-stop protocol. This is a field-test candidate only and is **not**
 a modification to immutable v1.6.4 release binaries.
+
+Manual **Stream My Game** is disabled until Watcher has a replay-backed match
+candidate. No capture is initiated under an unlinked synthetic game name when
+the app is idle. This prevents the ambiguous cross-battle streams observed in
+the October 10 field test. Restart replay monitoring and let it identify the
+game before pressing the button; a matched, trusted replay still owns result
+truth independently of camera video.
 
 After building a canary, verify these milestones independently:
 1. User presses **Start Video**, sees the native chooser and selects the display.
