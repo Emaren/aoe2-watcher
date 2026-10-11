@@ -31,6 +31,7 @@ const {
   createDurableTelemetryQueue,
   createRuntimeEventCoalescer,
 } = require("./telemetryQueue");
+const { isAcceptedRuntimeTelemetryType } = require("./runtimeTelemetryContract");
 const {
   DEFAULT_FOLDER_FRESHNESS_PROBE_MS,
   DEFAULT_FOLDER_STATUS_CACHE_MS,
@@ -3061,7 +3062,10 @@ function emitTelemetryForRuntimeEvent(event) {
   }
 
   const normalizedType = normalizeRuntimeEventType(event.type);
-  if (normalizedType) {
+  // Server authority is a finite event vocabulary. Keep unsupported local
+  // recovery/scan diagnostics in the local journal; never turn them into
+  // permanent 400s or future retry storms against production.
+  if (isAcceptedRuntimeTelemetryType(normalizedType)) {
     emitWatcherTelemetry(normalizedType, basePayload);
   }
 }
