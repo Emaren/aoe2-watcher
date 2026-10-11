@@ -40,7 +40,7 @@ test("main gates only normalized fallback, not named API events", () => {
   assert.match(main, /emitWatcherTelemetry\("upload_succeeded", basePayload\)/);
   assert.match(main, /emitWatcherTelemetry\("replay_detected", basePayload\)/);
   assert.match(main, /emitWatcherTelemetry\("upload_failed", basePayload\)/);
-  assert.match(main, /emitWatcherTelemetry\("heartbeat"/);
+  assert.match(main, /emitWatcherTelemetry\(\s*"heartbeat"/);
 });
 
 test("production packages and lints the telemetry contract", () => {
