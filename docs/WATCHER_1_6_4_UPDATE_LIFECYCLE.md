@@ -537,10 +537,12 @@ Watcher therefore uses a deterministic, test-covered source policy:
 - Explicitly selected capture source wins, regardless of bitrate/framerate
   mode. If it disappears or its source ID changes, stop and request a
   new selection. Never substitute another monitor silently.
-- Native macOS **Full Screen** mode (the macOS initial default) chooses a
-  display even if Wine momentarily exposes a game-named window. The user
-  must still grant macOS capture permission, and full display capture
-  includes **everything visible on the chosen monitor**.
+- Native macOS **Full Screen** mode (the macOS initial default) chooses
+  the display only when exactly one exists, even if Wine momentarily
+  exposes a game-named window. With multiple monitors, source selection
+  is **required**, not guessed. The user must still grant macOS capture
+  permission, and full display capture includes **everything visible on
+  the chosen monitor**.
 - Other modes prefer unmistakably AoE2-named native windows over wrappers;
   on Mac, when no game window can be identified, choose the display
   fallback. A browser or Watcher window is never the default.
