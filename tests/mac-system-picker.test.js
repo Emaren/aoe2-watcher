@@ -45,3 +45,13 @@ test("Streamer cannot silently start an unlinked video feed before a match is kn
   assert.match(renderer, /nativeStreamState\.status === "live" \|\| !hasWatcherKey\(\) \|\| !hasStreamCandidate\(\)/);
   assert.match(renderer, /"Waiting for Match"/);
 });
+
+test("macOS picker absence does not silently share an arbitrary first monitor", () => {
+  const section = main.slice(
+    main.indexOf("function installMacDisplayPicker()"),
+    main.indexOf("async function listDesktopCaptureSources()"),
+  );
+  assert.match(section, /callback\(null\)/);
+  assert.doesNotMatch(section, /sources\[0\]/);
+  assert.doesNotMatch(section, /desktopCapturer\.getSources/);
+});
