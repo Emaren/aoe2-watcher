@@ -258,6 +258,7 @@ let nativeStreamState = {
   busy: false,
   sources: [],
   selectedSourceId: "",
+  userSelectedSourceId: "",
   sourceName: "",
   sourceKind: "",
   mediaStream: null,
@@ -682,7 +683,7 @@ function describeSourceDetail(source, mode = getNativeStreamMode()) {
 
   const base = `${sourceKindLabel(source)} · ${source.name}`;
   if (source.kind === "screen" && isMacPlatform()) {
-    return `${base}. Go Live, then switch to AoE2 full-screen.`;
+    return `${base}. CrossOver/Wine often hides the game window. This shares everything visible on that display; switch to AoE2 full-screen after Go Live.`;
   }
   if (source.kind === "screen") {
     return `${base}. Use this when the game window is full-screen.`;
@@ -693,14 +694,12 @@ function describeSourceDetail(source, mode = getNativeStreamMode()) {
   return base;
 }
 
-function pickNativeStreamSource(sources, selectedSourceId, mode = getNativeStreamMode()) {
-  const selected = sources.find((source) => source.id === selectedSourceId) || null;
-
-  if (mode.preferredKind === "screen" && selected?.kind !== "screen") {
-    return sources.find((source) => source.kind === "screen") || selected || sources[0] || null;
-  }
-
-  return selected || sources[0] || null;
+function pickNativeStreamSource(sources, explicitSourceId, mode = getNativeStreamMode()) {
+  return window.WatcherCaptureSourcePolicy.chooseCaptureSource(sources, {
+    platform: appInfo?.platform || "",
+    explicitSourceId,
+    preferredKind: mode.preferredKind || "",
+  }).source;
 }
 
 function chooseNativeRecorderMimeType() {
@@ -923,7 +922,7 @@ async function refreshNativeStreamSources() {
     const sourceCounts = countStreamSources(sources);
     const selectedSource = pickNativeStreamSource(
       sources,
-      nativeStreamState.selectedSourceId,
+      nativeStreamState.userSelectedSourceId,
       getNativeStreamMode()
     );
     const selected = selectedSource?.id || "";
@@ -935,11 +934,15 @@ async function refreshNativeStreamSources() {
       sourceName: selectedSource?.name || "",
       sourceKind: selectedSource?.kind || "",
       readout: sources.length
-        ? selectedSource?.kind === "screen" && isMacPlatform()
-          ? "Display capture ready for full-screen AoE2."
-          : `${sources.length} source${sources.length === 1 ? "" : "s"} ready.`
+        ? !selectedSource
+          ? "Choose a capture source before streaming."
+          : selectedSource.kind === "screen" && isMacPlatform()
+            ? "Display selected for full-screen CrossOver/AoE2."
+            : `${sources.length} source${sources.length === 1 ? "" : "s"} ready.`
         : "No capture sources found.",
-      detail: describeSourceDetail(selectedSource),
+      detail: selectedSource
+        ? describeSourceDetail(selectedSource)
+        : "Select your game window or a display. An unrecognized CrossOver/Wine window is never captured automatically.",
     });
 
     void sendNativeStreamEvent("stream_sources_listed", {
@@ -1490,9 +1493,12 @@ async function startNativeStream(options = {}) {
   const mode = getNativeStreamMode();
   const selectedSource = useMacPicker
     ? { id: "macos-system-picker", name: "macOS selected capture", kind: "screen" }
-    : pickNativeStreamSource(sources, nativeStreamState.selectedSourceId, mode);
+    : pickNativeStreamSource(sources, nativeStreamState.userSelectedSourceId, mode);
   if (!selectedSource) {
-    handleNativeStreamError("No capture source found.", "Open AoE2HD, Steam, or CrossOver, then refresh sources.");
+    handleNativeStreamError("Choose a capture source.",
+      isMacPlatform()
+        ? "CrossOver/Wine may hide the game window. Choose Display — Entire screen, or refresh sources and try the macOS picker."
+        : "Choose the game's window or a display in the capture-source menu. No unrelated window was shared.");
     return;
   }
 
@@ -2305,18 +2311,20 @@ function renderNativeStreamState() {
   }
 
   if (sourceSelect) {
-    const currentValue = sourceSelect.value;
     sourceSelect.innerHTML = "";
+    const placeholder = document.createElement("option");
+    placeholder.value = "";
+    placeholder.textContent = "Choose game window or display";
+    sourceSelect.appendChild(placeholder);
     for (const source of nativeStreamState.sources) {
       const option = document.createElement("option");
       option.value = source.id;
       option.textContent = sourceOptionLabel(source);
       sourceSelect.appendChild(option);
     }
-    const desired = nativeStreamState.selectedSourceId || currentValue;
-    if (desired && nativeStreamState.sources.some((source) => source.id === desired)) {
-      sourceSelect.value = desired;
-    }
+    const desired = nativeStreamState.selectedSourceId;
+    sourceSelect.value = desired && nativeStreamState.sources.some((source) => source.id === desired)
+      ? desired : "";
     sourceSelect.disabled = nativeStreamState.busy || isLive || nativeStreamState.sources.length === 0;
   }
 
@@ -2335,11 +2343,13 @@ function renderNativeStreamState() {
 
   if (els.streamPreviewEmpty) {
     els.streamPreviewEmpty.hidden = Boolean(nativeStreamState.mediaStream);
-    els.streamPreviewEmpty.textContent = nativeStreamState.sources.length
+    els.streamPreviewEmpty.textContent = nativeStreamState.selectedSourceId
       ? nativeStreamState.sourceKind === "screen"
-        ? "Display ready"
-        : nativeStreamState.sourceName || "Source ready"
-      : "Refresh sources";
+        ? "Display ready — shares the full screen"
+        : nativeStreamState.sourceName || "Game window ready"
+      : nativeStreamState.sources.length
+        ? "Choose game window or display"
+        : "Refresh sources";
   }
 
   if (els.streamReadoutSummary) {
@@ -2895,6 +2905,7 @@ if (els.streamSourceSelect) {
     );
     updateNativeStreamState({
       selectedSourceId: els.streamSourceSelect.value,
+      userSelectedSourceId: els.streamSourceSelect.value,
       sourceName: selectedSource?.name || "",
       sourceKind: selectedSource?.kind || "",
       readout: selectedSource
@@ -2913,7 +2924,7 @@ document.querySelectorAll("[data-stream-mode]").forEach((button) => {
     const nextMode = STREAM_MODES.find((entry) => entry.key === mode) || STREAM_MODES[0];
     const preferredSource = pickNativeStreamSource(
       nativeStreamState.sources,
-      nativeStreamState.selectedSourceId,
+      nativeStreamState.userSelectedSourceId,
       nextMode
     );
     updateNativeStreamState({
