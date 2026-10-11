@@ -38,3 +38,10 @@ test("recorder still uses canonical stream registration and does not modify repl
   assert.match(renderer, /queueNativeChunkUpload\(stream\.id, sequence, event\.data\)/);
   assert.match(renderer, /macOS screen sharing was cancelled/);
 });
+
+test("Streamer cannot silently start an unlinked video feed before a match is known", () => {
+  assert.match(renderer, /if \(!hasStreamCandidate\(\)\) \{\s*handleNativeStreamError\(/);
+  assert.match(renderer, /Start Watching to identify your match first/);
+  assert.match(renderer, /nativeStreamState\.status === "live" \|\| !hasWatcherKey\(\) \|\| !hasStreamCandidate\(\)/);
+  assert.match(renderer, /"Waiting for Match"/);
+});
