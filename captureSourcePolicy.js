@@ -32,11 +32,17 @@ function chooseCaptureSource(sources, { platform = "", explicitSourceId = "", pr
     return { source: null, authority: "selected_source_unavailable" };
   }
 
-  const screen = options.find((source) => source.kind === "screen");
+  const screens = options.filter((source) => source.kind === "screen");
+  // A machine with multiple displays needs an explicit choice: there is no
+  // evidence which monitor hosts CrossOver, and selecting the wrong monitor
+  // can leak unrelated desktop content.
+  const screen = screens.length === 1 ? screens[0] : null;
   // Full-screen Wine/CrossOver games can replace their native window during
   // play; a named game window is not guaranteed to survive that transition.
-  if (platform === "darwin" && preferredKind === "screen" && screen) {
-    return { source: screen, authority: "mac_fullscreen_display" };
+  if (platform === "darwin" && preferredKind === "screen") {
+    return screen
+      ? { source: screen, authority: "mac_fullscreen_display" }
+      : { source: null, authority: "display_selection_required" };
   }
   const games = options.filter((source) =>
     source.kind === "window" && isRecognizedGameWindow(source.name)
@@ -54,7 +60,8 @@ function chooseCaptureSource(sources, { platform = "", explicitSourceId = "", pr
   if (preferredKind === "screen" && screen) {
     return { source: screen, authority: "fullscreen_mode" };
   }
-  return { source: null, authority: "manual_source_required" };
+  return { source: null, authority: screens.length > 1
+    ? "display_selection_required" : "manual_source_required" };
 }
 
 const captureSourcePolicy = Object.freeze({
