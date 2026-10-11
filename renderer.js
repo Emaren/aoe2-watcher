@@ -1464,12 +1464,19 @@ async function startNativeStream(options = {}) {
   }
 
   let sources = nativeStreamState.sources;
-  if (sources.length === 0) {
+  // A macOS 15+ OS picker can work when Electron's desktopCapturer
+  // cannot enumerate a single source. Never launch the picker for
+  // unattended automatic recording (which has no user gesture).
+  const useMacPicker = isMacPlatform() && !autoStarted && sources.length === 0 &&
+    typeof navigator.mediaDevices?.getDisplayMedia === "function";
+  if (sources.length === 0 && !useMacPicker) {
     sources = await refreshNativeStreamSources();
   }
 
   const mode = getNativeStreamMode();
-  const selectedSource = pickNativeStreamSource(sources, nativeStreamState.selectedSourceId, mode);
+  const selectedSource = useMacPicker
+    ? { id: "macos-system-picker", name: "macOS selected capture", kind: "screen" }
+    : pickNativeStreamSource(sources, nativeStreamState.selectedSourceId, mode);
   if (!selectedSource) {
     handleNativeStreamError("No capture source found.", "Open AoE2HD, Steam, or CrossOver, then refresh sources.");
     return;
@@ -1507,9 +1514,16 @@ async function startNativeStream(options = {}) {
       chunkTimesliceMs: STREAM_CHUNK_TIMESLICE_MS,
     });
 
-    const capture = await navigator.mediaDevices.getUserMedia(
-      buildDesktopCaptureConstraints(selectedSource.id, mode)
-    );
+    // The native macOS picker needs a direct user-gesture request.
+    // Do not await an IPC source refresh before calling getDisplayMedia.
+    const capture = useMacPicker
+      ? await navigator.mediaDevices.getDisplayMedia({
+          audio: false,
+          video: { frameRate: mode.frameRate },
+        })
+      : await navigator.mediaDevices.getUserMedia(
+          buildDesktopCaptureConstraints(selectedSource.id, mode)
+        );
     nativeStreamState.mediaStream?.getTracks().forEach((track) => track.stop());
     if (els.streamPreview) {
       els.streamPreview.srcObject = capture;
