@@ -2897,16 +2897,10 @@ function installMacDisplayPicker() {
       callback(null);
       return;
     }
-    // For pre-15 macOS, where the experimental native picker is not
-    // available, fail closed unless Chromium can enumerate a screen.
-    desktopCapturer.getSources({
-      types: ["screen"],
-      thumbnailSize: { width: 0, height: 0 },
-      fetchWindowIcons: false,
-    }).then(
-      (sources) => callback(sources.length ? { video: sources[0] } : null),
-      () => callback(null)
-    );
+    // If macOS cannot supply its native picker, never capture an arbitrary
+    // first monitor without explicit source selection. The existing
+    // getUserMedia path still supports sources the user selected in Watcher.
+    callback(null);
   }, { useSystemPicker: true });
 }
 
