@@ -1464,6 +1464,13 @@ async function startNativeStream(options = {}) {
     handleNativeStreamError("Pair profile before streaming.", "Watcher-native streaming uses your watcher key.");
     return;
   }
+  if (!hasStreamCandidate()) {
+    handleNativeStreamError(
+      "Start Watching to identify your match first.",
+      "Video needs a replay-backed match identity. Wait until Watcher sees your live replay, then press Stream My Game. No video or WOLO was sent."
+    );
+    return;
+  }
 
   if (typeof MediaRecorder === "undefined" || !navigator.mediaDevices?.getUserMedia) {
     handleNativeStreamError("Native streaming is unavailable in this build.", "MediaRecorder or desktop capture is missing.");
@@ -2245,15 +2252,19 @@ function renderButtons() {
   els.openFolderBtn.disabled = !hasReplayFolder();
   if (els.streamMatchBtn) {
     els.streamMatchBtn.disabled =
-      nativeStreamState.busy || nativeStreamState.status === "live" || !hasWatcherKey();
+      nativeStreamState.busy || nativeStreamState.status === "live" || !hasWatcherKey() || !hasStreamCandidate();
     els.streamMatchBtn.textContent = nativeStreamState.status === "live"
       ? "Video Live"
       : nativeStreamState.busy
         ? "Starting Video…"
         : !hasWatcherKey()
           ? "Pair Watcher to Stream"
-          : "Stream My Game";
-    els.streamMatchBtn.title = "Choose a capture source and start sending video to Television WOLO.";
+          : !hasStreamCandidate()
+            ? "Waiting for Match"
+            : "Stream My Game";
+    els.streamMatchBtn.title = !hasStreamCandidate()
+      ? "Start Watching first. Video must be attached to an identified AoE2 match."
+      : "Choose a capture source and start sending video to Television WOLO.";
   }
   if (els.openBrowserStreamBtn) {
     els.openBrowserStreamBtn.disabled = !hasStreamCandidate();
