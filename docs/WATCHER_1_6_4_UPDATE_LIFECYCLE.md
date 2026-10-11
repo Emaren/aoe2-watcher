@@ -427,3 +427,35 @@ production signing credentials. Even a successful protected Mac release job
 does not prove installed legacy migration, native two-POV capture, or a safe
 public feed flip; those remain distinct certification gates.
 
+
+## Mac live-video source scan failure — October 10 field report
+
+Observed on a real macOS Watcher 1.6.4 while a replay was being monitored: the
+Video source dropdown stayed empty and the UI showed `Source scan failed.`;
+the website displayed `No registered feed on this battle`. Those symptoms
+place the first known failure **before** Video `/api/streams/start`; do not
+interpret a live replay session as a working camera.
+
+Source acquisition uses main-process `desktopCapturer.getSources` for window
+and screen listings. The app now reports the full source-error cause alongside
+the macOS `systemPreferences.getMediaAccessStatus("screen")` value. Permission
+status is a diagnostic, never a fabricated proof that video can be captured.
+A `granted` status with a failing provider remains a real capture failure.
+An empty successful source enumeration is also reported as a failure, not a
+usable source picker. These checks never pause replay monitoring or grant
+capture authorization themselves.
+
+**Field triage:** open macOS System Settings → Privacy & Security → Screen &
+System Audio Recording, enable AoE2HDBets Watcher if present, fully quit/relaunch
+Watcher, select **Sources**, prefer **Full Screen** for disappearing full-screen
+games, preview, then **Start Video**. If still failing, capture the *exact*
+readout under `Source scan failed` (the expandable diagnostic) and system
+permission status. Browser Stream on the profile page is a separate user-
+consented fallback; it must still prove a stream register and playback.
+Do not delete/re-pair Watcher, alter replay folders or run Wolo mutations.
+
+Release gate: Node contract tests cover granted/denied/not-determined/unknown
+and platform-specific diagnostics. Source discovery, real macOS permission
+switch/relaunch, frame capture, server stream registration, and public playback
+still require an installed-client canary before claiming success. A GitHub PR
+is source-only and does not modify the immutable released 1.6.4 artifacts.
