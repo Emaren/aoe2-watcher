@@ -2274,7 +2274,7 @@ function renderButtons() {
   }
   if (els.startNativeStreamBtn) {
     els.startNativeStreamBtn.disabled =
-      nativeStreamState.busy || nativeStreamState.status === "live" || !hasWatcherKey();
+      nativeStreamState.busy || nativeStreamState.status === "live" || !hasWatcherKey() || !hasStreamCandidate();
   }
   if (els.stopNativeStreamBtn) {
     els.stopNativeStreamBtn.disabled = nativeStreamState.status !== "live" && nativeStreamState.status !== "starting";
