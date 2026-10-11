@@ -10,7 +10,7 @@ const mainSource = fs.readFileSync(path.join(__dirname, "..", "main.js"), "utf8"
 const appSource = fs.readFileSync(path.join(__dirname, "..", "renderer.js"), "utf8");
 const readme = fs.readFileSync(path.join(__dirname, "..", "README.md"), "utf8");
 
-test("release candidate version and lock metadata are exact 1.6.4, never accidentally shipped as 1.6.3", () => {
+test("public source version and lock metadata are exact 1.6.4, never accidentally shipped as 1.6.3", () => {
   assert.equal(pkg.version, "1.6.4");
   assert.equal(lock.version, pkg.version);
   assert.equal(lock.packages[""].version, pkg.version);
@@ -31,7 +31,9 @@ test("old installed Windows Watcher has automatic update capability but portable
   assert.match(mainSource,/quitAndInstall\(false, true\)/);
   assert.match(appSource,/manual_required/);
   assert.match(readme,/v1\.5\.10/);
-  assert.match(readme,/not yet published/);
+  assert.match(readme,/Watcher 1\.6\.4 is the current public release\./);
+  assert.match(readme,/must be verified on a real installed v1\.5\.10 machine/);
+  assert.doesNotMatch(readme,/Watcher 1\.6\.4 is not yet published/);
 });
 test("legacy config and Replay Truth must not be reset as an upgrade shortcut", () => {
   assert.match(mainSource,/\.\.\.loadConfig\(\)/);

@@ -776,6 +776,10 @@ function buildDesktopCaptureConstraints(sourceId, mode = getNativeStreamMode()) 
 function describeCaptureStartError(error, source, mode) {
   const message = error?.message || String(error || "Capture failed.");
   const name = error?.name || "";
+  if (source?.id === "macos-system-picker" &&
+      /abort|cancel|dismiss/i.test(`${name} ${message}`)) {
+    return "macOS screen sharing was cancelled. Press Start Video to choose a screen again.";
+  }
   if (/permission|denied|notallowed/i.test(`${name} ${message}`)) {
     return "macOS blocked capture. Allow screen recording for AoE2HDBets Watcher, then reopen it.";
   }
@@ -953,7 +957,10 @@ async function refreshNativeStreamSources() {
     updateNativeStreamState({
       busy: false,
       readout: "Source scan failed.",
-      detail: error.message || String(error),
+      detail: (error.message || String(error)) +
+        (isMacPlatform()
+          ? " · You can also press Start Video to try the macOS system screen picker."
+          : ""),
     });
     void sendNativeStreamEvent("stream_error", {
       errorMessage: "Source scan failed.",
@@ -1457,6 +1464,13 @@ async function startNativeStream(options = {}) {
     handleNativeStreamError("Pair profile before streaming.", "Watcher-native streaming uses your watcher key.");
     return;
   }
+  if (!hasStreamCandidate()) {
+    handleNativeStreamError(
+      "Start Watching to identify your match first.",
+      "Video needs a replay-backed match identity. Wait until Watcher sees your live replay, then press Stream My Game. No video or WOLO was sent."
+    );
+    return;
+  }
 
   if (typeof MediaRecorder === "undefined" || !navigator.mediaDevices?.getUserMedia) {
     handleNativeStreamError("Native streaming is unavailable in this build.", "MediaRecorder or desktop capture is missing.");
@@ -1464,12 +1478,19 @@ async function startNativeStream(options = {}) {
   }
 
   let sources = nativeStreamState.sources;
-  if (sources.length === 0) {
+  // A macOS 15+ OS picker can work when Electron's desktopCapturer
+  // cannot enumerate a single source. Never launch the picker for
+  // unattended automatic recording (which has no user gesture).
+  const useMacPicker = isMacPlatform() && !autoStarted && sources.length === 0 &&
+    typeof navigator.mediaDevices?.getDisplayMedia === "function";
+  if (sources.length === 0 && !useMacPicker) {
     sources = await refreshNativeStreamSources();
   }
 
   const mode = getNativeStreamMode();
-  const selectedSource = pickNativeStreamSource(sources, nativeStreamState.selectedSourceId, mode);
+  const selectedSource = useMacPicker
+    ? { id: "macos-system-picker", name: "macOS selected capture", kind: "screen" }
+    : pickNativeStreamSource(sources, nativeStreamState.selectedSourceId, mode);
   if (!selectedSource) {
     handleNativeStreamError("No capture source found.", "Open AoE2HD, Steam, or CrossOver, then refresh sources.");
     return;
@@ -1507,9 +1528,16 @@ async function startNativeStream(options = {}) {
       chunkTimesliceMs: STREAM_CHUNK_TIMESLICE_MS,
     });
 
-    const capture = await navigator.mediaDevices.getUserMedia(
-      buildDesktopCaptureConstraints(selectedSource.id, mode)
-    );
+    // The native macOS picker needs a direct user-gesture request.
+    // Do not await an IPC source refresh before calling getDisplayMedia.
+    const capture = useMacPicker
+      ? await navigator.mediaDevices.getDisplayMedia({
+          audio: false,
+          video: { frameRate: mode.frameRate },
+        })
+      : await navigator.mediaDevices.getUserMedia(
+          buildDesktopCaptureConstraints(selectedSource.id, mode)
+        );
     nativeStreamState.mediaStream?.getTracks().forEach((track) => track.stop());
     if (els.streamPreview) {
       els.streamPreview.srcObject = capture;
@@ -2224,15 +2252,19 @@ function renderButtons() {
   els.openFolderBtn.disabled = !hasReplayFolder();
   if (els.streamMatchBtn) {
     els.streamMatchBtn.disabled =
-      nativeStreamState.busy || nativeStreamState.status === "live" || !hasWatcherKey();
+      nativeStreamState.busy || nativeStreamState.status === "live" || !hasWatcherKey() || !hasStreamCandidate();
     els.streamMatchBtn.textContent = nativeStreamState.status === "live"
       ? "Video Live"
       : nativeStreamState.busy
         ? "Starting Video…"
         : !hasWatcherKey()
           ? "Pair Watcher to Stream"
-          : "Stream My Game";
-    els.streamMatchBtn.title = "Choose a capture source and start sending video to Television WOLO.";
+          : !hasStreamCandidate()
+            ? "Waiting for Match"
+            : "Stream My Game";
+    els.streamMatchBtn.title = !hasStreamCandidate()
+      ? "Start Watching first. Video must be attached to an identified AoE2 match."
+      : "Choose a capture source and start sending video to Television WOLO.";
   }
   if (els.openBrowserStreamBtn) {
     els.openBrowserStreamBtn.disabled = !hasStreamCandidate();
@@ -2242,7 +2274,7 @@ function renderButtons() {
   }
   if (els.startNativeStreamBtn) {
     els.startNativeStreamBtn.disabled =
-      nativeStreamState.busy || nativeStreamState.status === "live" || !hasWatcherKey();
+      nativeStreamState.busy || nativeStreamState.status === "live" || !hasWatcherKey() || !hasStreamCandidate();
   }
   if (els.stopNativeStreamBtn) {
     els.stopNativeStreamBtn.disabled = nativeStreamState.status !== "live" && nativeStreamState.status !== "starting";

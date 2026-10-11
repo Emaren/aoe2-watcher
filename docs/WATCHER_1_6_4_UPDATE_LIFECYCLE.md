@@ -427,3 +427,81 @@ production signing credentials. Even a successful protected Mac release job
 does not prove installed legacy migration, native two-POV capture, or a safe
 public feed flip; those remain distinct certification gates.
 
+
+## Mac live-video source scan failure — October 10 field report
+
+Observed on a real macOS Watcher 1.6.4 while a replay was being monitored: the
+Video source dropdown stayed empty and the UI showed `Source scan failed.`;
+the website displayed `No registered feed on this battle`. Those symptoms
+place the first known failure **before** Video `/api/streams/start`; do not
+interpret a live replay session as a working camera.
+
+Source acquisition uses main-process `desktopCapturer.getSources` for window
+and screen listings. The app now reports the full source-error cause alongside
+the macOS `systemPreferences.getMediaAccessStatus("screen")` value. Permission
+status is a diagnostic, never a fabricated proof that video can be captured.
+A `granted` status with a failing provider remains a real capture failure.
+An empty successful source enumeration is also reported as a failure, not a
+usable source picker. These checks never pause replay monitoring or grant
+capture authorization themselves.
+
+**Field triage:** open macOS System Settings → Privacy & Security → Screen &
+System Audio Recording, enable AoE2HDBets Watcher if present, fully quit/relaunch
+Watcher, select **Sources**, prefer **Full Screen** for disappearing full-screen
+games, preview, then **Start Video**. If still failing, capture the *exact*
+readout under `Source scan failed` (the expandable diagnostic) and system
+permission status. Browser Stream on the profile page is a separate user-
+consented fallback; it must still prove a stream register and playback.
+Do not delete/re-pair Watcher, alter replay folders or run Wolo mutations.
+
+Release gate: Node contract tests cover granted/denied/not-determined/unknown
+and platform-specific diagnostics. Source discovery, real macOS permission
+switch/relaunch, frame capture, server stream registration, and public playback
+still require an installed-client canary before claiming success. A GitHub PR
+is source-only and does not modify the immutable released 1.6.4 artifacts.
+
+### macOS native-picker fallback (source-only, unproven on an installed client)
+
+The Oct 10 Mac field evidence is now stronger: screen-recording permission
+was visibly enabled for the Watcher, the app was fully restarted, and the log
+still recorded `Stream source scan failed: Failed to get sources.`.
+Electron can reject a `desktopCapturer.getSources()` enumeration for reasons
+other than user consent. Do not declare the app unpermissioned based only on
+that generic Chromium error.
+
+A manual `Start Video` click, when source enumeration has failed and
+`nativeStreamState.sources` is empty, requests `getDisplayMedia({video, audio:false})`.
+On macOS 15+ Electron's experimental `useSystemPicker: true` path allows
+the OS to present the user-controlled screen/window picker without a successful
+`getSources` result first. The handler is installed before the Watcher
+window boots; on systems without the native picker the display-media request is
+rejected instead of silently sharing an arbitrary first monitor. Watcher's
+explicitly chosen legacy getUserMedia screen source remains separate. The fallback requires an explicit
+user gesture; automatic video never initiates an OS picker.
+
+Cancellation or denial must stop cleanly with no stream ID, replay restart,
+camera upload, or public playback claim. A chosen capture follows the
+unchanged `/api/streams/start`, MediaRecorder, bounded chunk, heartbeat and
+terminal-stop protocol. This is a field-test candidate only and is **not**
+a modification to immutable v1.6.4 release binaries.
+
+Manual **Stream My Game** is disabled until Watcher has a replay-backed match
+candidate. No capture is initiated under an unlinked synthetic game name when
+the app is idle. This prevents the ambiguous cross-battle streams observed in
+the October 10 field test. Restart replay monitoring and let it identify the
+game before pressing the button; a matched, trusted replay still owns result
+truth independently of camera video.
+
+After building a canary, verify these milestones independently:
+1. User presses **Start Video**, sees the native chooser and selects the display.
+2. Local video preview contains actual game pixels and remains live on fullscreen transition.
+3. A `/api/streams/start` response includes a real stream ID for the match.
+4. Video chunks land, and Television WOLO binds to the same canonical battle.
+5. Playback succeeds after **Play**; closing/cancelling stops video but does not
+   interfere with `.aoe2record` monitoring or backlog.
+6. On macOS 14 or where the system picker is absent, capture fails with an
+   honest error and offers Browser Stream instead.
+
+Upstream reference: Electron
+https://www.electronjs.org/docs/latest/api/session#sessetdisplaymediarequesthandlerhandler-opts
+(and the documented experimental macOS 15+ limitation).
