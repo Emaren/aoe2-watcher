@@ -32,14 +32,18 @@ function chooseCaptureSource(sources, { platform = "", explicitSourceId = "", pr
     return { source: null, authority: "selected_source_unavailable" };
   }
 
+  const screen = options.find((source) => source.kind === "screen");
+  // Full-screen Wine/CrossOver games can replace their native window during
+  // play; a named game window is not guaranteed to survive that transition.
+  if (platform === "darwin" && preferredKind === "screen" && screen) {
+    return { source: screen, authority: "mac_fullscreen_display" };
+  }
   const games = options.filter((source) =>
     source.kind === "window" && isRecognizedGameWindow(source.name)
   );
   if (games.length > 0) {
     return { source: games[0], authority: "recognized_game_window" };
   }
-
-  const screen = options.find((source) => source.kind === "screen");
   // When macOS only exposes Wine/CrossOver wrapper windows, displaying the
   // actual game frame requires explicit full-display capture. This source is
   // chosen for an explicit "Stream My Game" click or an already opted-in
