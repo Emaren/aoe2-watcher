@@ -505,3 +505,22 @@ After building a canary, verify these milestones independently:
 Upstream reference: Electron
 https://www.electronjs.org/docs/latest/api/session#sessetdisplaymediarequesthandlerhandler-opts
 (and the documented experimental macOS 15+ limitation).
+
+### Runtime telemetry admission (October 11 Mac dev canary)
+
+The installed/canary Watcher may emit local recovery events such as
+`settlement-state-restored` and `replay-scan-complete`. Those **do not
+belong** to the server's accepted `/api/watcher/events` vocabulary
+(`lib/watcherTelemetry.ts`, certified app source `ea8055c427`).
+Previously, a generic snake-case fallback sent those events anyway and
+the live API rejected them with HTTP 400, creating misleading output.
+
+`runtimeTelemetryContract.js` now gates **only generic runtime-to-remote
+fallback events** against a finite approved server event vocabulary. All
+original diagnostic runtime events remain in the on-device journal/UI;
+explicit authenticated replay, stream, updater, auth and heartbeat
+telemetry remain unchanged. A new runtime event is local-only until its
+remote admission is intentionally agreed with the server and regression
+tested. No replay state, capture, auth key or match-binding changes.
+The source change is a separate **stacked development candidate**; it is
+not an amendment to signed public v1.6.4 artifacts.
