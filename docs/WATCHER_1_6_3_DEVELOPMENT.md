@@ -1,24 +1,26 @@
 ---
 id: "aoe2war.aoe2-watcher.docs-watcher-1-6-3-development"
 title: "Watcher 1.6.3 Development"
-type: "working"
-status: "active"
+type: "historical"
+status: "historical"
 owner: "aoe2war-watcher"
 systems: ["aoe2-watcher","app-prodn"]
 audience: ["developers","operators","ai-agents"]
 source_of_truth: "git"
 authority: "watcher-1.6.3-development-plan"
 reviewed_at: "2026-09-30"
-review_interval_days: 14
+review_interval_days: 0
 sensitivity: "internal"
 ---
+
+> **Historical release evidence, reviewed for lifecycle classification on 2026-10-13.** This is a sealed retrospective for Watcher 1.6.3, not the current active engineering plan. GitHub's latest publicly published Watcher release was **v1.6.4** as of that review (tag `a223ad41c1a877e30e6f532c915aa40499d2c746`, published 2026-10-10). The public release listing alone does not certify any downstream AoE2WAR production download promotion or actual client adoption. Preserve the original version-specific test counts, source hashes and measurements as point-in-time evidence; new development and field defects require a new tracked source-bound report.
 
 # Watcher 1.6.3 Development
 
 ## Branch contract
 
-Watcher 1.6.3 is a long-running development lane. Improvements accumulate on
-feature/watcher-1.6.3-development while the public release remains 1.6.2.
+At the start of this historical development lane, Watcher 1.6.3 was under development on
+feature/watcher-1.6.3-development while the public release was 1.6.2.
 
 Do not advance package version, updater metadata, website download metadata, or
 public release claims merely because this branch exists. Release promotion
@@ -321,7 +323,7 @@ from the candidate list when measurement shows they do not pay for their
 complexity.
 ## Public release checkpoint
 
-**Watcher 1.6.3 is the current public release as of 2026-10-02.**
+**Watcher 1.6.3 was the current public release as of 2026-10-02.**
 
 The candidate scope froze before platform builds and no runtime behavior changed
 after the frozen runtime commit. The release provenance is deliberately split
