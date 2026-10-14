@@ -34,21 +34,22 @@ This page is generated from the validated front matter in this repository. Cross
 ### Types
 
 - `generated`: 1
+- `historical`: 2
 - `reference`: 1
-- `working`: 2
 
 ### Lifecycle
 
-- `active`: 3
+- `active`: 1
 - `generated`: 1
+- `historical`: 2
 
 ## Documents
 
 | Document | Type | Status | Authority |
 | --- | --- | --- | --- |
 | [aoe2-watcher](../README.md) | `reference` | `active` | `repository-entrypoint` |
-| [Watcher 1.6.2 Engineering Audit](WATCHER_1_6_2_AUDIT.md) | `working` | `active` | `watcher-1.6.2-engineering-plan` |
-| [Watcher 1.6.3 Development](WATCHER_1_6_3_DEVELOPMENT.md) | `working` | `active` | `watcher-1.6.3-development-plan` |
+| [Watcher 1.6.2 Engineering Audit](WATCHER_1_6_2_AUDIT.md) | `historical` | `historical` | `watcher-1.6.2-engineering-plan` |
+| [Watcher 1.6.3 Development](WATCHER_1_6_3_DEVELOPMENT.md) | `historical` | `historical` | `watcher-1.6.3-development-plan` |
 
 ## Canonical commands
 
