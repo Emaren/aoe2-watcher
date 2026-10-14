@@ -11,9 +11,9 @@
       "owner": "aoe2war-watcher",
       "path": "README.md",
       "review_interval_days": 60,
-      "reviewed_at": "2026-09-29",
+      "reviewed_at": "2026-10-13",
       "sensitivity": "internal",
-      "sha256": "e3ae5f13bc1871bb274195f3d97a64a00390184d9838ea4e6f561bfc788852ec",
+      "sha256": "781c27f10387b7bc853a3406ec9e99e8603a0142c358e00285cfb58b632fe70f",
       "source_of_truth": "git",
       "status": "active",
       "systems": [
@@ -36,7 +36,7 @@
       "review_interval_days": 0,
       "reviewed_at": "2026-07-26",
       "sensitivity": "internal",
-      "sha256": "db434e8f3a295b680d840a0c7a3b7b902a3d4baeabfd481fefe4ab1d71a683ec",
+      "sha256": "61ab883855f97d889cf3af102a8882b7e50694d0e9beb073c2f183783cac4eb7",
       "source_of_truth": "generated",
       "status": "generated",
       "systems": [
@@ -55,18 +55,18 @@
       "id": "aoe2war.aoe2-watcher.docs-watcher-1-6-2-audit",
       "owner": "aoe2war-watcher",
       "path": "docs/WATCHER_1_6_2_AUDIT.md",
-      "review_interval_days": 14,
-      "reviewed_at": "2026-09-29",
+      "review_interval_days": 0,
+      "reviewed_at": "2026-10-13",
       "sensitivity": "internal",
-      "sha256": "e90b0a07d96c74c92746212561cba2731036c9af20d926751fc3965e31f878e1",
+      "sha256": "e7b36df5b88b98035919edf726d0bc4a25f9f37d205a5d9395a944d4d8c07aaf",
       "source_of_truth": "git",
-      "status": "active",
+      "status": "historical",
       "systems": [
         "aoe2-watcher",
         "api-prodn"
       ],
       "title": "Watcher 1.6.2 Engineering Audit",
-      "type": "working"
+      "type": "historical"
     },
     {
       "audience": [
@@ -78,18 +78,18 @@
       "id": "aoe2war.aoe2-watcher.docs-watcher-1-6-3-development",
       "owner": "aoe2war-watcher",
       "path": "docs/WATCHER_1_6_3_DEVELOPMENT.md",
-      "review_interval_days": 14,
-      "reviewed_at": "2026-09-30",
+      "review_interval_days": 0,
+      "reviewed_at": "2026-10-13",
       "sensitivity": "internal",
-      "sha256": "67877ad51874771123e09439fb4095b16c5365b0c77217abbafb1db4f3d4837a",
+      "sha256": "f19584b0d97130c6a9919ef3f84dbc9c61177b17b68a35999eaab974dc83285f",
       "source_of_truth": "git",
-      "status": "active",
+      "status": "historical",
       "systems": [
         "aoe2-watcher",
         "app-prodn"
       ],
       "title": "Watcher 1.6.3 Development",
-      "type": "working"
+      "type": "historical"
     }
   ],
   "generated_at": "2026-08-04T02:09:37Z",
