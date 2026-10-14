@@ -19,7 +19,7 @@ Repository ID: `aoe2-watcher`
 
 Documentation owner: `aoe2war-watcher`
 
-Implementation baseline: `feature/watcher-1.6.3-development` at `a806975f7c68011e3fd911d6cb9d57eb0527c263`
+Implementation baseline: `docs/retire-watcher-1-6-x-expired-audits-20261013` at `4fbcf8e7162242d1b7a7ed20031e2bb47f9502ea`
 
 The implementation baseline identifies the code commit described by this documentation. Documentation-only commits may follow it without creating a self-referential registry hash.
 
