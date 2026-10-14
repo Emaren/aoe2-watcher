@@ -8,7 +8,7 @@ systems: ["aoe2-watcher","app-prodn"]
 audience: ["developers","operators","ai-agents"]
 source_of_truth: "git"
 authority: "watcher-1.6.3-development-plan"
-reviewed_at: "2026-09-30"
+reviewed_at: "2026-10-13"
 review_interval_days: 0
 sensitivity: "internal"
 ---
