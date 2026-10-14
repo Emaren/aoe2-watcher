@@ -8,7 +8,7 @@ systems: ["aoe2-watcher","api-prodn"]
 audience: ["developers","operators","ai-agents"]
 source_of_truth: "git"
 authority: "repository-entrypoint"
-reviewed_at: "2026-09-29"
+reviewed_at: "2026-10-13"
 review_interval_days: 60
 sensitivity: "internal"
 ---
