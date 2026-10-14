@@ -1,17 +1,19 @@
 ---
 id: "aoe2war.aoe2-watcher.docs-watcher-1-6-2-audit"
 title: "Watcher 1.6.2 Engineering Audit"
-type: "working"
-status: "active"
+type: "historical"
+status: "historical"
 owner: "aoe2war-watcher"
 systems: ["aoe2-watcher","api-prodn"]
 audience: ["developers","operators","ai-agents"]
 source_of_truth: "git"
 authority: "watcher-1.6.2-engineering-plan"
-reviewed_at: "2026-09-29"
-review_interval_days: 14
+reviewed_at: "2026-10-13"
+review_interval_days: 0
 sensitivity: "internal"
 ---
+
+> **Historical release evidence, reviewed for lifecycle classification on 2026-10-13.** This is a sealed retrospective for Watcher 1.6.2, not the current active engineering plan. GitHub's latest publicly published Watcher release was **v1.6.4** as of that review (tag `a223ad41c1a877e30e6f532c915aa40499d2c746`, published 2026-10-10). The public release listing alone does not certify any downstream AoE2WAR production download promotion or actual client adoption. Preserve the original version-specific test counts, source hashes and measurements as point-in-time evidence; new development and field defects require a new tracked source-bound report.
 
 # Watcher 1.6.2 Engineering Audit
 
@@ -22,7 +24,7 @@ fallbacks and diagnostics while making ordinary live watching difficult for a us
 to notice: low CPU, stable memory, little disk churn, bounded network activity,
 safe self-recovery, and upgrades that do not interrupt a match.
 
-1.6.2 is the current public release. It completed the source, package,
+Watcher 1.6.2 was the public release at this audit's original checkpoint; it has since been superseded by later versions. It completed the source, package,
 platform-signing, cryptographic certification, owner-publication and public-inventory
 verification gates before AoE2WAR downstream metadata promotion. Its resource
 instrumentation is also the vehicle for collecting real-machine field evidence after

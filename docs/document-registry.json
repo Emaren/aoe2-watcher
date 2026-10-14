@@ -11,9 +11,9 @@
       "owner": "aoe2war-watcher",
       "path": "README.md",
       "review_interval_days": 60,
-      "reviewed_at": "2026-09-29",
+      "reviewed_at": "2026-10-13",
       "sensitivity": "internal",
-      "sha256": "e3ae5f13bc1871bb274195f3d97a64a00390184d9838ea4e6f561bfc788852ec",
+      "sha256": "4d80a80bc8510135cffc75e167fb57e76f39c7f31072755e3683898ac3fa3f58",
       "source_of_truth": "git",
       "status": "active",
       "systems": [
@@ -36,7 +36,7 @@
       "review_interval_days": 0,
       "reviewed_at": "2026-07-26",
       "sensitivity": "internal",
-      "sha256": "db434e8f3a295b680d840a0c7a3b7b902a3d4baeabfd481fefe4ab1d71a683ec",
+      "sha256": "c2153ce094e691ba9bf4a2ba0fcf2c59a3d59075ee21671ee6b3ebbc873f9241",
       "source_of_truth": "generated",
       "status": "generated",
       "systems": [
@@ -55,18 +55,18 @@
       "id": "aoe2war.aoe2-watcher.docs-watcher-1-6-2-audit",
       "owner": "aoe2war-watcher",
       "path": "docs/WATCHER_1_6_2_AUDIT.md",
-      "review_interval_days": 14,
-      "reviewed_at": "2026-09-29",
+      "review_interval_days": 0,
+      "reviewed_at": "2026-10-13",
       "sensitivity": "internal",
-      "sha256": "e90b0a07d96c74c92746212561cba2731036c9af20d926751fc3965e31f878e1",
+      "sha256": "e7b36df5b88b98035919edf726d0bc4a25f9f37d205a5d9395a944d4d8c07aaf",
       "source_of_truth": "git",
-      "status": "active",
+      "status": "historical",
       "systems": [
         "aoe2-watcher",
         "api-prodn"
       ],
       "title": "Watcher 1.6.2 Engineering Audit",
-      "type": "working"
+      "type": "historical"
     },
     {
       "audience": [
@@ -78,24 +78,24 @@
       "id": "aoe2war.aoe2-watcher.docs-watcher-1-6-3-development",
       "owner": "aoe2war-watcher",
       "path": "docs/WATCHER_1_6_3_DEVELOPMENT.md",
-      "review_interval_days": 14,
-      "reviewed_at": "2026-09-30",
+      "review_interval_days": 0,
+      "reviewed_at": "2026-10-13",
       "sensitivity": "internal",
-      "sha256": "67877ad51874771123e09439fb4095b16c5365b0c77217abbafb1db4f3d4837a",
+      "sha256": "f19584b0d97130c6a9919ef3f84dbc9c61177b17b68a35999eaab974dc83285f",
       "source_of_truth": "git",
-      "status": "active",
+      "status": "historical",
       "systems": [
         "aoe2-watcher",
         "app-prodn"
       ],
       "title": "Watcher 1.6.3 Development",
-      "type": "working"
+      "type": "historical"
     }
   ],
   "generated_at": "2026-08-04T02:09:37Z",
   "implementation_baseline": {
-    "branch": "feature/watcher-1.6.3-development",
-    "commit": "a806975f7c68011e3fd911d6cb9d57eb0527c263"
+    "branch": "docs/retire-watcher-1-6-x-expired-audits-20261013",
+    "commit": "4fbcf8e7162242d1b7a7ed20031e2bb47f9502ea"
   },
   "owner": "aoe2war-watcher",
   "repo": "aoe2-watcher",

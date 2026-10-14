@@ -19,7 +19,7 @@ Repository ID: `aoe2-watcher`
 
 Documentation owner: `aoe2war-watcher`
 
-Implementation baseline: `feature/watcher-1.6.3-development` at `a806975f7c68011e3fd911d6cb9d57eb0527c263`
+Implementation baseline: `docs/retire-watcher-1-6-x-expired-audits-20261013` at `4fbcf8e7162242d1b7a7ed20031e2bb47f9502ea`
 
 The implementation baseline identifies the code commit described by this documentation. Documentation-only commits may follow it without creating a self-referential registry hash.
 
@@ -34,21 +34,22 @@ This page is generated from the validated front matter in this repository. Cross
 ### Types
 
 - `generated`: 1
+- `historical`: 2
 - `reference`: 1
-- `working`: 2
 
 ### Lifecycle
 
-- `active`: 3
+- `active`: 1
 - `generated`: 1
+- `historical`: 2
 
 ## Documents
 
 | Document | Type | Status | Authority |
 | --- | --- | --- | --- |
 | [aoe2-watcher](../README.md) | `reference` | `active` | `repository-entrypoint` |
-| [Watcher 1.6.2 Engineering Audit](WATCHER_1_6_2_AUDIT.md) | `working` | `active` | `watcher-1.6.2-engineering-plan` |
-| [Watcher 1.6.3 Development](WATCHER_1_6_3_DEVELOPMENT.md) | `working` | `active` | `watcher-1.6.3-development-plan` |
+| [Watcher 1.6.2 Engineering Audit](WATCHER_1_6_2_AUDIT.md) | `historical` | `historical` | `watcher-1.6.2-engineering-plan` |
+| [Watcher 1.6.3 Development](WATCHER_1_6_3_DEVELOPMENT.md) | `historical` | `historical` | `watcher-1.6.3-development-plan` |
 
 ## Canonical commands
 

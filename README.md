@@ -8,16 +8,49 @@ systems: ["aoe2-watcher","api-prodn"]
 audience: ["developers","operators","ai-agents"]
 source_of_truth: "git"
 authority: "repository-entrypoint"
-reviewed_at: "2026-09-29"
+reviewed_at: "2026-10-13"
 review_interval_days: 60
 sensitivity: "internal"
 ---
 
 # aoe2-watcher
 
-## v1.6.3 public release
+## Public release authority (reviewed 2026-10-13)
 
-Watcher 1.6.3 is the current public release. The five-artifact publication gate completed for Windows Installer, Windows Portable, macOS DMG, macOS Direct ZIP, and Linux AppImage. The immutable `v1.6.3` release and its updater metadata were verified before publication.
+The latest publicly published GitHub release is **v1.6.4**, published
+2026-10-10 22:37:46 UTC at tag
+`a223ad41c1a877e30e6f532c915aa40499d2c746`.
+GitHub lists twelve files including the Windows installer/portable, macOS
+DMG/direct ZIP, Linux AppImage, and SHA-256 release inventory. The release
+description explicitly states the production promotion is a separate step:
+the public GitHub listing alone is **not** proof that aoe2war.com has promoted
+those bytes, or that users upgraded. Validate production download metadata,
+signed inventory and client telemetry independently.
+
+The 1.6.2 and 1.6.3 audits are now historical release evidence, with no
+rolling active-development review deadline. Do not retroactively reinterpret
+their measurements, SHA-256 proof, winner-finality semantics or field dates.
+For new development, create a new source-bound active plan and dated review
+instead of reopening a superseded version-specific plan.
+
+## Development dependency security checkpoint (2026-10-13)
+
+The frozen Watcher CI reported GHSA-ch52-4w7c-c8xp against
+`http-cache-semantics@4.2.0`, a **development-only transitive dependency** in
+the Electron builder dependency graph. The reviewed lockfile now pins a single
+verified-integrity `4.3.0` package without changing the Electron builder,
+Watcher source, binary release, or runtime cache design. This is outside the
+advisory's declared affected range (through 4.2.0) and must pass the existing
+unweakened `npm audit --audit-level=high` and full CI. It is *not* a blanket
+security guarantee: external cache-policy research questions whether upstream
+4.3.0 fully addresses all `max-stale` counterexamples. Any true runtime
+shared-cache use would require additional threat-model evaluation. The Watcher
+does not gain a server-side shared HTTP cache from this development dependency.
+
+
+## v1.6.3 public release (historical)
+
+Watcher 1.6.3 was a previous public release. The five-artifact publication gate completed for Windows Installer, Windows Portable, macOS DMG, macOS Direct ZIP, and Linux AppImage. The immutable `v1.6.3` release and its updater metadata were verified before publication.
 
 The release prevents duplicate monitor ownership for one replay, backs
 established live uploads from the initial fast cadence to a one-minute cadence,
