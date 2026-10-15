@@ -413,3 +413,89 @@ test(
     );
   }
 );
+
+
+test(
+  "coalescer never retains unbounded unique replays across a long session",
+  () => {
+    let now = 1000;
+    const coalescer = createRuntimeEventCoalescer({
+      now: () => now,
+    });
+    const eventFor = (i) => ({
+      type: "replay-detected-ignored",
+      reason: "monitoring",
+      filePath: `/replays/replay-${i}.aoe2record`,
+    });
+
+    for (let i = 0; i < 5000; i += 1) {
+      assert.ok(coalescer.coalesce(eventFor(i)));
+      assert.ok(coalescer.retainedKeyCount() <= 512);
+      now += 1;
+    }
+
+    assert.equal(coalescer.retainedKeyCount(), 512);
+    // A key evicted long ago should emit the next diagnostic, never suppress.
+    assert.ok(coalescer.coalesce(eventFor(0)));
+    assert.equal(coalescer.retainedKeyCount(), 512);
+    assert.equal(coalescer.coalesce(eventFor(0)), null);
+  }
+);
+
+test(
+  "LRU protection keeps hot replay suppression, bounded oldest eviction and stop reset",
+  () => {
+    let now = 1000;
+    const coalescer = createRuntimeEventCoalescer({
+      now: () => now,
+      maxKeys: 2,
+      windowMs: 30000,
+    });
+    const event = (name) => ({
+      type: "replay-detected-ignored",
+      reason: "monitoring",
+      fileName: name,
+    });
+    assert.ok(coalescer.coalesce(event("A")));
+    assert.ok(coalescer.coalesce(event("B")));
+    assert.equal(coalescer.coalesce(event("A")), null); // A becomes most recent
+    assert.ok(coalescer.coalesce(event("C"))); // evicts B, not A
+    assert.equal(coalescer.retainedKeyCount(), 2);
+    assert.equal(coalescer.coalesce(event("A")), null);
+    assert.deepEqual(coalescer.coalesce(event("B")), {
+      ...event("B"),
+      coalescedCount: 1,
+      coalescedWindowMs: 30000,
+    });
+    assert.equal(coalescer.retainedKeyCount(), 2);
+    const stop = { type: "monitor-stop", fileName: "B" };
+    assert.deepEqual(coalescer.coalesce(stop), stop);
+    assert.deepEqual(coalescer.coalesce(event("B")), {
+      ...event("B"),
+      coalescedCount: 1,
+      coalescedWindowMs: 30000,
+    });
+  }
+);
+
+test(
+  "invalid coalescer retention cap clamps safely without changing transition events",
+  () => {
+    for (const maxKeys of [0, -10, NaN]) {
+      const coalescer = createRuntimeEventCoalescer({ maxKeys });
+      for (let i = 0; i < 20; i += 1) {
+        assert.ok(coalescer.coalesce({
+          type: "replay-detected-ignored",
+          reason: "monitoring",
+          fileName: `file-${i}`,
+        }));
+      }
+      assert.ok(coalescer.retainedKeyCount() <= 512);
+      const finality = {
+        type: "final-candidate-ready",
+        fileName: "file-19",
+      };
+      assert.equal(coalescer.coalesce(finality), finality);
+    }
+  }
+);

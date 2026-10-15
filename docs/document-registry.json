@@ -13,7 +13,7 @@
       "review_interval_days": 60,
       "reviewed_at": "2026-10-13",
       "sensitivity": "internal",
-      "sha256": "4d80a80bc8510135cffc75e167fb57e76f39c7f31072755e3683898ac3fa3f58",
+      "sha256": "12a433cc26e632b02b732923b32376e3e571395f270f119addade6c791f8ba7f",
       "source_of_truth": "git",
       "status": "active",
       "systems": [
@@ -36,7 +36,7 @@
       "review_interval_days": 0,
       "reviewed_at": "2026-07-26",
       "sensitivity": "internal",
-      "sha256": "c2153ce094e691ba9bf4a2ba0fcf2c59a3d59075ee21671ee6b3ebbc873f9241",
+      "sha256": "87da7e3ee999b4c3207e6f4cd72a6702bd61bcd77f53e147e9e2feb28cb3db29",
       "source_of_truth": "generated",
       "status": "generated",
       "systems": [
@@ -94,8 +94,8 @@
   ],
   "generated_at": "2026-08-04T02:09:37Z",
   "implementation_baseline": {
-    "branch": "docs/retire-watcher-1-6-x-expired-audits-20261013",
-    "commit": "4fbcf8e7162242d1b7a7ed20031e2bb47f9502ea"
+    "branch": "fix/bounded-runtime-event-coalescer-20261015",
+    "commit": "166c2def9150d2e4fea15b6bce296a6b42743559"
   },
   "owner": "aoe2war-watcher",
   "repo": "aoe2-watcher",

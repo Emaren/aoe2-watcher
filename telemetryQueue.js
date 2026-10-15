@@ -4,6 +4,7 @@ const path = require("path");
 const DEFAULT_MAX_ENTRIES = 1000;
 const DEFAULT_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 const DEFAULT_RUNTIME_EVENT_COALESCE_WINDOW_MS = 30 * 1000;
+const DEFAULT_RUNTIME_EVENT_COALESCE_MAX_KEYS = 512;
 
 function runtimeEventKey(event) {
   const replayIdentity =
@@ -20,6 +21,7 @@ function runtimeEventKey(event) {
 function createRuntimeEventCoalescer({
   windowMs =
     DEFAULT_RUNTIME_EVENT_COALESCE_WINDOW_MS,
+  maxKeys = DEFAULT_RUNTIME_EVENT_COALESCE_MAX_KEYS,
   now = Date.now,
 } = {}) {
   const effectiveWindowMs =
@@ -27,7 +29,25 @@ function createRuntimeEventCoalescer({
     windowMs > 0
       ? windowMs
       : DEFAULT_RUNTIME_EVENT_COALESCE_WINDOW_MS;
+  // Every distinct monitored replay used to stay in this Map forever unless
+  // its own monitor-stop arrived. A long-lived Watcher must never accumulate
+  // unbounded unique filename keys. Eviction can only cause an extra harmless
+  // diagnostic event; it never hides a finality/upload transition.
+  const effectiveMaxKeys =
+    Number.isFinite(maxKeys)
+      ? Math.max(1, Math.min(4096, Math.floor(maxKeys)))
+      : DEFAULT_RUNTIME_EVENT_COALESCE_MAX_KEYS;
   const observed = new Map();
+
+  function retainMostRecent(key, record) {
+    // Map iteration is insertion ordered; deleting and re-inserting moves
+    // active keys to the back without a separate timer or scan.
+    observed.delete(key);
+    while (observed.size >= effectiveMaxKeys) {
+      observed.delete(observed.keys().next().value);
+    }
+    observed.set(key, record);
+  }
 
   function clearReplay(event) {
     const replayIdentity =
@@ -46,6 +66,9 @@ function createRuntimeEventCoalescer({
   }
 
   return {
+    retainedKeyCount() {
+      return observed.size;
+    },
     coalesce(event) {
       if (
         event?.type === "monitor-stop"
@@ -77,13 +100,14 @@ function createRuntimeEventCoalescer({
           effectiveWindowMs
       ) {
         prior.suppressedCount += 1;
+        retainMostRecent(key, prior);
         return null;
       }
 
       const coalescedCount =
         (prior?.suppressedCount || 0) + 1;
 
-      observed.set(key, {
+      retainMostRecent(key, {
         emittedAt: observedAt,
         suppressedCount: 0,
       });
@@ -310,6 +334,7 @@ function createDurableTelemetryQueue({
 }
 
 module.exports = {
+  DEFAULT_RUNTIME_EVENT_COALESCE_MAX_KEYS,
   createDurableTelemetryQueue,
   createRuntimeEventCoalescer,
 };
