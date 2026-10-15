@@ -19,7 +19,7 @@ Repository ID: `aoe2-watcher`
 
 Documentation owner: `aoe2war-watcher`
 
-Implementation baseline: `docs/retire-watcher-1-6-x-expired-audits-20261013` at `4fbcf8e7162242d1b7a7ed20031e2bb47f9502ea`
+Implementation baseline: `fix/bounded-runtime-event-coalescer-20261015` at `166c2def9150d2e4fea15b6bce296a6b42743559`
 
 The implementation baseline identifies the code commit described by this documentation. Documentation-only commits may follow it without creating a self-referential registry hash.
 
