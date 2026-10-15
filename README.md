@@ -15,6 +15,33 @@ sensitivity: "internal"
 
 # aoe2-watcher
 
+## 2026-10-15 — Runtime diagnostic coalescer memory bound (candidate source)
+
+The Watcher is intended to create barely measurable background CPU/memory
+load, especially when no replay is being uploaded. Its runtime event
+coalescer already collapses repetitive `replay-detected-ignored/monitoring`
+diagnostics into 30-second windows but previously retained every distinct
+replay filename indefinitely unless that exact identity emitted
+`monitor-stop`. On a long-running process this could grow in memory without
+a release-specific or timed bound.
+
+The source candidate now retains at most **512 recent distinct diagnostic
+keys** (configurable for tests, hard capped), using insertion-ordered
+LRU-style eviction on new/active keys. Eviction can cause an *extra* diagnostic
+event on a previously forgotten replay; it cannot suppress or transform
+upload, winner/finality, monitoring stop or financial messages. It adds
+**no new polling timers, file scans, durable I/O or network egress**.
+The durable telemetry queue remains independent and preserves its
+atomic file/stop-retry semantics. Dedicated tests exercise 5,000 unique
+replays, small-cap hot-key retention, stop reset, cap clamps, and original
+coalescing windows.
+
+This is a code-source change, **not** a published signed Watcher release:
+public `v1.6.4` artifact authority, client update metadata, and the active
+production download routes must be certified independently before claiming
+user adoption or measured memory reduction. Do not infer wattage savings from
+synthetic tests; field power and idle wakeups require release-bound telemetry.
+
 ## Public release authority (reviewed 2026-10-13)
 
 The latest publicly published GitHub release is **v1.6.4**, published
