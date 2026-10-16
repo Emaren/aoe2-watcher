@@ -13,7 +13,7 @@
       "review_interval_days": 60,
       "reviewed_at": "2026-10-10",
       "sensitivity": "internal",
-      "sha256": "a47684f3bd2c78227361d36227672dc97669888a3cdc2ae69db3b38d2a1a431c",
+      "sha256": "68cac654828cc03c81b1f44b9fac527721d15dbf421d0ba95a0616b54f68d3b7",
       "source_of_truth": "git",
       "status": "active",
       "systems": [
@@ -36,7 +36,7 @@
       "review_interval_days": 0,
       "reviewed_at": "2026-07-26",
       "sensitivity": "internal",
-      "sha256": "46f44d8d8ae7847847edb94be5dad2aff4896b6091c70d53de7dc242f0e4cf13",
+      "sha256": "51a2f5c2b374cb0d855a58da46c751df0d6b364a0c725c197e4c8cb47a7a112e",
       "source_of_truth": "generated",
       "status": "generated",
       "systems": [
@@ -116,8 +116,8 @@
   ],
   "generated_at": "2026-08-04T02:09:37Z",
   "implementation_baseline": {
-    "branch": "feature/watcher-1.6.4-video-test-ux-20261010",
-    "commit": "b4318ac0efb219bc2512daff7cca2514fe11c203"
+    "branch": "feature/watcher-1.6.5-development",
+    "commit": "56cbea5e38f585547e0f041798c9f05a600ab089"
   },
   "owner": "aoe2war-watcher",
   "repo": "aoe2-watcher",
