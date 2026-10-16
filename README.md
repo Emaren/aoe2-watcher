@@ -15,6 +15,41 @@ sensitivity: "internal"
 
 # aoe2-watcher
 
+## v1.6.5 rolling development: archived folder files cannot grant current ELO
+
+The canonical next-version integration branch is
+`feature/watcher-1.6.5-development`. It is source-only, NOT an installed
+1.6.5 binary or updater feed. Package metadata intentionally stays at
+the last certified 1.6.4 generation until the complete cross-platform
+release gate authorizes a new version.
+
+On October 16, 2026, the site identified actual archived Zodiac replays
+with filenames dating from August 2025 to March 2026 but ingested with
+October 2026 game timestamps as if newly played. API temp-file `mtime`
+and the ordinary folder-monitor's default `live_monitor` provenance
+combined to give historical Steam HD-header rating values false current
+authority. Six original file mtime values independently corroborated the
+historical source dates. See app #630 and API replay-chronology PR #50.
+
+The ordinary folder monitor now classifies replay filename source clocks
+and original file mtime separately against the current scan time.
+A demonstrably old replay gets signed `historical_import` on its final
+upload; it does not send intermediate live-checkpoint uploads or enter
+live account-rating / settlement state. This uses a generous 48-hour
+source-local timezone margin; genuinely new games preserve live-monitor
+semantics and priority. The separate explicit batch importer already
+signs `historical_import` and remains unchanged. Undated files with
+uncorroborated age are **not proven current** by this classifier; the
+server must enforce its own fail-closed clock and provenance contracts.
+
+Packaging includes `replayProvenancePolicy.js`; Node syntax lint and
+test contracts exercise all six incident examples, a new match,
+old-file copying, undated old-mtime uploads and impossible future dates.
+The source requires CI, real device testing and signed release provenance
+before any user-facing build. The diverged 1.6.4 branches #29–#35 are
+tracked for ancestry reconciliation in Watcher issue #40; do not
+delete unmerged work or pretend the new branch is merge-ready.
+
 ## v1.6.4 public release
 
 Watcher 1.6.4 is the current public release. Its five principal download artifacts are SHA-256 certified and published: signed and timestamped Windows installer and portable builds, unsigned manual macOS DMG and direct ZIP downloads, and a Linux AppImage. The production download vault contains the exact certified artifacts. Automatic macOS updating is not claimed for these unsigned builds.
