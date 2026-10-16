@@ -5,6 +5,7 @@ const crypto = require("crypto");
 const { execFileSync } = require("child_process");
 const axios = require("axios");
 const FormData = require("form-data");
+const { classifyMonitoredReplayProvenance } = require("./replayProvenancePolicy");
 const {
   DEFAULT_FINAL_SETTLE_POLL_MS,
   DEFAULT_IDLE_RECOVERY_SCAN_MS,
@@ -3119,6 +3120,13 @@ async function monitorReplayFile(filePath, runtimeConfig, generation = null) {
         return;
       }
 
+      // Folder watching is not proof a game is new. Historical files
+      // discovered here must not receive a signed live-monitor rating clock.
+      const watchedProvenance = classifyMonitoredReplayProvenance({
+        fileName: path.basename(filePath),
+        fileMtimeMs: parseFingerprintParts(fingerprint).mtimeMs,
+        nowMs: now,
+      });
       const changed = fingerprint !== entry.lastObservedFingerprint;
 
       if (changed) {
@@ -3141,7 +3149,8 @@ async function monitorReplayFile(filePath, runtimeConfig, generation = null) {
           fingerprint !== entry.lastLiveUploadedFingerprint &&
           (lastLiveAnchorAt === 0 || now - lastLiveAnchorAt >= liveCooldownMs);
 
-        if (!entry.lastFinalUploadedFingerprint && readyForLiveUpload) {
+        if (!entry.lastFinalUploadedFingerprint && readyForLiveUpload &&
+            watchedProvenance.provenance === WATCHER_PROVENANCE_LIVE_MONITOR) {
           const nextIteration = entry.liveIteration + 1;
           entry.lastLiveAttemptAt = now;
 
@@ -3149,11 +3158,18 @@ async function monitorReplayFile(filePath, runtimeConfig, generation = null) {
             fingerprint,
             parseIteration: nextIteration,
             isFinal: false,
+            provenance: watchedProvenance.provenance,
           });
         } else if (!entry.lastFinalUploadedFingerprint) {
-          log(
-            `Live upload cooldown still active for ${path.basename(filePath)}. Waiting for next eligible pass.`
-          );
+          if (watchedProvenance.provenance === WATCHER_PROVENANCE_HISTORICAL_IMPORT) {
+            log(
+              `Keeping historical replay ${path.basename(filePath)} out of the live rating channel (${watchedProvenance.reason}).`
+            );
+          } else {
+            log(
+              `Live upload cooldown still active for ${path.basename(filePath)}. Waiting for next eligible pass.`
+            );
+          }
         }
       } else if (
         fingerprint !== entry.lastFinalUploadedFingerprint &&
@@ -3214,6 +3230,7 @@ async function monitorReplayFile(filePath, runtimeConfig, generation = null) {
           fingerprint: readiness.fingerprint || fingerprint,
           parseIteration: nextIteration,
           isFinal: true,
+          provenance: watchedProvenance.provenance,
         });
 
         if (stored.ok && stored.finalStored && !stored.changedDuringUpload) {
