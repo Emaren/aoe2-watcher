@@ -28,6 +28,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Fail closed if pinned campaign differs from current package authority
+        run: node scripts/validate-publish-authority.cjs
+
       - name: Verify certified workflow runs
         env:
           GH_TOKEN: ${{ github.token }}

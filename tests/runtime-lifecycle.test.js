@@ -13,7 +13,8 @@ test("background watcher is independent from dashboard lifetime", () => {
   assert.match(source, /function initializeWatcherRuntime\(\)/);
   assert.match(source, /shouldLaunchInBackground/);
   assert.match(source, /sandbox: true/);
-  assert.match(source, /backgroundThrottling: true/);
+  assert.match(source, /autoStreamMatches:\s*false/);
+  assert.match(source, /backgroundThrottling:\s*loadConfig\(\)\.autoStreamMatches !== true/);
 
   const start = source.indexOf('app.on("window-all-closed"');
   const end = source.indexOf('app.on("activate"', start);
@@ -187,4 +188,3 @@ test("update installation drains the journal before quitAndInstall", () => {
   assert.ok(markSafe > drain);
   assert.ok(install > markSafe);
 });
-

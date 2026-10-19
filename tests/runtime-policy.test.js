@@ -48,6 +48,10 @@ test("real replay work blocks update installation", () => {
     getUpdateBlocker({ runtimeStatus: {}, nativeStreamActive: true }),
     "native_stream"
   );
+  assert.equal(
+    getUpdateBlocker({ runtimeStatus: { replayScanInFlight: true } }),
+    "replay_scan"
+  );
 });
 
 test("background launch policy recognizes login and explicit starts", () => {

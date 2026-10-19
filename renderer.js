@@ -53,6 +53,7 @@ const els = {
   uploadApiKeyInput: document.getElementById("uploadApiKeyInput"),
   launchAtLoginInput: document.getElementById("launchAtLoginInput"),
   autoStartWatchingInput: document.getElementById("autoStartWatchingInput"),
+  autoStreamMatchesInput: document.getElementById("autoStreamMatchesInput"),
   saveSettingsBtn: document.getElementById("saveSettingsBtn"),
   detectFolderBtn: document.getElementById("detectFolderBtn"),
   chooseFolderBtn: document.getElementById("chooseFolderBtn"),
@@ -104,6 +105,7 @@ const els = {
   resourceWakeupsText: document.getElementById("resourceWakeupsText"),
   resourceNetworkText: document.getElementById("resourceNetworkText"),
   resourcePowerText: document.getElementById("resourcePowerText"),
+  resourceCohortsText: document.getElementById("resourceCohortsText"),
   importPhaseText: document.getElementById("importPhaseText"),
   importDetailText: document.getElementById("importDetailText"),
   importSummaryText: document.getElementById("importSummaryText"),
@@ -131,6 +133,7 @@ const DEFAULT_CONFIG = {
   uploadApiKey: "",
   launchAtLogin: true,
   autoStartWatching: true,
+  autoStreamMatches: false,
   lastImportSummary: null,
 };
 
@@ -145,6 +148,16 @@ const STREAM_HANDOFF_RUNTIME_EVENTS = new Set([
 ]);
 const STREAM_HANDOFF_CLEAR_EVENTS = new Set([
   "final-candidate-accepted",
+  "monitor-stop",
+  "watching-stopped",
+]);
+const AUTO_STREAM_START_RUNTIME_EVENTS = new Set([
+  "replay-detected",
+  "midgame-replay-recovered",
+]);
+const AUTO_STREAM_STOP_RUNTIME_EVENTS = new Set([
+  "final-settle-observation-complete",
+  "final-result-review-observation-complete",
   "monitor-stop",
   "watching-stopped",
 ]);
@@ -245,6 +258,7 @@ let nativeStreamState = {
   busy: false,
   sources: [],
   selectedSourceId: "",
+  userSelectedSourceId: "",
   sourceName: "",
   sourceKind: "",
   mediaStream: null,
@@ -265,6 +279,7 @@ let nativeStreamState = {
   heartbeatTimer: null,
   startedAt: 0,
   manualStop: false,
+  autoStarted: false,
   readout: "Idle.",
   detail: "Pick a source when a watcher match is ready.",
 };
@@ -273,6 +288,8 @@ let nativeUploadChain = Promise.resolve();
 let nativeVideoUploadGeneration = 0;
 let replayVideoPriorityActive = false;
 let replayPriorityPausedRecorder = false;
+let autoNativeStreamStartPending = false;
+let nativeStreamEnding = false;
 let watchDirStatus = {
   exists: false,
   isDirectory: false,
@@ -349,6 +366,7 @@ function readForm() {
     uploadApiKey: els.uploadApiKeyInput.value.trim(),
     launchAtLogin: Boolean(els.launchAtLoginInput?.checked),
     autoStartWatching: Boolean(els.autoStartWatchingInput.checked),
+    autoStreamMatches: Boolean(els.autoStreamMatchesInput?.checked),
   };
 }
 
@@ -363,6 +381,9 @@ function writeForm(config) {
   }
 
   els.autoStartWatchingInput.checked = config.autoStartWatching !== false;
+  if (els.autoStreamMatchesInput) {
+    els.autoStreamMatchesInput.checked = config.autoStreamMatches === true;
+  }
 }
 
 function formatPlatform(value) {
@@ -418,7 +439,7 @@ function getReleaseStatus() {
     return {
       headline: `${currentVersion} Update Ready`,
       detail: autoUpdate.error
-        ? "Mac update needs a fresh download."
+        ? "Update needs a fresh download."
         : latestVersion || autoUpdate.updateVersion
           ? `Watcher ${latestVersion || autoUpdate.updateVersion} is ready.`
           : "A watcher update is ready.",
@@ -436,7 +457,18 @@ function getReleaseStatus() {
   if (autoUpdate.status === "pending_install") {
     return {
       headline: `${currentVersion} Update Ready`,
-      detail: "Update will install after active replay, import, or stream work finishes.",
+      detail: autoUpdate.message || "Update will install after active replay, import, or stream work finishes.",
+      showUpdate: true,
+      showCheck: false,
+      updateUrl: "",
+      canInstall: true,
+    };
+  }
+
+  if (autoUpdate.status === "error" && autoUpdate.downloaded) {
+    return {
+      headline: `${currentVersion} Update Paused`,
+      detail: autoUpdate.message || "Update installation failed. Watcher is still running.",
       showUpdate: true,
       showCheck: false,
       updateUrl: "",
@@ -610,7 +642,12 @@ function describeNativeMode(mode = getNativeStreamMode()) {
   const bitrateMbps = mode.videoBitsPerSecond
     ? `${(mode.videoBitsPerSecond / 1000000).toFixed(1)} Mbps`
     : "auto bitrate";
-  return `${mode.label} ${mode.detail} · ${bitrateMbps} · ${STREAM_CHUNK_TIMESLICE_MS / 1000}s chunks`;
+  // A codec target is not a network measurement or an electricity estimate.
+  const targetGbPerHour = mode.videoBitsPerSecond
+    ? (mode.videoBitsPerSecond * 3600 / 8_000_000_000).toFixed(2)
+    : null;
+  return `${mode.label} ${mode.detail} · ${bitrateMbps} · ${STREAM_CHUNK_TIMESLICE_MS / 1000}s chunks` +
+    (targetGbPerHour ? ` · ~${targetGbPerHour} GB/hour video target (before overhead)` : "");
 }
 
 function countStreamSources(sources = nativeStreamState.sources) {
@@ -646,7 +683,7 @@ function describeSourceDetail(source, mode = getNativeStreamMode()) {
 
   const base = `${sourceKindLabel(source)} · ${source.name}`;
   if (source.kind === "screen" && isMacPlatform()) {
-    return `${base}. Go Live, then switch to AoE2 full-screen.`;
+    return `${base}. CrossOver/Wine often hides the game window. This shares everything visible on that display; switch to AoE2 full-screen after Go Live.`;
   }
   if (source.kind === "screen") {
     return `${base}. Use this when the game window is full-screen.`;
@@ -657,14 +694,12 @@ function describeSourceDetail(source, mode = getNativeStreamMode()) {
   return base;
 }
 
-function pickNativeStreamSource(sources, selectedSourceId, mode = getNativeStreamMode()) {
-  const selected = sources.find((source) => source.id === selectedSourceId) || null;
-
-  if (mode.preferredKind === "screen" && selected?.kind !== "screen") {
-    return sources.find((source) => source.kind === "screen") || selected || sources[0] || null;
-  }
-
-  return selected || sources[0] || null;
+function pickNativeStreamSource(sources, explicitSourceId, mode = getNativeStreamMode()) {
+  return window.WatcherCaptureSourcePolicy.chooseCaptureSource(sources, {
+    platform: appInfo?.platform || "",
+    explicitSourceId,
+    preferredKind: mode.preferredKind || "",
+  }).source;
 }
 
 function chooseNativeRecorderMimeType() {
@@ -688,9 +723,14 @@ function buildNativeSessionKey() {
     candidate?.sessionKey ||
     candidate?.streamSession ||
     candidate?.fileName ||
-    candidate?.filePath ||
     `watcher:${appInfo?.sessionId || Date.now()}`;
-  return String(raw).trim().slice(0, 255);
+  const key = String(raw).trim().slice(0, 255);
+  // Never transmit a local SaveGame path as public battle identity.
+  // Unproven capture stays in an unlinked Watcher session.
+  if (/^(?:[a-z]:[\\/]|[/\\]{2}|[/]|file:\/\/)/i.test(key)) {
+    return `watcher:${appInfo?.sessionId || Date.now()}`;
+  }
+  return key;
 }
 
 function buildNativeStreamTitle() {
@@ -735,6 +775,10 @@ function buildDesktopCaptureConstraints(sourceId, mode = getNativeStreamMode()) 
 function describeCaptureStartError(error, source, mode) {
   const message = error?.message || String(error || "Capture failed.");
   const name = error?.name || "";
+  if (source?.id === "macos-system-picker" &&
+      /abort|cancel|dismiss/i.test(`${name} ${message}`)) {
+    return "macOS screen sharing was cancelled. Press Start Video to choose a screen again.";
+  }
   if (/permission|denied|notallowed/i.test(`${name} ${message}`)) {
     return "macOS blocked capture. Allow screen recording for AoE2HDBets Watcher, then reopen it.";
   }
@@ -764,7 +808,7 @@ function captureNativeThumbnail() {
   return canvas.toDataURL("image/jpeg", 0.58);
 }
 
-async function streamJson(path, body = {}) {
+async function streamJson(path, body = {}, options = {}) {
   const result = await window.watcherApi.streamJson({
     baseUrl: getStreamingBaseUrl(),
     path,
@@ -773,10 +817,46 @@ async function streamJson(path, body = {}) {
   });
 
   if (!result?.ok) {
+    // An ended camera is a terminal video state, not a temporary 409 outage.
+    if (options.allowEndedStream && result?.status === 409 &&
+        result?.data?.stream?.status === "ended") return result.data;
     throw new Error(result?.error || result?.data?.detail || "Streaming request failed.");
   }
 
   return result.data || {};
+}
+
+// Outbound video diagnostics must never carry arbitrary window titles, paths,
+ // track labels or free-form transport errors. Preserve the machine evidence
+ // needed for remote triage without shipping personal desktop context.
+function safeNativeVideoTelemetry(values = {}) {
+  const numeric = new Set([
+    "streamId", "sequence", "elapsedMs", "blobSize", "chunkCount",
+    "lastChunkBytes", "uploadFailures", "consecutiveUploadFailures",
+    "heartbeatFailures", "uploadQueueLength", "lastUploadLatencyMs",
+    "droppedChunks", "priorityYieldedChunks", "videoBitrate", "frameRate",
+    "chunkTimesliceMs", "retryAfterSeconds", "captureWidth",
+    "captureHeight", "captureFrameRate", "sourceCount", "windowCount",
+    "screenCount", "trackCount",
+  ]);
+  const tokens = new Set([
+    "sourceKind", "sourceType", "captureMode", "mode", "modeLabel",
+    "reason", "status", "mimeType", "code", "artifact",
+  ]);
+  const booleans = new Set(["autoStarted", "thumbnailUpdated"]);
+  const output = {};
+  for (const [key, value] of Object.entries(values || {}).slice(0, 48)) {
+    if (numeric.has(key) && Number.isSafeInteger(value) &&
+        value >= 0 && value <= 1_000_000_000_000) {
+      output[key] = value;
+    } else if (tokens.has(key) && typeof value === "string" &&
+        /^[a-zA-Z0-9_.:-]{1,80}$/.test(value)) {
+      output[key] = value;
+    } else if (booleans.has(key) && typeof value === "boolean") {
+      output[key] = value;
+    }
+  }
+  return output;
 }
 
 async function sendNativeStreamEvent(eventType, metadata = {}) {
@@ -795,9 +875,7 @@ async function sendNativeStreamEvent(eventType, metadata = {}) {
           : "",
       captureMode: nativeStreamState.mode,
       mediaMimeType: nativeStreamState.mediaMimeType,
-      metadata: {
-        title: buildNativeStreamTitle(),
-        sourceName: nativeStreamState.sourceName,
+      metadata: safeNativeVideoTelemetry({
         sourceKind: nativeStreamState.sourceKind,
         sourceType: "watcher_native",
         modeLabel: mode.label,
@@ -815,7 +893,7 @@ async function sendNativeStreamEvent(eventType, metadata = {}) {
         droppedChunks: nativeStreamState.droppedChunks,
         priorityYieldedChunks: nativeStreamState.priorityYieldedChunks,
         ...metadata,
-      },
+      }),
     });
   } catch {
     // Streaming telemetry should never block the user's local stream controls.
@@ -844,7 +922,7 @@ async function refreshNativeStreamSources() {
     const sourceCounts = countStreamSources(sources);
     const selectedSource = pickNativeStreamSource(
       sources,
-      nativeStreamState.selectedSourceId,
+      nativeStreamState.userSelectedSourceId,
       getNativeStreamMode()
     );
     const selected = selectedSource?.id || "";
@@ -856,11 +934,15 @@ async function refreshNativeStreamSources() {
       sourceName: selectedSource?.name || "",
       sourceKind: selectedSource?.kind || "",
       readout: sources.length
-        ? selectedSource?.kind === "screen" && isMacPlatform()
-          ? "Display capture ready for full-screen AoE2."
-          : `${sources.length} source${sources.length === 1 ? "" : "s"} ready.`
+        ? !selectedSource
+          ? "Choose a capture source before streaming."
+          : selectedSource.kind === "screen" && isMacPlatform()
+            ? "Display selected for full-screen CrossOver/AoE2."
+            : `${sources.length} source${sources.length === 1 ? "" : "s"} ready.`
         : "No capture sources found.",
-      detail: describeSourceDetail(selectedSource),
+      detail: selectedSource
+        ? describeSourceDetail(selectedSource)
+        : "Select your game window or a display. An unrecognized CrossOver/Wine window is never captured automatically.",
     });
 
     void sendNativeStreamEvent("stream_sources_listed", {
@@ -878,7 +960,10 @@ async function refreshNativeStreamSources() {
     updateNativeStreamState({
       busy: false,
       readout: "Source scan failed.",
-      detail: error.message || String(error),
+      detail: (error.message || String(error)) +
+        (isMacPlatform()
+          ? " · You can also press Start Video to try the macOS system screen picker."
+          : ""),
     });
     void sendNativeStreamEvent("stream_error", {
       errorMessage: "Source scan failed.",
@@ -906,12 +991,60 @@ function stopNativeLocalCapture() {
   }
 }
 
-async function endNativeStream(reason = "manual") {
+async function stopNativeCaptureAndDrainUploads() {
+  if (nativeStreamState.heartbeatTimer) {
+    window.clearInterval(nativeStreamState.heartbeatTimer);
+  }
+
+  const recorder = nativeStreamState.recorder;
+  if (recorder && recorder.state !== "inactive") {
+    await new Promise((resolve) => {
+      let settled = false;
+      let timer = null;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        if (timer) window.clearTimeout(timer);
+        resolve();
+      };
+
+      try {
+        recorder.addEventListener("stop", finish, { once: true });
+        recorder.stop();
+        timer = window.setTimeout(finish, 2000);
+      } catch {
+        finish();
+      }
+    });
+  }
+
+  nativeStreamState.mediaStream?.getTracks().forEach((track) => track.stop());
+  if (els.streamPreview) {
+    els.streamPreview.srcObject = null;
+  }
+
+  await nativeUploadChain.catch(() => undefined);
+}
+
+async function endNativeStream(reason = "manual", options = {}) {
+  if (nativeStreamEnding) {
+    return;
+  }
+
   const activeStream = nativeStreamState.stream;
   const preserveIssue = reason !== "manual" && nativeStreamState.status === "error";
-  nativeStreamState.manualStop = true;
+  const drainUploads = options.drainUploads !== false;
+  nativeStreamEnding = true;
   nativeStreamLastThumbnailAt = 0;
-  stopNativeLocalCapture();
+
+  if (drainUploads) {
+    await stopNativeCaptureAndDrainUploads();
+  } else {
+    nativeStreamState.manualStop = true;
+    stopNativeLocalCapture();
+  }
+
+  nativeStreamState.manualStop = true;
 
   updateNativeStreamState({
     status: preserveIssue ? "error" : "idle",
@@ -925,6 +1058,7 @@ async function endNativeStream(reason = "manual") {
     uploadQueueLength: 0,
     consecutiveUploadFailures: 0,
     heartbeatFailures: 0,
+    autoStarted: false,
     readout: preserveIssue
       ? nativeStreamState.readout
       : reason === "manual"
@@ -947,6 +1081,7 @@ async function endNativeStream(reason = "manual") {
     reason,
     streamId: activeStream?.id || null,
   });
+  nativeStreamEnding = false;
 }
 
 function setReplayVideoPriority(active) {
@@ -1048,6 +1183,10 @@ async function uploadNativeChunk(streamId, sequence, blob) {
     bytes: await blob.arrayBuffer(),
   });
 
+  // A delayed response belongs to its original stream. Never mutate or
+  // terminate a replacement broadcaster because its predecessor replied.
+  if (nativeStreamState.stream?.id !== streamId) return;
+
   if (
     result?.priorityYield
   ) {
@@ -1061,6 +1200,13 @@ async function uploadNativeChunk(streamId, sequence, blob) {
     return;
   }
 
+  if (result?.terminalVideoStop) {
+    await endNativeStream("server_video_terminal", { drainUploads: false });
+    setNativeReadout("Video stopped by server safety limit.",
+      result.reason || "Recording quota, media format, or game finality.");
+    return;
+  }
+
   if (result?.terminalMediaShed) {
     const reason =
       result.reason ||
@@ -1070,7 +1216,8 @@ async function uploadNativeChunk(streamId, sequence, blob) {
       Number(result.retryAfterSeconds) || 0
     );
     await endNativeStream(
-      "server_media_shed"
+      "server_media_shed",
+      { drainUploads: false }
     );
     updateNativeStreamState({
       readout:
@@ -1082,20 +1229,39 @@ async function uploadNativeChunk(streamId, sequence, blob) {
     return;
   }
 
+  // HTTP 200 is not an acknowledgement that media reached disk: the
+  // server can return an authoritative replay-final response before writing.
+  // An old request from a replaced stream must not stop the new stream.
+  if (result?.data?.finality === "replay_final" ||
+      result?.data?.stream?.status === "ended" ||
+      result?.data?.code === "STREAM_ALREADY_ENDED") {
+    if (nativeStreamState.stream?.id === streamId) {
+      await endNativeStream("server_replay_final", { drainUploads: false });
+      setNativeReadout("Game complete. Video capture stopped.", "Replay watching continues.");
+    }
+    return;
+  }
   if (!result?.ok) {
     throw new Error(result?.error || result?.data?.detail || "Chunk upload failed.");
   }
+  if (typeof result?.data?.chunkCreated !== "boolean" ||
+      !Number.isSafeInteger(result?.data?.stream?.chunkCount)) {
+    // Never count unproven video acknowledgements as recorded media.
+    throw new Error("Stream upload acknowledgement was incomplete.");
+  }
 
   const uploadLatencyMs = Date.now() - uploadStartedAt;
-  const nextStream = result.data?.stream || nativeStreamState.stream;
-  const nextChunkCount = Math.max(nativeStreamState.chunkCount + 1, nextStream?.chunkCount || 0);
+  const nextStream = result.data.stream;
+  const nextChunkCount = Math.max(0, nextStream.chunkCount);
   updateNativeStreamState({
     stream: nextStream,
     chunkCount: nextChunkCount,
     lastChunkBytes: blob.size,
     consecutiveUploadFailures: 0,
     lastUploadLatencyMs: uploadLatencyMs,
-    readout: `Live. Chunk ${sequence} published (${Math.round(blob.size / 1024)} KB).`,
+    readout: result.data.chunkCreated
+      ? `Live. Chunk ${sequence} stored (${Math.round(blob.size / 1024)} KB).`
+      : `Live. Chunk ${sequence} already safely stored.`,
     detail: `${nativeStreamState.sourceName || "Capture source"} · ${uploadLatencyMs} ms upload · queue ${nativeStreamState.uploadQueueLength}`,
   });
 
@@ -1155,6 +1321,12 @@ function queueNativeChunkUpload(streamId, sequence, blob) {
         nativeStreamState.status === "idle" ||
         nativeStreamState.stream?.id !== streamId
       ) {
+        updateNativeStreamState({
+          uploadQueueLength: Math.max(
+            0,
+            nativeStreamState.uploadQueueLength - 1
+          ),
+        });
         return;
       }
 
@@ -1168,12 +1340,20 @@ function queueNativeChunkUpload(streamId, sequence, blob) {
           sequence,
           blob
         );
+        updateNativeStreamState({
+          uploadQueueLength: Math.max(
+            0,
+            nativeStreamState.uploadQueueLength - 1
+          ),
+        });
         return;
       }
 
       try {
         await uploadNativeChunk(streamId, sequence, blob);
       } catch (error) {
+        // Old in-flight requests must not poison replacement camera counters.
+        if (nativeStreamState.stream?.id !== streamId) return;
         const failures = nativeStreamState.consecutiveUploadFailures + 1;
         updateNativeStreamState({
           uploadFailures: nativeStreamState.uploadFailures + 1,
@@ -1188,12 +1368,16 @@ function queueNativeChunkUpload(streamId, sequence, blob) {
           consecutiveUploadFailures: failures,
           errorMessage: error.message || String(error),
         });
-        if (failures >= 5) {
+        if (failures >= 5 && nativeStreamState.stream?.id === streamId) {
           handleNativeStreamError("Stream upload keeps failing.", error.message || String(error), {
             streamId,
             sequence,
             consecutiveUploadFailures: failures,
           });
+          // A broken video uploader must not continue capturing indefinitely.
+          // Only video stops; the replay monitoring pipeline keeps running.
+          void endNativeStream("repeated_video_upload_failure", { drainUploads: false })
+            .catch(() => undefined);
         }
       } finally {
         updateNativeStreamState({
@@ -1219,9 +1403,25 @@ async function sendNativeHeartbeat(streamId, status = "live") {
 
   const data = await streamJson(`/api/streams/${streamId}/heartbeat`, {
     status,
+    // A newly detected current replay may provide a stronger *claim*.
+    // The server must verify it against this account's exact replay identity.
+    sessionKey: buildNativeSessionKey(),
     mediaMimeType: nativeStreamState.mediaMimeType,
     thumbnailUrl,
-  });
+  }, { allowEndedStream: true });
+
+  // Do not apply a stale response from a session already replaced locally.
+  if (nativeStreamState.stream?.id !== streamId) return;
+  if (data.finality === "replay_final" || data.stream?.status === "ended") {
+    // Replay finality is server-owned. End *only video* immediately; the
+    // Watcher's replay result pipeline remains authoritative and running.
+    void endNativeStream("server_replay_final", { drainUploads: false }).then(() => {
+      setNativeReadout("Game complete. Video capture stopped.", "Replay monitoring continues.");
+    }).catch((error) => {
+      handleNativeStreamError("Video finality stop failed.", error.message || String(error));
+    });
+    return;
+  }
 
   updateNativeStreamState({
     stream: data.stream || nativeStreamState.stream,
@@ -1256,7 +1456,8 @@ function handleNativeStreamError(message, detail = "", metadata = {}) {
   });
 }
 
-async function startNativeStream() {
+async function startNativeStream(options = {}) {
+  const autoStarted = options.auto === true;
   if (nativeStreamState.busy || nativeStreamState.status === "live") {
     return;
   }
@@ -1266,6 +1467,13 @@ async function startNativeStream() {
     handleNativeStreamError("Pair profile before streaming.", "Watcher-native streaming uses your watcher key.");
     return;
   }
+  if (!hasStreamCandidate()) {
+    handleNativeStreamError(
+      "Start Watching to identify your match first.",
+      "Video needs a replay-backed match identity. Wait until Watcher sees your live replay, then press Stream My Game. No video or WOLO was sent."
+    );
+    return;
+  }
 
   if (typeof MediaRecorder === "undefined" || !navigator.mediaDevices?.getUserMedia) {
     handleNativeStreamError("Native streaming is unavailable in this build.", "MediaRecorder or desktop capture is missing.");
@@ -1273,14 +1481,24 @@ async function startNativeStream() {
   }
 
   let sources = nativeStreamState.sources;
-  if (sources.length === 0) {
+  // A macOS 15+ OS picker can work when Electron's desktopCapturer
+  // cannot enumerate a single source. Never launch the picker for
+  // unattended automatic recording (which has no user gesture).
+  const useMacPicker = isMacPlatform() && !autoStarted && sources.length === 0 &&
+    typeof navigator.mediaDevices?.getDisplayMedia === "function";
+  if (sources.length === 0 && !useMacPicker) {
     sources = await refreshNativeStreamSources();
   }
 
   const mode = getNativeStreamMode();
-  const selectedSource = pickNativeStreamSource(sources, nativeStreamState.selectedSourceId, mode);
+  const selectedSource = useMacPicker
+    ? { id: "macos-system-picker", name: "macOS selected capture", kind: "screen" }
+    : pickNativeStreamSource(sources, nativeStreamState.userSelectedSourceId, mode);
   if (!selectedSource) {
-    handleNativeStreamError("No capture source found.", "Open AoE2HD, Steam, or CrossOver, then refresh sources.");
+    handleNativeStreamError("Choose a capture source.",
+      isMacPlatform()
+        ? "CrossOver/Wine may hide the game window. Choose Display — Entire screen, or refresh sources and try the macOS picker."
+        : "Choose the game's window or a display in the capture-source menu. No unrelated window was shared.");
     return;
   }
 
@@ -1316,9 +1534,16 @@ async function startNativeStream() {
       chunkTimesliceMs: STREAM_CHUNK_TIMESLICE_MS,
     });
 
-    const capture = await navigator.mediaDevices.getUserMedia(
-      buildDesktopCaptureConstraints(selectedSource.id, mode)
-    );
+    // The native macOS picker needs a direct user-gesture request.
+    // Do not await an IPC source refresh before calling getDisplayMedia.
+    const capture = useMacPicker
+      ? await navigator.mediaDevices.getDisplayMedia({
+          audio: false,
+          video: { frameRate: mode.frameRate },
+        })
+      : await navigator.mediaDevices.getUserMedia(
+          buildDesktopCaptureConstraints(selectedSource.id, mode)
+        );
     nativeStreamState.mediaStream?.getTracks().forEach((track) => track.stop());
     if (els.streamPreview) {
       els.streamPreview.srcObject = capture;
@@ -1327,7 +1552,7 @@ async function startNativeStream() {
 
     capture.getVideoTracks().forEach((track) => {
       track.addEventListener("ended", () => {
-        if (nativeStreamState.manualStop) {
+        if (nativeStreamState.manualStop || nativeStreamEnding) {
           return;
         }
         const elapsedMs = Date.now() - streamStartedAt;
@@ -1405,6 +1630,8 @@ async function startNativeStream() {
     }
 
     nativeStreamState.manualStop = false;
+    nativeStreamState.autoStarted = autoStarted;
+    nativeStreamEnding = false;
     nativeStreamLastThumbnailAt = Date.now();
     nativeStreamState.sequence = 0;
     nativeStreamState.chunkCount = 0;
@@ -1462,6 +1689,7 @@ async function startNativeStream() {
 
     const heartbeatTimer = window.setInterval(() => {
       void sendNativeHeartbeat(stream.id, "live").catch((error) => {
+        if (nativeStreamState.stream?.id !== stream.id) return;
         const failures = nativeStreamState.heartbeatFailures + 1;
         updateNativeStreamState({
           heartbeatFailures: failures,
@@ -1492,6 +1720,7 @@ async function startNativeStream() {
     });
 
     await sendNativeHeartbeat(stream.id, "live");
+    if (nativeStreamState.status !== "live" || nativeStreamEnding) return;
     void sendNativeStreamEvent("stream_started", {
       streamId: stream.id,
       sourceName: selectedSource.name,
@@ -1501,6 +1730,7 @@ async function startNativeStream() {
       videoBitrate: mode.videoBitsPerSecond,
       chunkTimesliceMs: STREAM_CHUNK_TIMESLICE_MS,
       captureGuidance: describeSourceDetail(selectedSource, mode),
+      autoStarted,
     });
     setStatus("Watcher stream is live.", "success");
   } catch (error) {
@@ -1511,6 +1741,61 @@ async function startNativeStream() {
       mode: mode.key,
       rawError: error.message || String(error),
     });
+  }
+}
+
+async function manageAutomaticNativeStream(event) {
+  if (!event || typeof event !== "object") {
+    return;
+  }
+
+  const autoStreamMatches = Boolean(readForm().autoStreamMatches);
+  if (!autoStreamMatches) {
+    return;
+  }
+
+  const shouldStart =
+    AUTO_STREAM_START_RUNTIME_EVENTS.has(event.type) &&
+    event.isFinal !== true;
+
+  if (shouldStart) {
+    if (
+      !watcherState.isWatching ||
+      !hasWatcherKey() ||
+      !hasStreamCandidate() ||
+      autoNativeStreamStartPending ||
+      nativeStreamState.busy ||
+      nativeStreamState.status !== "idle"
+    ) {
+      return;
+    }
+
+    autoNativeStreamStartPending = true;
+    try {
+      await startNativeStream({ auto: true });
+    } finally {
+      autoNativeStreamStartPending = false;
+    }
+    return;
+  }
+
+  const trustedFinal =
+    event.type === "upload-success" &&
+    event.isFinal === true &&
+    event.resultReady === true;
+  const shouldStop =
+    trustedFinal || AUTO_STREAM_STOP_RUNTIME_EVENTS.has(event.type);
+
+  if (
+    shouldStop &&
+    nativeStreamState.autoStarted &&
+    (nativeStreamState.stream ||
+      nativeStreamState.mediaStream ||
+      ["starting", "preview", "live", "error"].includes(nativeStreamState.status))
+  ) {
+    await endNativeStream(
+      trustedFinal ? "match_result_ready" : "match_observation_complete"
+    );
   }
 }
 
@@ -1803,6 +2088,22 @@ function renderDiagnostics() {
         : "Measuring…";
   }
 
+  if (els.resourceCohortsText) {
+    const cohorts = Array.isArray(profile?.workloadCohorts)
+      ? profile.workloadCohorts.filter(cohort => cohort && Number(cohort.samples) > 0)
+      : [];
+    const labels = {
+      idle: "Idle", monitoring: "Monitoring", game_detected: "Game detected",
+      replay_transfer: "Replay upload", streaming: "Streaming video",
+    };
+    els.resourceCohortsText.textContent = cohorts.length
+      ? cohorts.map(cohort => `${labels[cohort.phase] || "Other"}: ` +
+          `${cohort.samples} samples · ${formatResourcePercent(cohort.avgCpuPercent)} CPU · ` +
+          `${formatResourceMb(cohort.avgWorkingSetMb)} RAM · ${formatResourceMbps(cohort.avgUploadMbps)} payload`)
+        .join("  |  ")
+      : "No workload samples yet.";
+  }
+
   if (els.resourcePowerText) {
     const signal =
       profile?.powerSignal;
@@ -1957,7 +2258,19 @@ function renderButtons() {
   els.openFolderBtn.disabled = !hasReplayFolder();
   if (els.streamMatchBtn) {
     els.streamMatchBtn.disabled =
-      nativeStreamState.busy || nativeStreamState.status === "live" || !hasWatcherKey();
+      nativeStreamState.busy || nativeStreamState.status === "live" || !hasWatcherKey() || !hasStreamCandidate();
+    els.streamMatchBtn.textContent = nativeStreamState.status === "live"
+      ? "Video Live"
+      : nativeStreamState.busy
+        ? "Starting Video…"
+        : !hasWatcherKey()
+          ? "Pair Watcher to Stream"
+          : !hasStreamCandidate()
+            ? "Waiting for Match"
+            : "Stream My Game";
+    els.streamMatchBtn.title = !hasStreamCandidate()
+      ? "Start Watching first. Video must be attached to an identified AoE2 match."
+      : "Choose a capture source and start sending video to Television WOLO.";
   }
   if (els.openBrowserStreamBtn) {
     els.openBrowserStreamBtn.disabled = !hasStreamCandidate();
@@ -1967,10 +2280,16 @@ function renderButtons() {
   }
   if (els.startNativeStreamBtn) {
     els.startNativeStreamBtn.disabled =
-      nativeStreamState.busy || nativeStreamState.status === "live" || !hasWatcherKey();
+      nativeStreamState.busy || nativeStreamState.status === "live" || !hasWatcherKey() || !hasStreamCandidate();
   }
   if (els.stopNativeStreamBtn) {
     els.stopNativeStreamBtn.disabled = nativeStreamState.status !== "live" && nativeStreamState.status !== "starting";
+    els.stopNativeStreamBtn.textContent = "Stop Video";
+  }
+  if (els.startNativeStreamBtn) {
+    els.startNativeStreamBtn.textContent = nativeStreamState.status === "live"
+      ? "Video Live"
+      : nativeStreamState.busy ? "Starting…" : "Start Video";
   }
 }
 
@@ -1992,18 +2311,20 @@ function renderNativeStreamState() {
   }
 
   if (sourceSelect) {
-    const currentValue = sourceSelect.value;
     sourceSelect.innerHTML = "";
+    const placeholder = document.createElement("option");
+    placeholder.value = "";
+    placeholder.textContent = "Choose game window or display";
+    sourceSelect.appendChild(placeholder);
     for (const source of nativeStreamState.sources) {
       const option = document.createElement("option");
       option.value = source.id;
       option.textContent = sourceOptionLabel(source);
       sourceSelect.appendChild(option);
     }
-    const desired = nativeStreamState.selectedSourceId || currentValue;
-    if (desired && nativeStreamState.sources.some((source) => source.id === desired)) {
-      sourceSelect.value = desired;
-    }
+    const desired = nativeStreamState.selectedSourceId;
+    sourceSelect.value = desired && nativeStreamState.sources.some((source) => source.id === desired)
+      ? desired : "";
     sourceSelect.disabled = nativeStreamState.busy || isLive || nativeStreamState.sources.length === 0;
   }
 
@@ -2022,11 +2343,13 @@ function renderNativeStreamState() {
 
   if (els.streamPreviewEmpty) {
     els.streamPreviewEmpty.hidden = Boolean(nativeStreamState.mediaStream);
-    els.streamPreviewEmpty.textContent = nativeStreamState.sources.length
+    els.streamPreviewEmpty.textContent = nativeStreamState.selectedSourceId
       ? nativeStreamState.sourceKind === "screen"
-        ? "Display ready"
-        : nativeStreamState.sourceName || "Source ready"
-      : "Refresh sources";
+        ? "Display ready — shares the full screen"
+        : nativeStreamState.sourceName || "Game window ready"
+      : nativeStreamState.sources.length
+        ? "Choose game window or display"
+        : "Refresh sources";
   }
 
   if (els.streamReadoutSummary) {
@@ -2049,7 +2372,7 @@ function polishStaticUiCopy() {
   }
 
   if (els.streamMatchBtn) {
-    els.streamMatchBtn.textContent = "Start Stream";
+    els.streamMatchBtn.textContent = "Stream My Game";
   }
 
   if (els.openBrowserStreamBtn) {
@@ -2267,6 +2590,7 @@ function buildSupportSnapshot() {
     `Watcher update detail: ${releaseStatus.detail}`,
     `Auto-update status: ${updateState.status || "unknown"}`,
     `Auto-update detail: ${updateState.message || updateState.error || "none"}`,
+    `Auto-stream matches: ${config.autoStreamMatches ? "enabled" : "disabled"}`,
     `Platform: ${formatPlatform(appInfo?.platform)}`,
     `Dashboard: ${appInfo?.renderer?.rendererStatus || "unknown"}`,
     `Dashboard ready: ${appInfo?.renderer?.rendererReady ? "yes" : "no"}`,
@@ -2316,6 +2640,14 @@ function consumeRuntimeEvent(event) {
   ) {
     setReplayVideoPriority(false);
   }
+
+  void manageAutomaticNativeStream(event).catch((error) => {
+    handleNativeStreamError(
+      "Automatic Television WOLO stream failed.",
+      error?.message || String(error),
+      { runtimeEventType: event?.type || null }
+    );
+  });
 
   switch (event.type) {
     case "watching-started":
@@ -2573,6 +2905,7 @@ if (els.streamSourceSelect) {
     );
     updateNativeStreamState({
       selectedSourceId: els.streamSourceSelect.value,
+      userSelectedSourceId: els.streamSourceSelect.value,
       sourceName: selectedSource?.name || "",
       sourceKind: selectedSource?.kind || "",
       readout: selectedSource
@@ -2591,7 +2924,7 @@ document.querySelectorAll("[data-stream-mode]").forEach((button) => {
     const nextMode = STREAM_MODES.find((entry) => entry.key === mode) || STREAM_MODES[0];
     const preferredSource = pickNativeStreamSource(
       nativeStreamState.sources,
-      nativeStreamState.selectedSourceId,
+      nativeStreamState.userSelectedSourceId,
       nextMode
     );
     updateNativeStreamState({
@@ -2799,6 +3132,12 @@ if (els.launchAtLoginInput) {
 els.autoStartWatchingInput.addEventListener("change", () => {
   renderAll();
 });
+
+if (els.autoStreamMatchesInput) {
+  els.autoStreamMatchesInput.addEventListener("change", () => {
+    renderAll();
+  });
+}
 
 window.watcherApi.onConfig((config) => {
   currentConfig = {
