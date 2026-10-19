@@ -8,10 +8,10 @@ const publisher = fs.readFileSync(path.join(root, ".github/workflows/publish-wat
 const certifier = fs.readFileSync(path.join(root, "scripts/certify-watcher-v165-release.py"), "utf8");
 const { validatePublishAuthority } = require("../scripts/validate-publish-authority.cjs");
 
-test("1.6.5 publisher is source-pinned and cannot run with placeholder pins", () => {
+test("1.6.5 publisher is pinned to exact successful signed and unsigned build runs", () => {
   assert.match(publisher, /BUILD_SOURCE_SHA: "b49f31bb69fea629378072faa22220cdfcc2f1ef"/);
-  assert.match(publisher, /WINDOWS_RUN_ID: "0"/);
-  assert.match(publisher, /NONWINDOWS_RUN_ID: "0"/);
+  assert.match(publisher, /WINDOWS_RUN_ID: "39315028329"/);
+  assert.match(publisher, /NONWINDOWS_RUN_ID: "39315028352"/);
   assert.match(publisher, /node scripts\/validate-publish-authority\.cjs/);
   assert.throws(() => validatePublishAuthority({
     packageVersion: "1.6.5", lockVersion: "1.6.5", rootLockVersion: "1.6.5",
