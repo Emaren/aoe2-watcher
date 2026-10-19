@@ -128,7 +128,8 @@ test("session activity is observational, never a fabricated lifetime statistic",
   assert.match(controller, /streamStatusBaselineRead = true/);
   assert.match(controller, /event\.type === "replay-detected"/);
   assert.match(controller, /Verified lifetime airtime/);
-  assert.match(controller, /Not yet available/);
+  assert.match(controller, /id="wr-overview-airtime"/);
+  assert.match(controller, /id="wr-overview-streams"/);
 });
 
 test("native streaming readouts and import receipts are observed, never promoted to match verdicts", () => {
@@ -252,4 +253,12 @@ test("player display remains dormant without authorized IPC, keeps rejected valu
   assert.match(controller, /renderPlayerSummary\(null\);\s*paired = Boolean/);
   assert.doesNotMatch(controller, /fetch\s*\(/);
   assert.ok(manifest.scripts.lint.includes("node --check war-room-player.js"));
+});
+
+test("authenticated player summary expires once without background polling", () => {
+  assert.match(controller, /playerExpiryTimer = setTimeout/);
+  assert.match(controller, /clearTimeout\(playerExpiryTimer\)/);
+  assert.match(controller, /playerSummaryGeneration === generation/);
+  assert.match(controller, /contract\.MAX_AGE_MS/);
+  assert.doesNotMatch(controller, /setInterval\s*\(/);
 });
