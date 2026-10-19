@@ -68,3 +68,42 @@ test("War Room assets are packaged and controls remain accessible", () => {
   assert.match(styles, /prefers-reduced-motion/);
   assert.match(styles, /\.app-shell>\.shell\[hidden\]/);
 });
+
+test("War Room Broadcast delegates source and quality controls to the original engine", () => {
+  assert.match(controller, /data-wr-action="startNativeStreamBtn"/);
+  assert.match(controller, /data-wr-action="stopNativeStreamBtn"/);
+  assert.match(controller, /data-wr-action="refreshStreamSourcesBtn"/);
+  assert.match(controller, /data-wr-mode="stable"/);
+  assert.match(controller, /data-wr-mode="screen"/);
+  assert.match(controller, /data-wr-mode="sharp"/);
+  assert.match(controller, /original\.dispatchEvent\(new Event\("change"/);
+  assert.match(controller, /originalMode\.click\(\)/);
+  assert.match(controller, /button\.disabled = originalButton\.disabled/);
+  assert.match(controller, /sourcePicker\.disabled = original\.disabled/);
+  assert.match(controller, /syncCaptureControls\(\)/);
+  assert.match(styles, /\.wr-select:focus-visible/);
+  assert.match(controller, /Full-display capture shares everything visible/);
+  assert.doesNotMatch(controller, /getDisplayMedia\s*\(/);
+  assert.doesNotMatch(controller, /getUserMedia\s*\(/);
+});
+
+test("War Room accessibility includes labelled keyboard tabs and bounded telemetry", () => {
+  assert.match(controller, /aria-controls/);
+  assert.match(controller, /role", "tabpanel"/);
+  assert.match(controller, /role", "tablist"/);
+  assert.match(controller, /ArrowLeft/);
+  assert.match(controller, /ArrowRight/);
+  assert.match(controller, /Home/);
+  assert.match(controller, /End/);
+  assert.match(controller, /cpuSamples\.length > 40/);
+  assert.match(controller, /typeof profile\.cpuPercent === "number"/);
+});
+
+test("documentation authority explicitly isolates financial work and supports the theme's provenance", () => {
+  const memo = fs.readFileSync(path.join(root, "docs/WATCHER_WAR_ROOM_UI.md"), "utf8");
+  const reg = JSON.parse(fs.readFileSync(path.join(root, "docs/document-registry.json"), "utf8"));
+  assert.match(memo, /Old Blue \(Classic\)/);
+  assert.match(memo, /Auto Bets, War Satchel/);
+  assert.match(memo, /same replay watcher/);
+  assert.ok(reg.documents.some(entry => entry.path === "docs/WATCHER_WAR_ROOM_UI.md"));
+});
