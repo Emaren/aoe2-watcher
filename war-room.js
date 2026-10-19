@@ -276,8 +276,12 @@
     write("wr-detail", !statusKnown ? oldDetail || "Waiting for Watcher state." : watching
       ? "Listening for new Age of Empires II replay events."
       : "Monitoring is stopped. Start it before your next match.");
+    // A late-loaded presentation adapter can miss the first watcher:state.
+    // In that case trust the already-rendered Classic status, not a guess
+    // made from the saved configuration or replay directory.
+    const visuallyMonitoring = statusKnown ? watching : oldStatus === "Watching for new replays";
     const dot = el("wr-dot");
-    if (dot) dot.className = "wr-status-dot" + (statusKnown ? watching ? " ok" : " warn" : "");
+    if (dot) dot.className = "wr-status-dot" + (visuallyMonitoring ? " ok" : statusKnown || initialLabel !== "Connecting…" ? " warn" : "");
     write("wr-paired", paired ? "Profile paired" : "Profile not paired");
     write("wr-pair-text", paired ? "Paired" : "Pair in Old Blue");
     write("wr-folder", folderReady ? "Replay path configured" : "Replay folder needed");
