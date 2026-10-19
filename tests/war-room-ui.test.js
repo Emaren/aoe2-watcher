@@ -233,6 +233,6 @@ test("systems telemetry reuses existing genuine process metrics only", () => {
   assert.match(controller, /id="wr-sys-wakeups"/);
   assert.match(controller, /validSample && typeof profile\.networkMbps === "number"/);
   assert.match(controller, /profile\.idleWakeupsAvailable === true/);
-  assert.match(controller, /"Not reported"/);
+  assert.match(controller, /id="wr-sys-wakeups">Not reported/);
   assert.doesNotMatch(controller, /powerWatts\s*\|\|/);
 });
