@@ -396,7 +396,7 @@
           if (!item || typeof item !== "object") continue;
           const row = document.createElement("div");
           row.className = "wr-list-item";
-          const name = String(item.fileName || "Replay").replace(/[\\r\\n\\t]/g, " ").slice(0, 120);
+          const name = String(item.fileName || "Replay").replace(/[\r\n\t]/g, " ").slice(0, 120);
           const result = {
             result_ready: "Result ready",
             review_routed: "Sent to review",
