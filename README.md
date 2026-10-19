@@ -25,8 +25,8 @@ GitHub draft-publication, and website-download gates have all completed.
 The latest **published** GitHub Watcher release remains 1.6.4 until then.
 Watcher 1.6.4 is the current public release. The candidate preserves legacy
 Replay Truth: it does not retroactively decide unknown games. Any claim that
-the complete 1.5.10-to-1.6.5 migration path is certified must be verified on a
-real installed v1.5.10 machine; that separate legacy claim is not inferred
+the complete 1.5.10-to-1.6.5 migration path is certified
+must be verified on a real installed v1.5.10 machine; that separate legacy claim is not inferred
 from tests of an installed 1.6.4 user's ordinary update.
 
 War Room and original Old Blue share the same recorder and replay engine.
