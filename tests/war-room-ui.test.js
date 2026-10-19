@@ -144,7 +144,7 @@ test("native streaming readouts and import receipts are observed, never promoted
 test("first boot mirrors Classic watcher state without creating another monitoring engine", () => {
   assert.match(controller, /oldStatus === "Watching for new replays"/);
   assert.match(controller, /new MutationObserver\(syncInitialStatus\)/);
-  assert.match(controller, /if \(!statusKnown\) paintReadiness\(\)/);
+  assert.match(controller, /const syncInitialStatus = \(\) => paintReadiness\(\)/);
   assert.doesNotMatch(controller, /bridge\.startWatching\s*\(/);
   assert.doesNotMatch(controller, /bridge\.stopWatching\s*\(/);
 });
@@ -165,4 +165,32 @@ test("existing video preview is reparented, not cloned or re-recorded", () => {
   assert.doesNotMatch(controller, /\.cloneNode\(/);
   assert.doesNotMatch(controller, /new MediaRecorder/);
   assert.match(styles, /\.wr-preview-slot>\.stream-preview\[hidden\]/);
+});
+
+test("War Room uses validated replay-directory truth, not just a saved path", () => {
+  assert.match(controller, /classicFolder === "Folder ready"/);
+  assert.match(controller, /classicFolder === "Folder missing"/);
+  assert.match(controller, /new MutationObserver\(paintReadiness\)\.observe\(classicFolder/);
+  assert.doesNotMatch(controller, /folderReady = Boolean\(config\.watchDir\)/);
+  assert.match(controller, /Valid replay folder/);
+});
+
+test("key presence never claims authenticated player identity", () => {
+  assert.match(controller, /Watcher key configured/);
+  assert.match(controller, /Player identity requires server verification/);
+  assert.doesNotMatch(controller, /write\("wr-paired", paired \? "Profile paired"/);
+});
+
+test("process CPU trend deduplicates repeated app-info snapshots by sampledAt", () => {
+  assert.match(controller, /lastResourceSampleAt = null/);
+  assert.match(controller, /typeof profile\.sampledAt === "string"/);
+  assert.match(controller, /Number\.isFinite\(Date\.parse\(sampledAt\)\)/);
+  assert.match(controller, /if \(sampledAt !== lastResourceSampleAt\)/);
+  assert.match(controller, /cpuSamples\.push\(cpu\)/);
+});
+
+test("Watcher error and import states come from Classic instead of unconditional green", () => {
+  assert.match(controller, /hasClassicStatus \? oldStatus/);
+  assert.match(controller, /oldStatus === "Watching for new replays"/);
+  assert.match(controller, /statusDetail = hasClassicStatus \? oldDetail/);
 });
