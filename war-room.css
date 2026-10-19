@@ -81,3 +81,18 @@
 .war-room .wr-preview-slot:empty{display:none}
 .war-room .wr-preview-slot>.stream-preview{display:block;width:100%;height:auto;aspect-ratio:16/9;object-fit:contain;background:#05070b;border:1px solid #e8c87833;border-radius:13px;margin:12px 0}
 .war-room .wr-preview-slot>.stream-preview[hidden]{display:none!important}
+
+/* Verified competitive intelligence: measured data only, quiet when unavailable. */
+.war-room .wr-player-identity{font-size:12px;font-weight:720;color:#d7bc83;letter-spacing:.03em}
+.war-room .wr-win-meter{--wr-rate:0%;position:relative;width:72px;height:72px;display:grid;place-items:center;border-radius:50%;margin:9px 0 7px;background:conic-gradient(#a89468 0%,#a89468 0%,#29333d 0%,#29333d 100%);border:1px solid #be9e6140}
+.war-room .wr-win-meter.available{background:conic-gradient(#e1bc72 var(--wr-rate),#29333d var(--wr-rate));box-shadow:0 0 22px #d6aa4620}
+.war-room .wr-win-meter::before{content:"";position:absolute;inset:7px;border-radius:50%;background:#10171f}
+.war-room .wr-win-meter strong{position:relative;z-index:1;font:700 20px/1 Georgia,serif;margin:0}
+.war-room .wr-form-strip{display:flex;align-items:center;flex-wrap:wrap;gap:7px;color:#a99a80;font-size:12px;margin:16px 0}
+.war-room .wr-result{display:grid;place-items:center;width:28px;height:28px;border:1px solid #ffffff2b;border-radius:8px;font-size:12px;font-weight:800}
+.war-room .wr-result.win{border-color:#56ca9a7a;background:#174d3c;color:#a7f5d4}
+.war-room .wr-result.loss{border-color:#d7787270;background:#552a2e;color:#ffb4a4}
+.war-room .wr-result.unresolved{border-color:#97866b66;background:#363337;color:#d2c4aa}
+.war-room .wr-match{display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:space-between}
+.war-room .wr-match strong{font-weight:700}
+.war-room .wr-match span{font-size:12px}
