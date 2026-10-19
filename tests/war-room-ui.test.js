@@ -107,3 +107,13 @@ test("documentation authority explicitly isolates financial work and supports th
   assert.match(memo, /duplicated replay watcher/);
   assert.ok(reg.documents.some(entry => entry.path === "docs/WATCHER_WAR_ROOM_UI.md"));
 });
+
+test("session activity is observational, never a fabricated lifetime statistic", () => {
+  assert.match(controller, /Live starts observed this session/);
+  assert.match(controller, /Replay detections this session/);
+  assert.match(controller, /observedStreamStarts \+= 1/);
+  assert.match(controller, /if \(live && !previousLiveState\)/);
+  assert.match(controller, /event\.type === "replay-detected"/);
+  assert.match(controller, /Verified lifetime airtime/);
+  assert.match(controller, /Not yet available/);
+});
