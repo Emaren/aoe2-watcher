@@ -69,6 +69,12 @@ Until that independently reviewed server and main-process contract exists, the W
 - No new recorder, duplicate decoding video, automatic capture-source escalation, or stream reauthorization triggered by an appearance change. CrossOver/Steam wrapper safety rules and explicit source selection remain owned by the original Watcher.
 - Do not modify or re-label signed public v1.6.4 installer, portable, DMG/ZIP, or Linux assets. Package version remains `1.6.4` until certified v1.6.5 promotion.
 
+## Simulated-renderer lifecycle regression suite
+
+`tests/war-room-runtime.test.js` now executes the **actual `war-room.js` script**, under Node's built-in `vm` with a minimal in-memory DOM implementation. This is a deterministic renderer-state test, not a real OS capture or complete Chromium integration. It verifies (1) appearance selection and preference persistence without a second monitoring action, (2) Watcher status and replay-import projection, (3) restoration of the **same** video element during Old Blue/Broadcast changes, (4) disabled original control forwarding, (5) timestamp-deduplicated CPU graphs, (6) no invented stream start if launching midstream, (7) original capture-source authority and rejection of unknown sources, (8) original capture-quality authority, and (9) correct issue/error presentation.
+
+Because the harness is dependency-free, `node runTests.js` automatically runs it with the existing Node test discovery on Windows, macOS and Linux. The structural-source checks remain in `tests/war-room-ui.test.js`. **Neither suite proves real browser layout, GPU usage, stream continuity on CrossOver, or privacy-safe source choice on a user's actual machine.** The physical canary remains mandatory.
+
 ## Acceptance checklist before merge/promotion
 
 - Run `npm run lint`, `npm test` and packaged Windows NSIS/portable, macOS ARM DMG/direct ZIP, Linux x64 AppImage in the existing Watcher CI.
