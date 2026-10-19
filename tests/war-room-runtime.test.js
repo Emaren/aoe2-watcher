@@ -544,6 +544,10 @@ test("War Room requires display-share consent for a selected macOS screen", () =
   assert.equal(goLive.disabled, false);
   app.host.dispatch("click", { target: goLive });
   assert.equal(nativeGoLive.clicks, 1, "acknowledged display can use original native start");
+  assert.equal(checkbox.checked, false, "confirmation is consumed by one Go Live attempt");
+  assert.equal(goLive.disabled, true, "second broadcast needs fresh full-display consent");
+  app.host.dispatch("click", { target: goLive });
+  assert.equal(nativeGoLive.clicks, 1, "repeated stream attempt cannot reuse old consent");
 
   const picker = app.byId.get("wr-source");
   picker.value = "window:42";
