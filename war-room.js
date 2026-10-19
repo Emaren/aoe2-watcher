@@ -127,6 +127,7 @@
       button.setAttribute("aria-pressed", String(button.dataset.wrTheme === next));
     });
     if (persist) { try { window.localStorage.setItem(STORAGE_KEY, next); } catch {} }
+    if (next === "war-room") drawChart();
     syncPreview();
   }
   function chooseTab(next) {
@@ -198,8 +199,8 @@
   }
   function onResource(profile) {
     if (!profile || typeof profile !== "object") return;
-    const cpu = Number(profile.cpuPercent);
-    const ram = Number(profile.workingSetMb);
+    const cpu = typeof profile.cpuPercent === "number" ? profile.cpuPercent : NaN;
+    const ram = typeof profile.workingSetMb === "number" ? profile.workingSetMb : NaN;
     if (Number.isFinite(cpu) && cpu >= 0 && cpu <= 1000) {
       cpuSamples.push(cpu);
       if (cpuSamples.length > 40) cpuSamples.shift();
