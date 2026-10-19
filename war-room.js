@@ -239,6 +239,7 @@
   const sourcePicker = el("wr-source");
   const displayConsent = el("wr-display-confirm");
   let confirmedCaptureDescriptor = "";
+  let capturePlatform = "";
   function captureConsentState() {
     const original = el("streamSourceSelect");
     const sources = original ? Array.from(original.options) : [];
@@ -249,29 +250,39 @@
     // Unknown, non-window selections require the same precaution as displays.
     const unknownSelection = Boolean(selected && !/^Window\s*-\s*/i.test(selected.textContent || "") && !isDisplay);
     const needsConfirmation = isDisplay || unknownSelection;
+    // With no sources the native engine may refresh and choose a display.
+    // Only an actual macOS system picker gives the user a fresh OS-mediated
+    // source choice; do not grant that exception on other platforms.
+    const noEnumeratedSources = sources.every(option => !option.value);
+    const systemPickerAvailable = capturePlatform === "darwin" &&
+      typeof navigator !== "undefined" &&
+      typeof navigator.mediaDevices?.getDisplayMedia === "function";
+    const unknownNoSource = noEnumeratedSources && !systemPickerAvailable;
     const descriptor = needsConfirmation
       ? String(selected.value) + "|" + String(selected.textContent || "") : "";
-    return { hasUnselectedDisplay, needsConfirmation, descriptor };
+    return { hasUnselectedDisplay, needsConfirmation, descriptor, unknownNoSource };
   }
   function captureConsentReady() {
     const state = captureConsentState();
-    return !state.hasUnselectedDisplay &&
+    return !state.hasUnselectedDisplay && !state.unknownNoSource &&
       (!state.needsConfirmation ||
         Boolean(displayConsent?.checked && confirmedCaptureDescriptor === state.descriptor));
   }
   function paintCaptureConsent() {
-    const { hasUnselectedDisplay, needsConfirmation, descriptor } = captureConsentState();
+    const { hasUnselectedDisplay, needsConfirmation, descriptor, unknownNoSource } = captureConsentState();
     if (descriptor !== confirmedCaptureDescriptor && displayConsent) displayConsent.checked = false;
     const label = el("wr-display-consent");
     if (label) label.hidden = !needsConfirmation;
     const notice = el("wr-capture-guard");
     if (notice) notice.textContent = hasUnselectedDisplay
       ? "Choose a specific game window or display. Automatic whole-display sharing is blocked here."
-      : needsConfirmation && !captureConsentReady()
-        ? "Confirm full-display sharing before Go Live. Other windows and notifications may be visible."
-        : needsConfirmation ? "Entire-display sharing acknowledged for this source only."
-        : "Game-window capture uses the original Watcher engine. No extra capture is started.";
-    return !hasUnselectedDisplay && (!needsConfirmation || captureConsentReady());
+      : unknownNoSource
+        ? "Refresh capture sources and choose a game window or display. No automatic display fallback."
+        : needsConfirmation && !captureConsentReady()
+          ? "Confirm full-display sharing before Go Live. Other windows and notifications may be visible."
+          : needsConfirmation ? "Entire-display sharing acknowledged for this source only."
+          : "Game-window capture uses the original Watcher engine or macOS system picker.";
+    return !hasUnselectedDisplay && !unknownNoSource && (!needsConfirmation || captureConsentReady());
   }
   if (displayConsent) displayConsent.addEventListener("change", () => {
     confirmedCaptureDescriptor = displayConsent.checked ? captureConsentState().descriptor : "";
@@ -494,6 +505,10 @@
   }
   function onInfo(info) {
     if (!info || typeof info !== "object") return;
+    if (typeof info.platform === "string") {
+      capturePlatform = info.platform;
+      syncCaptureControls();
+    }
     const version = String(info.version || "Unknown");
     write("wr-version", "v" + version);
     write("wr-sys-build", version);
