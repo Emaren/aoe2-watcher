@@ -84,7 +84,7 @@
     '<div class="wr-preview-slot" id="wr-preview-slot" aria-label="Existing Watcher capture preview"></div>',
     '<div class="wr-empty" id="wr-preview-empty">No live capture. Choose your game window or display in capture controls before broadcasting.</div>',
     '<div class="wr-statline"><span class="wr-muted">Broadcast</span><strong id="wr-broadcast-status">Off air</strong></div>',
-    '<div class="wr-statline"><span class="wr-muted">Source protection</span><strong>Explicit choice / safe fallback</strong></div>',
+    '<div class="wr-statline"><span class="wr-muted">Source protection</span><strong>Display sharing requires confirmation</strong></div>',
     '<div class="wr-statline"><span class="wr-muted">Live capture</span><strong id="wr-capture-headline">Idle</strong></div>',
     '<p class="wr-muted wr-small wr-stream-detail" id="wr-capture-details">Capture diagnostics appear here when an AoE2 session is detected.</p>',
     '<div class="wr-rule"></div>',
@@ -197,9 +197,18 @@
   function forward(originalId) {
     // A manual War Room stream must never silently escalate to full-display
     // capture. The native engine retains its own source-selection policy.
-    if (originalId === "startNativeStreamBtn" && !captureConsentReady()) return;
+    const isLiveAction = originalId === "startNativeStreamBtn";
+    if (isLiveAction && !captureConsentReady()) return;
     const button = el(originalId);
-    if (button && !button.disabled && !button.hidden) button.click();
+    if (!button || button.disabled || button.hidden) return;
+    // A full-display acknowledgment is for ONE explicit Go Live attempt,
+    // never an indefinitely retained grant for subsequent broadcasts.
+    if (isLiveAction && captureConsentState().needsConfirmation) {
+      confirmedCaptureDescriptor = "";
+      if (displayConsent) displayConsent.checked = false;
+    }
+    button.click();
+    if (isLiveAction) syncCaptureControls();
   }
   function openClassic(selector) {
     chooseTheme("old-blue");
