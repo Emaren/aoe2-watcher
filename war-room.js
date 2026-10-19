@@ -160,6 +160,7 @@
   let paired = false;
   let folderReady = false;
   let lastResourceSampleAt = null;
+  let lastResourceSampleEpoch = Number.NEGATIVE_INFINITY;
   let recentEvents = [];
   let detectedReplays = 0;
   let observedStreamStarts = 0;
@@ -443,26 +444,27 @@
     const cpu = typeof profile.cpuPercent === "number" ? profile.cpuPercent : NaN;
     const ram = typeof profile.workingSetMb === "number" ? profile.workingSetMb : NaN;
     const sampledAt = typeof profile.sampledAt === "string" ? profile.sampledAt : "";
-    const validSample = sampledAt && Number.isFinite(Date.parse(sampledAt));
-    if (validSample && Number.isFinite(cpu) && cpu >= 0 && cpu <= 1000) {
+    const sampleEpoch = Date.parse(sampledAt);
+    if (!Number.isFinite(sampleEpoch) || sampleEpoch <= lastResourceSampleEpoch) return;
+    // Never allow a delayed getAppInfo response to rewind current telemetry.
+    lastResourceSampleEpoch = sampleEpoch;
+    lastResourceSampleAt = sampledAt;
+    if (Number.isFinite(cpu) && cpu >= 0 && cpu <= 1000) {
       write("wr-cpu", cpu.toFixed(1) + "% CPU");
       write("wr-sys-cpu", cpu.toFixed(1) + "%");
-      if (sampledAt !== lastResourceSampleAt) {
-        lastResourceSampleAt = sampledAt;
-        cpuSamples.push(cpu);
-        if (cpuSamples.length > 40) cpuSamples.shift();
-        if (theme === "war-room") drawChart();
-      }
+      cpuSamples.push(cpu);
+      if (cpuSamples.length > 40) cpuSamples.shift();
+      if (theme === "war-room") drawChart();
     }
-    if (validSample && Number.isFinite(ram) && ram >= 0) {
+    if (Number.isFinite(ram) && ram >= 0) {
       write("wr-memory", "RAM " + Math.round(ram) + " MB");
       write("wr-sys-ram", Math.round(ram) + " MB");
     }
-    if (validSample && typeof profile.networkMbps === "number" &&
+    if (typeof profile.networkMbps === "number" &&
         Number.isFinite(profile.networkMbps) && profile.networkMbps >= 0) {
       write("wr-sys-network", profile.networkMbps.toFixed(2) + " Mbps");
     }
-    if (validSample && profile.idleWakeupsAvailable === true &&
+    if (profile.idleWakeupsAvailable === true &&
         typeof profile.idleWakeupsPerSecond === "number" &&
         Number.isFinite(profile.idleWakeupsPerSecond) && profile.idleWakeupsPerSecond >= 0) {
       write("wr-sys-wakeups", profile.idleWakeupsPerSecond.toFixed(1) + " /s");
