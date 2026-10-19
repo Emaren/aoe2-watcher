@@ -1,5 +1,6 @@
 AoE2HDBets Watcher non-Windows release build
 version=1.6.5
-runtime_source=8b62260276e817512853ef61c7f07f90b873de2c
-reason=approved_production_release_1.6.5
-attempt=1
+runtime_source=8d8a5faf9e92cb51e79aeef2df450df703d5f59c
+owner_policy=windows_azure_signed_macos_unsigned_manual
+reason=production_bilingual_war_room
+attempt=2
