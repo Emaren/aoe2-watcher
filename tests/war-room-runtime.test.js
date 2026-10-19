@@ -210,8 +210,11 @@ function launch({ alreadyLive = false } = {}) {
     }
   };
   for (const node of byId.values()) node.document = document;
+  const navigator = { mediaDevices: {
+    getDisplayMedia() { throw new Error("System picker is never invoked in the presentation-only harness"); }
+  } };
   vm.runInNewContext(source, {
-    window, document, MutationObserver: Observer, Event: class { constructor(type) { this.type = type; } },
+    window, document, navigator, MutationObserver: Observer, Event: class { constructor(type) { this.type = type; } },
     Date, String, Number, Boolean, Array, Object, Math, Promise,
     setTimeout: setTimeoutFake, clearTimeout: clearTimeoutFake,
   }, { filename: "war-room.js" });
@@ -591,14 +594,33 @@ test("unselected display is not an implicit fallback when starting in War Room",
   assert.equal(app.byId.get("startNativeStreamBtn").clicks, 1);
 });
 
-test("without enumerated capture sources the original macOS OS picker remains available", () => {
+test("no enumerated sources cannot refresh into an unconfirmed display on non-macOS", () => {
   const app = launch();
   const goLive = app.host.querySelectorAll("[data-wr-action]")
     .find(button => button.dataset.wrAction === "startNativeStreamBtn");
   app.clickTab("broadcast");
+  assert.equal(goLive.disabled, true, "unknown platform must fail closed");
+  app.host.dispatch("click", { target: goLive });
+  assert.equal(app.byId.get("startNativeStreamBtn").clicks, 0);
+  app.callbacks.get("onAppInfo")({ platform: "win32", version: "1.6.5" });
+  assert.equal(goLive.disabled, true);
+  assert.match(app.byId.get("wr-capture-guard").textContent, /Refresh capture sources/);
+  app.host.dispatch("click", { target: goLive });
+  assert.equal(app.byId.get("startNativeStreamBtn").clicks, 0);
+});
+
+test("no-source direct OS picker remains enabled only after macOS confirmation", () => {
+  const app = launch();
+  const goLive = app.host.querySelectorAll("[data-wr-action]")
+    .find(button => button.dataset.wrAction === "startNativeStreamBtn");
+  app.clickTab("broadcast");
+  assert.equal(goLive.disabled, true);
+  app.callbacks.get("onAppInfo")({ platform: "darwin", version: "1.6.5" });
   assert.equal(app.byId.get("wr-display-consent").hidden, true);
   assert.equal(goLive.disabled, false);
   app.host.dispatch("click", { target: goLive });
   assert.equal(app.byId.get("startNativeStreamBtn").clicks, 1);
   // The OS still owns native capture permission and source-choice UI.
+  app.callbacks.get("onAppInfo")({ platform: "linux", version: "1.6.5" });
+  assert.equal(goLive.disabled, true, "losing macOS system picker removes exception");
 });
