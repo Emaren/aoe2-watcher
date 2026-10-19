@@ -121,7 +121,7 @@ class Observer {
   observe() {}
 }
 
-function launch() {
+function launch({ alreadyLive = false } = {}) {
   const byId = new Map();
   const document = {
     byId,
@@ -175,7 +175,7 @@ function launch() {
   ]) attach(id);
   byId.get("watcherStateText").textContent = "Watching for new replays";
   byId.get("folderReadyText").textContent = "Folder ready";
-  byId.get("streamStatePill").textContent = "Idle";
+  byId.get("streamStatePill").textContent = alreadyLive ? "Live" : "Idle";
   const callbacks = new Map();
   const watcherApi = {};
   for (const name of [
@@ -254,10 +254,10 @@ test("one native preview element returns to Old Blue after theme or tab changes"
   app.clickTab("broadcast");
   assert.equal(original.parentNode, app.byId.get("wr-preview-slot"));
   assert.equal(app.byId.get("wr-preview-empty").hidden, true);
-  assert.equal(app.byId.get("wr-session-streams").textContent, "0", "booting mid-stream is not a new live start");
+  assert.equal(app.byId.get("wr-session-streams").textContent, "1", "new Idle-to-Live transition counts once");
   app.clickTheme("old-blue");
   assert.equal(original.parentNode, app.previewHome);
-  assert.equal(app.byId.get("wr-session-streams").textContent, "0");
+  assert.equal(app.byId.get("wr-session-streams").textContent, "1", "theme switching does not count another stream");
   app.clickTheme("war-room");
   app.clickTab("broadcast");
   assert.equal(original.parentNode, app.byId.get("wr-preview-slot"));
@@ -286,9 +286,18 @@ test("CPU chart uses distinct timestamped samples and ignores duplicate app-info
   const send = app.callbacks.get("onResourceProfile");
   send({ sampledAt: "2026-10-19T10:00:00.000Z", cpuPercent: 0.1, workingSetMb: 200 });
   send({ sampledAt: "2026-10-19T10:00:00.000Z", cpuPercent: 0.1, workingSetMb: 200 });
-  assert.equal(app.byId.get("wr-chart").getAttribute("aria-label"), null);
+  assert.equal(app.byId.get("wr-chart").getAttribute("aria-label"), "Recent Watcher CPU samples");
   send({ sampledAt: "2026-10-19T10:01:00.000Z", cpuPercent: 0.2, workingSetMb: 201 });
   assert.match(app.byId.get("wr-chart").getAttribute("aria-label"), /2 actual CPU samples/);
   send({ sampledAt: "2026-10-19T10:01:00.000Z", cpuPercent: 0.2, workingSetMb: 201 });
   assert.match(app.byId.get("wr-chart").getAttribute("aria-label"), /2 actual CPU samples/);
+});
+
+test("launching with an already-live stream does not invent another start", () => {
+  const app = launch({ alreadyLive: true });
+  assert.equal(app.byId.get("wr-session-streams").textContent, "0");
+  app.clickTab("broadcast");
+  app.clickTheme("old-blue");
+  app.clickTheme("war-room");
+  assert.equal(app.byId.get("wr-session-streams").textContent, "0");
 });
