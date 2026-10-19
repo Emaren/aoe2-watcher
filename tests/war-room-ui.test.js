@@ -276,7 +276,9 @@ test("War Room must secure manual whole-display broadcast without touching Class
   assert.match(controller, /function captureConsentReady\(/);
   assert.match(controller, /function paintCaptureConsent\(/);
   assert.match(controller, /captureConsentState\(\)/);
-  assert.match(controller, /originalId === "startNativeStreamBtn" && !captureConsentReady\(\)/);
+  assert.match(controller, /isLiveAction && !captureConsentReady\(\)/);
+  assert.match(controller, /if \(isLiveAction && captureConsentState\(\)\.needsConfirmation\)/);
+  assert.match(controller, /if \(isLiveAction\) syncCaptureControls\(\)/);
   assert.match(controller, /confirmedCaptureDescriptor = ""/);
   assert.match(controller, /displayConsent\.checked = false/);
   assert.match(controller, /hasUnselectedDisplay/);
