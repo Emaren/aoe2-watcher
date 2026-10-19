@@ -1,0 +1,138 @@
+name: Publish certified Watcher 1.6.5
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - ".publish-watcher-v165-trigger"
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      VERSION: "1.6.5"
+      # Pins may be replaced ONLY after Windows Azure signatures and unsigned
+      # macOS/Linux manual artifacts succeed at one exact build-source SHA.
+      WINDOWS_RUN_ID: "0"
+      NONWINDOWS_RUN_ID: "0"
+      RUNTIME_SOURCE_SHA: "8d8a5faf9e92cb51e79aeef2df450df703d5f59c"
+      BUILD_SOURCE_SHA: "b49f31bb69fea629378072faa22220cdfcc2f1ef"
+
+    steps:
+      - name: Checkout publishing authority
+        uses: actions/checkout@v4
+
+      - name: Fail closed for missing release pin or wrong package version
+        run: |
+          set -euo pipefail
+          node scripts/validate-publish-authority.cjs
+          python3 -m py_compile scripts/certify-watcher-v165-release.py
+
+      - name: Authenticate exact certified source and completed workflow runs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh run view "$WINDOWS_RUN_ID" --repo "$GITHUB_REPOSITORY" --json name,event,headSha,conclusion > windows-run.json
+          gh run view "$NONWINDOWS_RUN_ID" --repo "$GITHUB_REPOSITORY" --json name,event,headSha,conclusion > nonwindows-run.json
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          expected = (
+              ("windows-run.json", "Sign Windows Watcher"),
+              ("nonwindows-run.json", "Build non-Windows Watcher Release"),
+          )
+          for filename, name in expected:
+              row = json.loads(Path(filename).read_text())
+              for key, wanted in {
+                  "name": name,
+                  "event": "push",
+                  "headSha": os.environ["BUILD_SOURCE_SHA"],
+                  "conclusion": "success",
+              }.items():
+                  if row.get(key) != wanted:
+                      raise SystemExit(f"STOP: {filename} {key} mismatch: {row.get(key)!r} != {wanted!r}")
+              print("VERIFIED", filename, row["headSha"])
+          PY
+
+      - name: Download exact successful platform artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          rm -rf staging release
+          mkdir -p staging/windows staging/macos staging/linux release
+          gh run download "$WINDOWS_RUN_ID" --repo "$GITHUB_REPOSITORY" --name signed-windows-watcher --dir staging/windows
+          gh run download "$NONWINDOWS_RUN_ID" --repo "$GITHUB_REPOSITORY" --name "watcher-macos-$VERSION" --dir staging/macos
+          gh run download "$NONWINDOWS_RUN_ID" --repo "$GITHUB_REPOSITORY" --name "watcher-linux-$VERSION" --dir staging/linux
+
+      - name: Certify immutable inventory, updater digests and unsigned Mac disclosure
+        run: |
+          set -euo pipefail
+          python3 scripts/certify-watcher-v165-release.py
+          test "$(find release -maxdepth 1 -type f | wc -l | tr -d ' ')" = "12"
+
+      - name: Preserve certified assets and receipts
+        uses: actions/upload-artifact@v4
+        with:
+          name: certified-watcher-1.6.5
+          retention-days: 90
+          if-no-files-found: error
+          path: release/*
+
+      - name: Stage exclusive draft GitHub release at build source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if gh release view "v$VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "STOP: v$VERSION already exists; never clobber an existing public or draft release" >&2
+            exit 1
+          fi
+          gh release create "v$VERSION" --repo "$GITHUB_REPOSITORY" \
+            --target "$BUILD_SOURCE_SHA" --draft \
+            --title "AoE2HDBets Watcher $VERSION" \
+            --notes-file release-notes.md release/*
+
+      - name: Verify exact GitHub release asset inventory and source tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release view "v$VERSION" --repo "$GITHUB_REPOSITORY" --json assets,isDraft,tagName > release-state.json
+          gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/v$VERSION" > tag-state.json
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          release = json.loads(Path("release-state.json").read_text())
+          tag = json.loads(Path("tag-state.json").read_text())
+          expected = sorted(p.name for p in Path("release").iterdir() if p.is_file())
+          actual = sorted(x["name"] for x in release.get("assets", []))
+          if release.get("isDraft") is not True or release.get("tagName") != "v" + os.environ["VERSION"]:
+              raise SystemExit("STOP: release draft/tag mismatch")
+          if expected != actual or len(actual) != 12:
+              raise SystemExit(f"STOP: public release asset inventory mismatch {actual!r}")
+          if tag.get("object", {}).get("sha") != os.environ["BUILD_SOURCE_SHA"]:
+              raise SystemExit("STOP: release tag does not point to certified build")
+          for item in release["assets"]:
+              if not item.get("size", 0):
+                  raise SystemExit("STOP: empty GitHub release asset")
+          print("CERTIFIED: twelve assets match exact sealed release bundle and source tag")
+          PY
+
+      - name: Publish fully checked v1.6.5 GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release edit "v$VERSION" --repo "$GITHUB_REPOSITORY" --draft=false
+          test "$(gh release view "v$VERSION" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft)" = "false"
+          echo "WATCHER_1_6_5_GITHUB_PUBLIC=1"
+          echo "Production website metadata requires independent app release-controller promotion."
