@@ -175,9 +175,9 @@ test("existing video preview is reparented, not cloned or re-recorded", () => {
 });
 
 test("War Room uses validated replay-directory truth, not just a saved path", () => {
-  assert.match(controller, /classicFolder === "Folder ready"/);
-  assert.match(controller, /classicFolder === "Folder missing"/);
-  assert.match(controller, /new MutationObserver\(paintReadiness\)\.observe\(classicFolder/);
+  assert.match(controller, /label === "Folder ready"/);
+  assert.match(controller, /label !== "Folder missing"/);
+  assert.match(controller, /new MutationObserver\(syncClassicFolderValidation\)\.observe\(classicFolder/);
   assert.doesNotMatch(controller, /folderReady = Boolean\(config\.watchDir\)/);
   assert.match(controller, /Valid replay folder/);
 });
@@ -264,8 +264,8 @@ test("authenticated player summary expires once without background polling", () 
 });
 
 test("native replay-folder invalidity wins over stale presentation labels", () => {
-  assert.match(controller, /let verifiedFolderFromInfo = null/);
-  assert.match(controller, /verifiedFolderFromInfo === false/);
-  assert.match(controller, /classicFolder === "Folder missing"/);
-  assert.match(controller, /verifiedFolderFromInfo = info\.watchDirStatus\.valid/);
+  assert.match(controller, /let classicFolderObserved = false/);
+  assert.match(controller, /if \(!classicFolderObserved &&/);
+  assert.match(controller, /classicFolderObserved = true/);
+  assert.match(controller, /folderReady = label === "Folder ready"/);
 });
