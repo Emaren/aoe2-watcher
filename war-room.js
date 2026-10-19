@@ -11,7 +11,7 @@
   picker.className = "wr-theme-picker";
   picker.setAttribute("role", "group");
   picker.setAttribute("aria-label", "Watcher appearance");
-  picker.innerHTML = '<span class="wr-picker-label">APPEARANCE</span><button type="button" data-wr-theme="old-blue" aria-label="Old Blue Classic" title="Old Blue · original Watcher" aria-pressed="false">◈</button><button type="button" data-wr-theme="war-room" aria-label="War Room" title="War Room · player cockpit" aria-pressed="false">⚔</button>';
+  picker.innerHTML = '<span class="wr-picker-label">APPEARANCE</span><button type="button" data-wr-theme="old-blue" aria-label="Old Blue Classic" title="Old Blue · original Watcher" aria-pressed="false">◈</button><button type="button" data-wr-theme="war-room" aria-label="War Room" title="War Room · player cockpit" aria-pressed="false">⚔</button><button type="button" data-wr-locale="en" aria-pressed="false" aria-label="English" title="English">EN</button><button type="button" data-wr-locale="fr" aria-pressed="false" aria-label="Français" title="Français">FR</button>';
   root.insertBefore(picker, classic);
 
   host.innerHTML = [
@@ -25,7 +25,7 @@
     '<button type="button" data-wr-tab="broadcast" aria-selected="false">Broadcast</button>',
     '<button type="button" data-wr-tab="systems" aria-selected="false">Systems</button></nav>',
     '<section data-wr-panel="overview"><div class="wr-layout"><div class="wr-stack">',
-    '<section class="wr-card wr-ornate wr-hero"><div class="wr-avatar" aria-hidden="true">⚔</div><div class="wr-hero-copy">',
+    '<section class="wr-card wr-ornate wr-hero"><div class="wr-avatar" id="wr-avatar" aria-hidden="true">⚔</div><div class="wr-hero-copy">',
     '<div class="wr-kicker">YOUR COMMAND POST</div><h2 id="wr-hero-headline">Preparing command post…</h2>',
     '<p class="wr-player-identity" id="wr-player-name">Player profile awaiting verification</p>',
     '<p class="wr-muted wr-small" id="wr-identity">Pair your Watcher to prepare your battlefield.</p>',
@@ -61,6 +61,9 @@
     '<div class="wr-statline"><span class="wr-muted">Uploaded</span><strong id="wr-import-uploaded">—</strong></div>',
     '<div class="wr-statline"><span class="wr-muted">Review routed</span><strong id="wr-import-review">—</strong></div></div>',
     '<div class="wr-actions"><button type="button" class="wr-action" data-wr-action="scanImportBtn">Batch upload replays</button></div></section>',
+    '<section class="wr-card wr-finance"><div class="wr-kicker">WAR SATCHEL / AUTO BETS</div><h2 style="margin:8px 0">Financial activation pending</h2>',
+    '<p class="wr-muted wr-small">View settings and financial status on the website. This Watcher does not hold WOLO or place bets.</p>',
+    '<div class="wr-actions"><a class="wr-action" href="https://aoe2war.com/profile" rel="noreferrer" target="_blank">Open Auto Bet settings ↗</a></div></section>',
     '</div></div></section>',
     '<section data-wr-panel="battles" hidden><div class="wr-layout"><div class="wr-stack">',
     '<section class="wr-card wr-ornate"><div class="wr-kicker">BATTLE INTELLIGENCE</div><h2 style="margin:8px 0 12px">Your record deserves real evidence.</h2>',
@@ -121,7 +124,7 @@
     '<h2 style="margin:8px 0">Old Blue is preserved.</h2><p class="wr-muted">Appearance changes only the presentation. Both views share the same replay watcher, paired credentials, import queue and active video engine.</p>',
     '<div class="wr-actions"><button type="button" class="wr-action" data-wr-show-classic>Switch to Old Blue ↗</button></div>',
     '</section></div></div></section>',
-    '<footer class="wr-foot"><span>AOE2WAR • WAR ROOM • SOURCE-ONLY 1.6.5 DEVELOPMENT</span>',
+    '<footer class="wr-foot"><span>AOE2WAR • WAR ROOM • VERSION 1.6.5</span>',
     '<span>Actual measurements only. No custody or financial functions.</span></footer></main>'
   ].join("");
 
@@ -382,6 +385,25 @@
       }
     }
     const ready = model.status === "verified";
+    // Website profile locale can only arrive through separately reviewed
+    // authenticated owner-scoped IPC; never infer from a key or guessed name.
+    if (window.WarRoomLocale) window.WarRoomLocale.setVerifiedProfileLocale(
+      ready ? model.preferredLanguage : null
+    );
+    const avatar = el("wr-avatar");
+    if (avatar) {
+      avatar.replaceChildren();
+      if (ready && model.avatarUrl) {
+        const image = document.createElement("img");
+        image.src = model.avatarUrl;
+        image.alt = "";
+        image.referrerPolicy = "no-referrer";
+        image.loading = "lazy";
+        avatar.appendChild(image);
+      } else {
+        avatar.textContent = "⚔";
+      }
+    }
     const stats = ready ? model.record : null;
     write("wr-player-name", ready ? model.displayName : model.status === "stale"
       ? "Player profile needs refreshing" : "Player profile awaiting verification");
@@ -746,6 +768,7 @@
   }
   paintReadiness();
   renderPlayerSummary(null);
+  if (window.WarRoomLocale) window.WarRoomLocale.attach({ display: host, controls: picker });
   syncPreview();
   let initial = "war-room";
   try {
