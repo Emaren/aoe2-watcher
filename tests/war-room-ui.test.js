@@ -45,9 +45,15 @@ test("War Room uses existing actions and observational IPC; no financial handler
   assert.doesNotMatch(controller, /war-satchel|auto-bet|signAndBroadcast|settlementExecute/i);
 });
 
-test("second video preview is detached away from visible Broadcast view", () => {
+test("single existing capture preview returns to Classic without a duplicate decoder", () => {
   assert.match(controller, /theme === "war-room" && tab === "broadcast"/);
-  assert.match(controller, /mirror\.srcObject = media/);
+  assert.match(controller, /previewSlot\.appendChild\(classicVideo\)/);
+  assert.match(controller, /previewHome\.insertBefore\(/);
+  assert.match(controller, /const previewVideo = el\("streamPreview"\)/);
+  assert.match(controller, /classicVideo\.srcObject/);
+  assert.doesNotMatch(controller, /id="wr-preview"/);
+  assert.match(styles, /\.wr-preview-slot>\.stream-preview/);
+  assert.match(styles, /\.wr-preview-slot>\.stream-preview\[hidden\]/);
   assert.match(controller, /function chooseTab\(next\)/);
   assert.match(controller, /function chooseTheme\(next/);
 });
@@ -112,7 +118,8 @@ test("session activity is observational, never a fabricated lifetime statistic",
   assert.match(controller, /Live starts observed this session/);
   assert.match(controller, /Replay detections this session/);
   assert.match(controller, /observedStreamStarts \+= 1/);
-  assert.match(controller, /if \(live && !previousLiveState\)/);
+  assert.match(controller, /if \(streamStatusBaselineRead && live && !previousLiveState\)/);
+  assert.match(controller, /streamStatusBaselineRead = true/);
   assert.match(controller, /event\.type === "replay-detected"/);
   assert.match(controller, /Verified lifetime airtime/);
   assert.match(controller, /Not yet available/);
