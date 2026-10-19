@@ -51,6 +51,8 @@ test("single existing capture preview returns to Classic without a duplicate dec
   assert.match(controller, /previewHome\.insertBefore\(/);
   assert.match(controller, /const previewVideo = el\("streamPreview"\)/);
   assert.match(controller, /classicVideo\.srcObject/);
+  assert.match(controller, /classicVideo\.paused/);
+  assert.match(controller, /classicVideo\.play\(\)\.catch/);
   assert.doesNotMatch(controller, /id="wr-preview"/);
   assert.match(styles, /\.wr-preview-slot>\.stream-preview/);
   assert.match(styles, /\.wr-preview-slot>\.stream-preview\[hidden\]/);
