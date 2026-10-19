@@ -194,3 +194,27 @@ test("Watcher error and import states come from Classic instead of unconditional
   assert.match(controller, /oldStatus === "Watching for new replays"/);
   assert.match(controller, /statusDetail = hasClassicStatus \? oldDetail/);
 });
+
+test("Old Blue (Classic) source markup matches the immutable 1.6.5 parent", () => {
+  // The shell ID is deliberately new; everything INSIDE it is original.
+  // SHA-256 from 2b1d2a0e3973a937c6f57bdebdace47cc1684b4f.
+  const crypto = require("node:crypto");
+  const body = html.match(/<main class="shell" id="oldBlueShell">([\s\S]*?)<\/main>/);
+  assert.ok(body, "Original blue shell must remain mounted");
+  assert.equal(
+    crypto.createHash("sha256").update(body[1], "utf8").digest("hex"),
+    "831babc3ac27ae393415a73492f45a1e52d1e2f46d7a0df716912035ca07642d",
+    "Old Blue markup drifted from the 1.6.5 parent; review separately"
+  );
+});
+
+test("Old Blue (Classic) stylesheet remains byte-identical to original", () => {
+  const crypto = require("node:crypto");
+  const style = html.match(/<style>([\s\S]*?)<\/style>/);
+  assert.ok(style, "Original style block must remain present");
+  assert.equal(
+    crypto.createHash("sha256").update(style[1], "utf8").digest("hex"),
+    "4c2f44247da2bd73acf14020b939f0e12c216b8c161781164a31cbf72a4af2a0",
+    "Old Blue styling drifted from the 1.6.5 parent; review separately"
+  );
+});
