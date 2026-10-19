@@ -104,6 +104,6 @@ test("documentation authority explicitly isolates financial work and supports th
   const reg = JSON.parse(fs.readFileSync(path.join(root, "docs/document-registry.json"), "utf8"));
   assert.match(memo, /Old Blue \(Classic\)/);
   assert.match(memo, /Auto Bets, War Satchel/);
-  assert.match(memo, /same replay watcher/);
+  assert.match(memo, /duplicated replay watcher/);
   assert.ok(reg.documents.some(entry => entry.path === "docs/WATCHER_WAR_ROOM_UI.md"));
 });
