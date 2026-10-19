@@ -50,7 +50,7 @@
     '<section class="wr-card"><div class="wr-kicker">TELEVISION WOLO</div><h2 style="margin:5px 0 14px">Broadcast station</h2>',
     '<div class="wr-broadcast"><div class="wr-cam-icon" aria-hidden="true">◉</div><div><strong id="wr-stream-status">Off air</strong>',
     '<p class="wr-muted wr-small" id="wr-stream-detail">Game capture is inactive.</p></div></div>',
-    '<div class="wr-statline"><span class="wr-muted">Broadcasts observed this session</span><strong id="wr-session-streams">0</strong></div>',
+    '<div class="wr-statline"><span class="wr-muted">Live starts observed this session</span><strong id="wr-session-streams">0</strong></div>',
     '<div class="wr-statline"><span class="wr-muted">Verified lifetime airtime</span><strong>Not yet available</strong></div>',
     '<div class="wr-actions"><button type="button" class="wr-action wr-primary" data-wr-tab-target="broadcast">Broadcast station →</button></div></section>',
     '<section class="wr-card"><div class="wr-kicker">REPLAY ARCHIVE</div><h2 style="margin:5px 0 12px">Historical imports</h2>',
