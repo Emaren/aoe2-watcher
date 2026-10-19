@@ -47,7 +47,7 @@ function createHarness(options = {}) {
     getPath: () => "/test/user-data",
     getAppPath: () => "/test/Watcher.app/Contents/Resources/app.asar",
     getName: () => "AoE2HDBets Watcher",
-    getVersion: () => "1.6.4",
+    getVersion: () => "1.6.5",
     requestSingleInstanceLock: () => {
       record("single-instance-lock");
       return options.lock !== false;
@@ -69,7 +69,7 @@ function createHarness(options = {}) {
   };
   updater.checkForUpdates = async () => {
     record("updater-check");
-    return { updateInfo: { version: "1.6.5" } };
+    return { updateInfo: { version: "1.6.6" } };
   };
   let installerCalled = false;
   updater.quitAndInstall = (...args) => {
@@ -240,7 +240,7 @@ function createHarness(options = {}) {
     startResourceProfiling = () => __h.record("resource-start");
     buildRuntimeMetadata = () => ({});
     refreshWatcherRelease = async () => ({
-      updateAvailable: true, latestVersion: "1.6.5",
+      updateAvailable: true, latestVersion: "1.6.6",
       updateUrl: "https://example.invalid/Watcher.zip"
     });
     globalThis.__test = {
@@ -281,7 +281,7 @@ function createHarness(options = {}) {
     nativeUpdater,
     setNativeFeedURL: (value) => { nativeFeedURL = value; },
     count: (name) => calls.filter((call) => call.name === name).length,
-    event: async (name, info = { version: "1.6.5" }) => {
+    event: async (name, info = { version: "1.6.6" }) => {
       updater.emit(name, info);
       await Promise.resolve();
     },
@@ -307,7 +307,7 @@ function assertNoWorkInterrupted(h) {
 }
 
 function markDownloaded(h) {
-  h.api.setState({ status: "downloaded", downloaded: true, updateVersion: "1.6.5" });
+  h.api.setState({ status: "downloaded", downloaded: true, updateVersion: "1.6.6" });
 }
 
 test("a second application instance exits before runtime or renderer initialization", () => {
@@ -564,13 +564,13 @@ test("upstream support and stable-channel validation both govern available updat
   h.api.configure();
   assert.equal(h.updater.allowDowngrade, false);
   assert.equal(h.updater.allowPrerelease, false);
-  assert.equal(h.updater.isUpdateSupported({ version: "1.6.5-beta.1" }), false);
+  assert.equal(h.updater.isUpdateSupported({ version: "1.6.6-beta.1" }), false);
   assert.equal(h.updater.isUpdateSupported({ version: "1.6.2" }), false);
-  assert.equal(h.updater.isUpdateSupported({ version: "1.6.5" }), true);
+  assert.equal(h.updater.isUpdateSupported({ version: "1.6.6" }), true);
   assert.ok(h.count("upstream-supported") > 0);
   const unsupported = createHarness({ upstreamSupported: false });
   unsupported.api.configure();
-  assert.equal(unsupported.updater.isUpdateSupported({ version: "1.6.5" }), false);
+  assert.equal(unsupported.updater.isUpdateSupported({ version: "1.6.6" }), false);
 });
 
 test("real stream start and end requests defer installation until the final request completes", async () => {
@@ -628,7 +628,7 @@ test("version events preserve the supported download and deferred-install sequen
   assert.equal(h.api.state().status, "checking");
   await h.event("update-available");
   assert.equal(h.api.state().status, "available");
-  assert.equal(h.api.state().updateVersion, "1.6.5");
+  assert.equal(h.api.state().updateVersion, "1.6.6");
   await h.event("download-progress", { percent: 57 });
   assert.equal(h.api.state().status, "downloading");
   assert.equal(h.api.state().downloadPercent, 57);
@@ -643,7 +643,7 @@ test("version events preserve the supported download and deferred-install sequen
 test("stale and prerelease download events cannot enter the install lane", async () => {
   const h = createHarness();
   h.api.configure();
-  for (const version of ["1.6.2", "1.6.3", "1.6.4", "1.6.5-beta.1", "invalid"]) {
+  for (const version of ["1.6.2", "1.6.3", "1.6.4", "1.6.5", "1.6.6-beta.1", "invalid"]) {
     await h.event("update-available", { version });
     await h.event("update-downloaded", { version });
     assert.equal(h.api.state().downloaded, false);
@@ -688,7 +688,7 @@ test("macOS staging rejects native readiness for a different outer candidate ver
   h.api.setWatcher(true);
   h.api.configure();
   await h.event("update-downloaded");
-  h.api.setState({ updateVersion: "1.6.6" });
+  h.api.setState({ updateVersion: "1.6.7" });
   h.nativeUpdater.emit("update-downloaded", {}, "", "", new Date(0), "http://127.0.0.1:43210/update.zip");
   await Promise.resolve();
   await h.fireInstallTimer();
@@ -719,7 +719,7 @@ test("failed macOS staging remains manual for the process and ignores late readi
   await h.fireInstallTimer();
   await h.api.install();
   await h.api.check({ manual: true });
-  await h.event("update-downloaded", { version: "1.6.5" });
+  await h.event("update-downloaded", { version: "1.6.6" });
   assertNoWorkInterrupted(h);
   assert.equal(h.count("native-updater-check"), 1);
   assert.equal(h.api.state().manualInstall, true);
@@ -779,7 +779,7 @@ test("a latched asynchronous installer failure requires manual recovery instead 
   assert.equal(retried.manualRequired, true);
   h.api.pending("late_idle");
   await h.api.check({ manual: true });
-  await h.event("update-downloaded", { version: "1.6.5" });
+  await h.event("update-downloaded", { version: "1.6.6" });
   assert.equal(h.api.state().manualInstall, true);
   assert.equal(h.api.state().downloaded, false);
   assert.equal(h.count("quit-and-install"), 1);
