@@ -33,7 +33,7 @@ Appearance preference resides under the localStorage key `aoe2war.watcher.displa
 The interface deliberately displays unavailable values for verified player wins/losses, RM/DM ELO and historical streaming totals until authoritative read-only APIs are approved.
 A saved replay directory is **not** evidence of a valid replay directory. The War Room readiness label follows Old Blue's validated `folderReadyText` and `watchDirStatus.valid`, and watches that label for changes. A locally configured Watcher upload key is **not** proof of a server-verified player identity; the UI labels it as a credential, not an authenticated profile.
 
-Monitoring status and detail mirror Old Blue's authoritative renderer state, including replay upload failures and background import phases. Green monitoring status must not mask a recent issue. The process-CPU mini-graph ingests only profiles with a valid `sampledAt` and adds at most one graph point per unique sampled timestamp: duplicate `getAppInfo` snapshots are not independent measurements. Never estimate ELO from current upload timestamps, infer a winner from persisted bytes, treat a capture as proof of viewers, or derive user identity from an unverified local filename.
+Monitoring status and detail mirror Old Blue's authoritative renderer state, including replay upload failures and background import phases. The command-post headline changes between setup required, monitoring active, attention needed, and ready, based on existing validated evidence rather than a fixed success message. Green monitoring status must not mask a recent issue. The process-CPU mini-graph ingests only profiles with a valid `sampledAt` and adds at most one graph point per unique sampled timestamp: duplicate `getAppInfo` snapshots are not independent measurements. Never estimate ELO from current upload timestamps, infer a winner from persisted bytes, treat a capture as proof of viewers, or derive user identity from an unverified local filename.
 
 ## Future trusted profile feed — separate, independently reviewed work
 
@@ -65,7 +65,7 @@ Until that independently reviewed server and main-process contract exists, the W
 ## Non-negotiable boundaries
 
 - No change to `Emaren/app-prodn`, `Emaren/api-prodn`, `Emaren/wolochain`, Auto Bets, War Satchel, financial custody, signer keys, settlement or chain state.
-- No new polling timers or network calls for UI decoration. Local CPU graph is capped at 40 actual samples, consumes the already emitted existing resource events, and does not calculate watts.
+- No new polling timers or network calls for UI decoration. Systems can display actual existing per-process network attempt Mbps and processor wakeups per second only when a valid sampled observation exists. These are activity indicators, not verified end-to-end delivery metrics or watt measurements. Local CPU graph is capped at 40 actual samples, consumes the already emitted existing resource events, and does not calculate watts.
 - No new recorder, duplicate decoding video, automatic capture-source escalation, or stream reauthorization triggered by an appearance change. CrossOver/Steam wrapper safety rules and explicit source selection remain owned by the original Watcher.
 - Do not modify or re-label signed public v1.6.4 installer, portable, DMG/ZIP, or Linux assets. Package version remains `1.6.4` until certified v1.6.5 promotion.
 
