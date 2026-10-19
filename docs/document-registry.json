@@ -6,29 +6,6 @@
         "operators",
         "ai-agents"
       ],
-      "authority": "repository-entrypoint",
-      "id": "aoe2war.aoe2-watcher.readme",
-      "owner": "aoe2war-watcher",
-      "path": "README.md",
-      "review_interval_days": 60,
-      "reviewed_at": "2026-10-10",
-      "sensitivity": "internal",
-      "sha256": "68cac654828cc03c81b1f44b9fac527721d15dbf421d0ba95a0616b54f68d3b7",
-      "source_of_truth": "git",
-      "status": "active",
-      "systems": [
-        "aoe2-watcher",
-        "api-prodn"
-      ],
-      "title": "aoe2-watcher",
-      "type": "reference"
-    },
-    {
-      "audience": [
-        "developers",
-        "operators",
-        "ai-agents"
-      ],
       "authority": "generated-repository-index",
       "id": "aoe2war.aoe2-watcher.docs-documentation-control-plane",
       "owner": "aoe2war-watcher",
@@ -112,6 +89,51 @@
       ],
       "title": "Watcher 1.6.4 Update Lifecycle Development",
       "type": "working"
+    },
+    {
+      "audience": [
+        "developers",
+        "operators",
+        "ai-agents"
+      ],
+      "authority": "watcher-presentation-only",
+      "id": "aoe2war.aoe2-watcher.docs-watcher-war-room-ui",
+      "owner": "aoe2war-watcher",
+      "path": "docs/WATCHER_WAR_ROOM_UI.md",
+      "review_interval_days": 30,
+      "reviewed_at": "2026-10-19",
+      "sensitivity": "internal",
+      "sha256": "4f0ad458d42cf254f8f13f879df2f4a16614efff73e2f493dbad3e22a9f6dd39",
+      "source_of_truth": "git",
+      "status": "active",
+      "systems": [
+        "aoe2-watcher"
+      ],
+      "title": "Watcher War Room Appearance and Safety Contract",
+      "type": "working"
+    },
+    {
+      "audience": [
+        "developers",
+        "operators",
+        "ai-agents"
+      ],
+      "authority": "repository-entrypoint",
+      "id": "aoe2war.aoe2-watcher.readme",
+      "owner": "aoe2war-watcher",
+      "path": "README.md",
+      "review_interval_days": 60,
+      "reviewed_at": "2026-10-10",
+      "sensitivity": "internal",
+      "sha256": "68cac654828cc03c81b1f44b9fac527721d15dbf421d0ba95a0616b54f68d3b7",
+      "source_of_truth": "git",
+      "status": "active",
+      "systems": [
+        "aoe2-watcher",
+        "api-prodn"
+      ],
+      "title": "aoe2-watcher",
+      "type": "reference"
     }
   ],
   "generated_at": "2026-08-04T02:09:37Z",
