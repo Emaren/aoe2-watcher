@@ -518,3 +518,83 @@ test("ten active-stream theme changes do not spawn extra native actions or dupli
   for (const id of app.originalControlIds) assert.equal(app.byId.get(id).clicks, 0);
   assert.strictEqual(app.preview.srcObject.identity, "original-capture");
 });
+
+test("War Room requires display-share consent for a selected macOS screen", () => {
+  const app = launch();
+  const display = app.document.createElement("option");
+  display.value = "screen:1";
+  display.textContent = "Display - Built-in Retina Display";
+  const windowSource = app.document.createElement("option");
+  windowSource.value = "window:42";
+  windowSource.textContent = "Window - Age of Empires II HD";
+  app.originalSelect.options = [display, windowSource];
+  app.originalSelect.value = "screen:1";
+  const goLive = app.host.querySelectorAll("[data-wr-action]")
+    .find(button => button.dataset.wrAction === "startNativeStreamBtn");
+  const nativeGoLive = app.byId.get("startNativeStreamBtn");
+  app.clickTab("broadcast");
+  assert.equal(app.byId.get("wr-display-consent").hidden, false);
+  assert.equal(goLive.disabled, true, "display source must not start without confirmation");
+  app.host.dispatch("click", { target: goLive });
+  assert.equal(nativeGoLive.clicks, 0, "synthetic forwarding must also fail closed");
+
+  const checkbox = app.byId.get("wr-display-confirm");
+  checkbox.checked = true;
+  checkbox.dispatch("change", { type: "change" });
+  assert.equal(goLive.disabled, false);
+  app.host.dispatch("click", { target: goLive });
+  assert.equal(nativeGoLive.clicks, 1, "acknowledged display can use original native start");
+
+  const picker = app.byId.get("wr-source");
+  picker.value = "window:42";
+  picker.dispatch("change", { type: "change" });
+  assert.equal(app.originalSelect.value, "window:42");
+  assert.equal(checkbox.checked, false, "consent cannot leak across capture sources");
+  assert.equal(app.byId.get("wr-display-consent").hidden, true);
+  assert.equal(goLive.disabled, false, "recognized game window needs no display consent");
+  app.host.dispatch("click", { target: goLive });
+  assert.equal(nativeGoLive.clicks, 2);
+  assert.equal(app.originalSelect.value, "window:42");
+});
+
+test("unselected display is not an implicit fallback when starting in War Room", () => {
+  const app = launch();
+  const placeholder = app.document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = "Choose game window or display";
+  const display = app.document.createElement("option");
+  display.value = "screen:only";
+  display.textContent = "Display - External monitor";
+  app.originalSelect.options = [placeholder, display];
+  app.originalSelect.value = "";
+  const goLive = app.host.querySelectorAll("[data-wr-action]")
+    .find(button => button.dataset.wrAction === "startNativeStreamBtn");
+  app.clickTab("broadcast");
+  assert.equal(goLive.disabled, true);
+  assert.match(app.byId.get("wr-capture-guard").textContent, /Choose a specific game window or display/);
+  app.host.dispatch("click", { target: goLive });
+  assert.equal(app.byId.get("startNativeStreamBtn").clicks, 0);
+
+  const picker = app.byId.get("wr-source");
+  picker.value = "screen:only";
+  picker.dispatch("change", { type: "change" });
+  assert.equal(goLive.disabled, true, "selecting the display alone is not enough");
+  const confirmation = app.byId.get("wr-display-confirm");
+  confirmation.checked = true;
+  confirmation.dispatch("change", { type: "change" });
+  assert.equal(goLive.disabled, false);
+  app.host.dispatch("click", { target: goLive });
+  assert.equal(app.byId.get("startNativeStreamBtn").clicks, 1);
+});
+
+test("without enumerated capture sources the original macOS OS picker remains available", () => {
+  const app = launch();
+  const goLive = app.host.querySelectorAll("[data-wr-action]")
+    .find(button => button.dataset.wrAction === "startNativeStreamBtn");
+  app.clickTab("broadcast");
+  assert.equal(app.byId.get("wr-display-consent").hidden, true);
+  assert.equal(goLive.disabled, false);
+  app.host.dispatch("click", { target: goLive });
+  assert.equal(app.byId.get("startNativeStreamBtn").clicks, 1);
+  // The OS still owns native capture permission and source-choice UI.
+});
