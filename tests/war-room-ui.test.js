@@ -148,3 +148,21 @@ test("first boot mirrors Classic watcher state without creating another monitori
   assert.doesNotMatch(controller, /bridge\.startWatching\s*\(/);
   assert.doesNotMatch(controller, /bridge\.stopWatching\s*\(/);
 });
+
+test("quality selection is observed from Classic without adding a second source policy", () => {
+  assert.match(controller, /classic\.querySelectorAll\("\[data-stream-mode\]"\)/);
+  assert.match(controller, /attributeFilter: \["class", "disabled"\]/);
+  assert.match(controller, /if \(theme !== "war-room"\) return/);
+  assert.doesNotMatch(controller, /new DesktopCapturer/);
+});
+
+test("existing video preview is reparented, not cloned or re-recorded", () => {
+  assert.match(controller, /previewVideo\?\.parentNode/);
+  assert.match(controller, /previewVideo\?\.nextSibling/);
+  assert.match(controller, /classicVideo\.parentNode !== destination/);
+  assert.match(controller, /previewSlot\.appendChild\(classicVideo\)/);
+  assert.match(controller, /previewHome\.insertBefore/);
+  assert.doesNotMatch(controller, /\.cloneNode\(/);
+  assert.doesNotMatch(controller, /new MediaRecorder/);
+  assert.match(styles, /\.wr-preview-slot>\.stream-preview\[hidden\]/);
+});
