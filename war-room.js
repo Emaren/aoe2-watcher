@@ -72,6 +72,8 @@
     '<section class="wr-card"><div class="wr-kicker">ARCHIVE</div><h2 style="margin:8px 0">Historical imports</h2>',
     '<div class="wr-statline"><span class="wr-muted">Uploaded</span><strong id="wr-battle-imported">—</strong></div>',
     '<div class="wr-statline"><span class="wr-muted">Review routed</span><strong id="wr-battle-review">—</strong></div>',
+    '<div class="wr-rule"></div><div class="wr-kicker">RECENT IMPORT RECEIPTS</div>',
+    '<div class="wr-list" id="wr-import-recent"><div class="wr-empty">No replay import receipts loaded.</div></div>',
     '<div class="wr-actions"><button type="button" class="wr-action" data-wr-action="scanImportBtn">Import saved replays</button></div></section>',
     '</div></div></section>',
     '<section data-wr-panel="broadcast" hidden><div class="wr-layout"><div class="wr-stack">',
@@ -80,6 +82,8 @@
     '<div class="wr-empty" id="wr-preview-empty">No live capture. Choose your game window or display in capture controls before broadcasting.</div>',
     '<div class="wr-statline"><span class="wr-muted">Broadcast</span><strong id="wr-broadcast-status">Off air</strong></div>',
     '<div class="wr-statline"><span class="wr-muted">Source protection</span><strong>Explicit choice / safe fallback</strong></div>',
+    '<div class="wr-statline"><span class="wr-muted">Live capture</span><strong id="wr-capture-headline">Idle</strong></div>',
+    '<p class="wr-muted wr-small wr-stream-detail" id="wr-capture-details">Capture diagnostics appear here when an AoE2 session is detected.</p>',
     '<div class="wr-rule"></div>',
     '<label class="wr-field-label" for="wr-source">Game window or display</label>',
     '<select class="wr-select" id="wr-source" aria-describedby="wr-screen-warning"><option value="">Refresh to discover sources</option></select>',
@@ -377,8 +381,42 @@
     write("wr-battle-imported", Number.isFinite(uploaded) ? uploaded : "—");
     write("wr-import-review", Number.isFinite(review) ? review : "—");
     write("wr-battle-review", Number.isFinite(review) ? review : "—");
+    const list = el("wr-import-recent");
+    if (list && Array.isArray(state.recentItems)) {
+      const items = state.recentItems.slice(0, 5);
+      if (!items.length) {
+        list.replaceChildren();
+        const empty = document.createElement("div");
+        empty.className = "wr-empty";
+        empty.textContent = "No replay import receipts in this batch.";
+        list.appendChild(empty);
+      } else {
+        const fragment = document.createDocumentFragment();
+        for (const item of items) {
+          if (!item || typeof item !== "object") continue;
+          const row = document.createElement("div");
+          row.className = "wr-list-item";
+          const name = String(item.fileName || "Replay").replace(/[\\r\\n\\t]/g, " ").slice(0, 120);
+          const result = {
+            result_ready: "Result ready",
+            review_routed: "Sent to review",
+            uploaded: "Uploaded",
+            archived: "Archived",
+            failed: "Upload failed",
+            skipped: "Skipped"
+          }[item.status] || "Observed";
+          row.textContent = name + " · " + result;
+          fragment.appendChild(row);
+        }
+        list.replaceChildren(fragment);
+      }
+    }
   }
   function syncPreview() {
+    const summary = String(el("streamReadoutSummary")?.textContent || "Idle").trim();
+    const details = String(el("streamReadoutDetail")?.textContent || "").trim();
+    write("wr-capture-headline", summary.slice(0, 160));
+    write("wr-capture-details", details.slice(0, 400) || "Live capture details will appear here.");
     const pill = el("streamStatePill");
     const classicVideo = el("streamPreview");
     const mirror = el("wr-preview");
@@ -411,10 +449,12 @@
     new MutationObserver(syncInitialStatus).observe(classicStatus, { childList: true, characterData: true, subtree: true });
     syncInitialStatus();
   }
-  const pill = el("streamStatePill");
-  if (pill) {
-    const observer = new MutationObserver(syncPreview);
-    observer.observe(pill, { childList: true, characterData: true, subtree: true });
+  // Observe only existing capture readouts, not the full Classic DOM tree.
+  for (const id of ["streamStatePill", "streamReadoutSummary", "streamReadoutDetail"]) {
+    const node = el(id);
+    if (node) new MutationObserver(syncPreview).observe(node, {
+      childList: true, characterData: true, subtree: true
+    });
   }
   const bridge = window.watcherApi;
   if (bridge) {
