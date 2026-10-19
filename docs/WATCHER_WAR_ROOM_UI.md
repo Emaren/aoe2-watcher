@@ -27,7 +27,7 @@ Appearance preference resides under the localStorage key `aoe2war.watcher.displa
 
 1. **Overview**: monitoring and pairing status, genuine bounded process telemetry, recent replay events, last import summary, simple broadcast status, and player-record placeholders.
 2. **Battles**: session replay observations and access to the original website player profile. Replay uploads are not wins or losses.
-3. **Broadcast**: mirrored source choices and capture modes; Go Live, Stop Video, Refresh Sources. These delegate exclusively to the original controls, renderer authorization, and source-selection policy. Its optional preview uses the existing MediaStream while Broadcast is visible and releases that reference when it is not.
+3. **Broadcast**: mirrored source choices and capture modes; Go Live, Stop Video, Refresh Sources. These delegate exclusively to the original controls, renderer authorization, and source-selection policy. Broadcast temporarily reparents the **one original Classic video element** into its visible preview slot, then restores it to its exact original DOM position when the player leaves. The existing renderer remains sole owner of `srcObject` and recording; there is no duplicate decoding surface or second MediaRecorder.
 4. **Systems**: restrained diagnostics with one-click access to the untouched original setup and support details.
 
 The interface deliberately displays unavailable values for verified player wins/losses, RM/DM ELO and historical streaming totals until authoritative read-only APIs are approved. Never estimate ELO from current upload timestamps, infer a winner from persisted bytes, treat a capture as proof of viewers, or derive user identity from an unverified local filename.
@@ -42,18 +42,18 @@ Candidate narrow response fields after separate server design/review: `player` (
 
 - No change to `Emaren/app-prodn`, `Emaren/api-prodn`, `Emaren/wolochain`, Auto Bets, War Satchel, financial custody, signer keys, settlement or chain state.
 - No new polling timers or network calls for UI decoration. Local CPU graph is capped at 40 actual samples, consumes the already emitted existing resource events, and does not calculate watts.
-- No new recorder, automatic capture-source escalation, or stream reauthorization triggered by an appearance change. CrossOver/Steam wrapper safety rules and explicit source selection remain owned by the original Watcher.
+- No new recorder, duplicate decoding video, automatic capture-source escalation, or stream reauthorization triggered by an appearance change. CrossOver/Steam wrapper safety rules and explicit source selection remain owned by the original Watcher.
 - Do not modify or re-label signed public v1.6.4 installer, portable, DMG/ZIP, or Linux assets. Package version remains `1.6.4` until certified v1.6.5 promotion.
 
 ## Acceptance checklist before merge/promotion
 
 - Run `npm run lint`, `npm test` and packaged Windows NSIS/portable, macOS ARM DMG/direct ZIP, Linux x64 AppImage in the existing Watcher CI.
-- macOS CrossOver manual canary: start monitoring; choose Full Screen and explicit display; start stream on identified game; toggle Old Blue ↔ War Room at least 10 times; confirm original display/MediaRecorder/session persist, no secondary publisher, no accidental screen disclosure, independently viewable video, and Stop still works.
+- macOS CrossOver manual canary: start monitoring; choose Full Screen and explicit display; start stream on identified game; toggle Old Blue ↔ War Room at least 10 times; confirm exact preview video-node identity and original DOM restoration, no parallel video decoder/MediaRecorder, original display/session persist, no secondary publisher, no accidental screen disclosure, independently viewable video, and Stop still works.
 - Test switching while replay upload, historical import, and updater checks run. No queue loss, server drift, or duplicate upload.
 - Test picker and tablist keyboard access (Tab, Enter, Left/Right/Home/End, visible focus) and 740px / 1180px responsive layouts. Test missing folder/key, no players, absent resource metrics, and stale data.
 - Confirm no Watcher CLI, producer, signing, web deployment, Wolo/Auto Bet/Satchel files changed.
-- Treat queued or missing CI as **not passed**. Draft PR #42 must stay nonrelease until all required proof and separate 1.6.5 ancestry review are satisfied.
+- Distinguish earlier passing commit CI from latest-head CI: a success from a superseded commit does not certify the next commit. Treat queued or missing latest-head CI as **not passed**. Draft PR #42 must stay nonrelease until all required proof and separate 1.6.5 ancestry review are satisfied.
 
-## Observed state at creation
+## Latest evidence, October 19
 
-Only the source branch and draft PR exist. Production continues on the last separately certified Watcher build; CI and physical tests must be independently checked. No user-facing v1.6.5 release claim is made.
+The source branch and draft PR exist; version remains 1.6.4. Earlier four-job CI on `9c421260` passed (test plus Windows, macOS and Linux packaging smoke), while later UI commits remain **unverified by latest-head CI** as of the last check. The dedicated source-contract suite was independently evaluated with a Node-test-compatible shim, which does **not** substitute for the full repository test runner, Electron integration, or physical CrossOver capture validation. No public 1.6.5 release is claimed.
