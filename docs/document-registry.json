@@ -13,7 +13,7 @@
       "review_interval_days": 0,
       "reviewed_at": "2026-07-26",
       "sensitivity": "internal",
-      "sha256": "e60125263b3e45448c6550504a6752bb650ec7ec71934c55c70d0d454618df09",
+      "sha256": "e0702dcc6c5eee01844aa330e1a5e96da0b1ffe3d2fd7d5066e6c29ac2591429",
       "source_of_truth": "generated",
       "status": "generated",
       "systems": [
@@ -96,6 +96,29 @@
         "operators",
         "ai-agents"
       ],
+      "authority": "watcher-1.6.6-owner-approved-updater-acceptance",
+      "id": "aoe2war.aoe2-watcher.docs-watcher-1-6-6-update-experience",
+      "owner": "aoe2war-watcher",
+      "path": "docs/WATCHER_1_6_6_UPDATE_EXPERIENCE.md",
+      "review_interval_days": 30,
+      "reviewed_at": "2026-10-19",
+      "sensitivity": "internal",
+      "sha256": "09c3e5290353bc31dbc17f375b5bf5cf09355a228759ec9dc85b05d7f1b99e11",
+      "source_of_truth": "git",
+      "status": "active",
+      "systems": [
+        "aoe2-watcher",
+        "app-prodn"
+      ],
+      "title": "Watcher 1.6.6 One-Click Update and Install Experience",
+      "type": "working"
+    },
+    {
+      "audience": [
+        "developers",
+        "operators",
+        "ai-agents"
+      ],
       "authority": "watcher-presentation-only",
       "id": "aoe2war.aoe2-watcher.docs-watcher-war-room-ui",
       "owner": "aoe2war-watcher",
@@ -136,7 +159,7 @@
       "type": "reference"
     }
   ],
-  "generated_at": "2026-08-04T02:09:37Z",
+  "generated_at": "2026-10-19T23:49:00Z",
   "implementation_baseline": {
     "branch": "feature/watcher-1.6.5-development",
     "commit": "56cbea5e38f585547e0f041798c9f05a600ab089"
