@@ -90,7 +90,9 @@
     '<div class="wr-rule"></div>',
     '<label class="wr-field-label" for="wr-source">Game window or display</label>',
     '<select class="wr-select" id="wr-source" aria-describedby="wr-screen-warning"><option value="">Refresh to discover sources</option></select>',
-    '<p class="wr-muted wr-small" id="wr-screen-warning" style="margin:8px 0 16px">Full-display capture shares everything visible on the chosen display. Check the preview before going live.</p>',
+    '<p class="wr-muted wr-small" id="wr-screen-warning" style="margin:8px 0 12px">Full-display capture shares everything visible on the chosen display. Check the preview before going live.</p>',
+    '<label class="wr-display-consent" id="wr-display-consent" hidden><input type="checkbox" id="wr-display-confirm"><span>I choose to share the <strong>entire selected display</strong>, including any visible non-game windows or notifications.</span></label>',
+    '<p class="wr-muted wr-small" id="wr-capture-guard" role="status" aria-live="polite">Use the Watcher capture-source selector to confirm what will be shared.</p>',
     '<div class="wr-field-label">Capture quality</div>',
     '<div class="wr-mode-options" role="group" aria-label="Capture quality">',
     '<button type="button" class="wr-action" data-wr-mode="stable" aria-pressed="false">Stable 15</button>',
@@ -193,6 +195,9 @@
     syncPreview();
   }
   function forward(originalId) {
+    // A manual War Room stream must never silently escalate to full-display
+    // capture. The native engine retains its own source-selection policy.
+    if (originalId === "startNativeStreamBtn" && !captureConsentReady()) return;
     const button = el(originalId);
     if (button && !button.disabled && !button.hidden) button.click();
   }
@@ -223,12 +228,55 @@
   // The War Room is only a presentation adapter for the existing controls.
   // Source choice is committed through Classic's change handler and original policy.
   const sourcePicker = el("wr-source");
+  const displayConsent = el("wr-display-confirm");
+  let confirmedCaptureDescriptor = "";
+  function captureConsentState() {
+    const original = el("streamSourceSelect");
+    const sources = original ? Array.from(original.options) : [];
+    const selected = sources.find(option => option.value && option.value === original.value);
+    const isDisplay = Boolean(selected && /^Display\s*-\s*/i.test(selected.textContent || ""));
+    const hasUnselectedDisplay = !selected && sources.some(option =>
+      option.value && /^Display\s*-\s*/i.test(option.textContent || ""));
+    // Unknown, non-window selections require the same precaution as displays.
+    const unknownSelection = Boolean(selected && !/^Window\s*-\s*/i.test(selected.textContent || "") && !isDisplay);
+    const needsConfirmation = isDisplay || unknownSelection;
+    const descriptor = needsConfirmation
+      ? String(selected.value) + "|" + String(selected.textContent || "") : "";
+    return { hasUnselectedDisplay, needsConfirmation, descriptor };
+  }
+  function captureConsentReady() {
+    const state = captureConsentState();
+    return !state.hasUnselectedDisplay &&
+      (!state.needsConfirmation ||
+        Boolean(displayConsent?.checked && confirmedCaptureDescriptor === state.descriptor));
+  }
+  function paintCaptureConsent() {
+    const { hasUnselectedDisplay, needsConfirmation, descriptor } = captureConsentState();
+    if (descriptor !== confirmedCaptureDescriptor && displayConsent) displayConsent.checked = false;
+    const label = el("wr-display-consent");
+    if (label) label.hidden = !needsConfirmation;
+    const notice = el("wr-capture-guard");
+    if (notice) notice.textContent = hasUnselectedDisplay
+      ? "Choose a specific game window or display. Automatic whole-display sharing is blocked here."
+      : needsConfirmation && !captureConsentReady()
+        ? "Confirm full-display sharing before Go Live. Other windows and notifications may be visible."
+        : needsConfirmation ? "Entire-display sharing acknowledged for this source only."
+        : "Game-window capture uses the original Watcher engine. No extra capture is started.";
+    return !hasUnselectedDisplay && (!needsConfirmation || captureConsentReady());
+  }
+  if (displayConsent) displayConsent.addEventListener("change", () => {
+    confirmedCaptureDescriptor = displayConsent.checked ? captureConsentState().descriptor : "";
+    syncCaptureControls();
+  });
   if (sourcePicker) sourcePicker.addEventListener("change", () => {
     const original = el("streamSourceSelect");
     if (!original || original.disabled) return;
     if (!Array.from(original.options).some(option => option.value === sourcePicker.value)) return;
     original.value = sourcePicker.value;
+    confirmedCaptureDescriptor = "";
+    if (displayConsent) displayConsent.checked = false;
     original.dispatchEvent(new Event("change", { bubbles: true }));
+    syncCaptureControls();
   });
   function syncCaptureControls() {
     if (theme !== "war-room") return;
@@ -255,11 +303,13 @@
         button.setAttribute("aria-pressed", String(originalMode.classList.contains("selected")));
       }
     }
+    const captureReady = paintCaptureConsent();
     for (const button of host.querySelectorAll("[data-wr-action]")) {
       const originalButton = el(button.dataset.wrAction);
       if (originalButton) {
-        button.disabled = originalButton.disabled;
-        button.setAttribute("aria-disabled", String(originalButton.disabled));
+        button.disabled = Boolean(originalButton.disabled ||
+          (button.dataset.wrAction === "startNativeStreamBtn" && !captureReady));
+        button.setAttribute("aria-disabled", String(button.disabled));
       }
     }
   }
