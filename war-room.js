@@ -80,8 +80,19 @@
     '<div class="wr-empty" id="wr-preview-empty">No live capture. Choose your game window or display in capture controls before broadcasting.</div>',
     '<div class="wr-statline"><span class="wr-muted">Broadcast</span><strong id="wr-broadcast-status">Off air</strong></div>',
     '<div class="wr-statline"><span class="wr-muted">Source protection</span><strong>Explicit choice / safe fallback</strong></div>',
-    '<div class="wr-actions"><button type="button" class="wr-action wr-primary" id="wr-capture-controls">Open capture controls</button>',
-    '<button type="button" class="wr-action" data-wr-action="stopNativeStreamBtn">Stop video</button></div></section></div>',
+    '<div class="wr-rule"></div>',
+    '<label class="wr-field-label" for="wr-source">Game window or display</label>',
+    '<select class="wr-select" id="wr-source" aria-describedby="wr-screen-warning"><option value="">Refresh to discover sources</option></select>',
+    '<p class="wr-muted wr-small" id="wr-screen-warning" style="margin:8px 0 16px">Full-display capture shares everything visible on the chosen display. Check the preview before going live.</p>',
+    '<div class="wr-field-label">Capture quality</div>',
+    '<div class="wr-mode-options" role="group" aria-label="Capture quality">',
+    '<button type="button" class="wr-action" data-wr-mode="stable" aria-pressed="false">Stable 15</button>',
+    '<button type="button" class="wr-action" data-wr-mode="screen" aria-pressed="false">Full Screen</button>',
+    '<button type="button" class="wr-action" data-wr-mode="sharp" aria-pressed="false">Sharp 24</button></div>',
+    '<div class="wr-actions"><button type="button" class="wr-action" data-wr-action="refreshStreamSourcesBtn">Refresh sources</button>',
+    '<button type="button" class="wr-action wr-primary" data-wr-action="startNativeStreamBtn">Go Live</button>',
+    '<button type="button" class="wr-action" data-wr-action="stopNativeStreamBtn">Stop video</button>',
+    '<button type="button" class="wr-action" id="wr-capture-controls">Classic capture settings</button></div></section></div>',
     '<div class="wr-stack"><section class="wr-card"><div class="wr-kicker">BROADCAST HISTORY</div><h2 style="margin:8px 0 12px">Your time on air</h2>',
     '<div class="wr-statline"><span class="wr-muted">Lifetime streams</span><strong>Not yet tracked</strong></div>',
     '<div class="wr-statline"><span class="wr-muted">Verified airtime</span><strong>Not yet tracked</strong></div>',
@@ -158,11 +169,70 @@
     if (btn.dataset.wrTab) chooseTab(btn.dataset.wrTab);
     else if (btn.dataset.wrTabTarget) chooseTab(btn.dataset.wrTabTarget);
     else if (btn.dataset.wrAction) forward(btn.dataset.wrAction);
+    else if (btn.dataset.wrMode) {
+      const original = classic.querySelector('[data-stream-mode="' + btn.dataset.wrMode + '"]');
+      if (original && !original.disabled) original.click();
+    }
     else if (btn.hasAttribute("data-wr-show-classic")) chooseTheme("old-blue");
     else if (btn.id === "wr-open-classic-settings") openClassic(".content-grid .field-grid");
     else if (btn.id === "wr-capture-controls") openClassic(".stream-panel");
   });
 
+  // The War Room is only a presentation adapter for the existing controls.
+  // Source choice is committed through Classic's change handler and original policy.
+  const sourcePicker = el("wr-source");
+  if (sourcePicker) sourcePicker.addEventListener("change", () => {
+    const original = el("streamSourceSelect");
+    if (!original || original.disabled) return;
+    if (!Array.from(original.options).some(option => option.value === sourcePicker.value)) return;
+    original.value = sourcePicker.value;
+    original.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+  function syncCaptureControls() {
+    const original = el("streamSourceSelect");
+    if (original && sourcePicker) {
+      const options = Array.from(original.options).map(option => ({ value: option.value, text: option.textContent }));
+      const currentOptions = Array.from(sourcePicker.options).map(option => ({ value: option.value, text: option.textContent }));
+      if (JSON.stringify(options) !== JSON.stringify(currentOptions)) {
+        const items = options.map(option => {
+          const element = document.createElement("option");
+          element.value = option.value;
+          element.textContent = option.text;
+          return element;
+        });
+        sourcePicker.replaceChildren(...items);
+      }
+      sourcePicker.value = original.value;
+      sourcePicker.disabled = original.disabled;
+    }
+    for (const button of host.querySelectorAll("[data-wr-mode]")) {
+      const originalMode = classic.querySelector('[data-stream-mode="' + button.dataset.wrMode + '"]');
+      if (originalMode) {
+        button.disabled = originalMode.disabled;
+        button.setAttribute("aria-pressed", String(originalMode.classList.contains("selected")));
+      }
+    }
+    for (const button of host.querySelectorAll("[data-wr-action]")) {
+      const originalButton = el(button.dataset.wrAction);
+      if (originalButton) {
+        button.disabled = originalButton.disabled;
+        button.setAttribute("aria-disabled", String(originalButton.disabled));
+      }
+    }
+  }
+  // Targeted observers only; never observe the log, card trees or resource text.
+  for (const id of [
+    "startWatchingBtn", "stopWatchingBtn", "scanImportBtn", "startNativeStreamBtn",
+    "stopNativeStreamBtn", "refreshStreamSourcesBtn", "streamSourceSelect"
+  ]) {
+    const control = el(id);
+    if (!control) continue;
+    new MutationObserver(syncCaptureControls).observe(control, {
+      attributes: true, attributeFilter: ["disabled"],
+      childList: id === "streamSourceSelect",
+      subtree: false
+    });
+  }
   function paintReadiness() {
     const oldStatus = String(el("watcherStateText")?.textContent || "").trim();
     const oldDetail = String(el("watcherStateDetailText")?.textContent || "").trim();
@@ -285,6 +355,7 @@
     write("wr-stream-status", live ? "● On air" : state === "Starting" ? "Starting…" : "Off air");
     write("wr-stream-detail", live ? "Existing Watcher capture is streaming." : "Game capture inactive.");
     write("wr-broadcast-status", live ? "Live" : state);
+    syncCaptureControls();
     const media = live && theme === "war-room" && tab === "broadcast" && classicVideo ? classicVideo.srcObject : null;
     if (mirror && mirror.srcObject !== media) {
       mirror.srcObject = media;
