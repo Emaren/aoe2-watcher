@@ -159,7 +159,6 @@
   let watching = false;
   let paired = false;
   let folderReady = false;
-  let lastResourceSampleAt = null;
   let lastResourceSampleEpoch = Number.NEGATIVE_INFINITY;
   let recentEvents = [];
   let detectedReplays = 0;
@@ -448,7 +447,6 @@
     if (!Number.isFinite(sampleEpoch) || sampleEpoch <= lastResourceSampleEpoch) return;
     // Never allow a delayed getAppInfo response to rewind current telemetry.
     lastResourceSampleEpoch = sampleEpoch;
-    lastResourceSampleAt = sampledAt;
     if (Number.isFinite(cpu) && cpu >= 0 && cpu <= 1000) {
       write("wr-cpu", cpu.toFixed(1) + "% CPU");
       write("wr-sys-cpu", cpu.toFixed(1) + "%");
