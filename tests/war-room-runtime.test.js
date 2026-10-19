@@ -25,6 +25,7 @@ class Element {
     this.value = attrs.value || "";
     this.textContent = "";
     this.srcObject = null;
+    this.paused = this.tagName === "VIDEO";
     this.parentNode = null;
     this.nextSibling = null;
     this.clicks = 0;
@@ -122,7 +123,7 @@ class Element {
     return this.descendants.find(node => node.dataset[key] === data[2]) || null;
   }
   scrollIntoView() {}
-  play() { this.plays = (this.plays || 0) + 1; return Promise.resolve(); }
+  play() { this.plays = (this.plays || 0) + 1; this.paused = false; return Promise.resolve(); }
 }
 class Observer {
   constructor(callback) { this.callback = callback; }
@@ -520,6 +521,10 @@ test("ten active-stream theme changes do not spawn extra native actions or dupli
   assert.equal(app.byId.get("wr-session-streams").textContent, "0");
   for (const id of app.originalControlIds) assert.equal(app.byId.get(id).clicks, 0);
   assert.strictEqual(app.preview.srcObject.identity, "original-capture");
+  assert.equal(app.preview.plays, 1, "ten switches must not restart an already-playing preview");
+  app.preview.paused = true;
+  app.clickTab("broadcast");
+  assert.equal(app.preview.plays, 2, "a paused preview must resume when moved into Broadcast");
 });
 
 test("War Room requires display-share consent for a selected macOS screen", () => {
