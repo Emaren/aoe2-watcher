@@ -126,7 +126,10 @@ class Element {
 }
 class Observer {
   constructor(callback) { this.callback = callback; }
-  observe() {}
+  observe(target) {
+    if (!target.__observers) target.__observers = [];
+    target.__observers.push(this.callback);
+  }
 }
 
 function launch({ alreadyLive = false } = {}) {
@@ -226,8 +229,13 @@ function launch({ alreadyLive = false } = {}) {
     host.dispatch("click", { target: button });
     return button;
   };
+  const notifyFolder = label => {
+    const element = byId.get("folderReadyText");
+    element.textContent = label;
+    for (const callback of element.__observers || []) callback();
+  };
   return { document, root, classic, host, preview, previewHome, originalSelect,
-    originalControlIds, preferences, callbacks, clickTheme, clickTab, byId, timers };
+    originalControlIds, preferences, callbacks, clickTheme, clickTab, byId, timers, notifyFolder };
 }
 
 test("Old Blue and War Room switch without changing the original renderer or monitoring", () => {
@@ -248,6 +256,7 @@ test("Old Blue and War Room switch without changing the original renderer or mon
 test("real Watcher state and imports update the War Room, without making up results", () => {
   const app = launch();
   app.callbacks.get("onConfig")({ watchDir: "/saved", uploadApiKey: "configured" });
+  app.notifyFolder("Folder ready");
   app.callbacks.get("onState")({ isWatching: true });
   assert.equal(app.byId.get("wr-paired").textContent, "Watcher key configured");
   assert.equal(app.byId.get("wr-folder-text").textContent, "Validated");
@@ -471,19 +480,26 @@ test("Overview and Broadcast totals come from the same verified streaming projec
     assert.equal(app.byId.get(id).textContent, "—");
 });
 
-test("native invalid replay folder cannot be made green by a stale Classic label", () => {
+test("current Classic validation overrides old app-info in both directions", () => {
   const app = launch();
   app.callbacks.get("onConfig")({ watchDir: "/replays", uploadApiKey: "present" });
+  app.notifyFolder("Folder missing");
+  assert.equal(app.byId.get("wr-folder-text").textContent, "Check in Old Blue");
+  // An older app-info result cannot override the original renderer's
+  // current asynchronous folder-validation result.
+  app.callbacks.get("onAppInfo")({ watchDirStatus: { valid: false } });
+  app.notifyFolder("Folder ready");
   assert.equal(app.byId.get("wr-folder-text").textContent, "Validated");
   app.callbacks.get("onAppInfo")({ watchDirStatus: { valid: false } });
+  assert.equal(app.byId.get("wr-folder-text").textContent, "Validated");
+  app.notifyFolder("Folder missing");
   assert.equal(app.byId.get("wr-folder-text").textContent, "Check in Old Blue");
-  assert.equal(app.byId.get("wr-hero-headline").textContent, "Finish setup");
-  // Valid native status still requires no explicit missing-folder evidence.
-  app.byId.get("folderReadyText").textContent = "Folder missing";
   app.callbacks.get("onAppInfo")({ watchDirStatus: { valid: true } });
   assert.equal(app.byId.get("wr-folder-text").textContent, "Check in Old Blue");
-  app.byId.get("folderReadyText").textContent = "Folder ready";
-  app.callbacks.get("onState")({ isWatching: true });
+  app.callbacks.get("onConfig")({ watchDir: "/other", uploadApiKey: "present" });
+  assert.equal(app.byId.get("wr-folder-text").textContent, "Check in Old Blue",
+    "path change requires revalidation");
+  app.notifyFolder("Folder ready");
   assert.equal(app.byId.get("wr-folder-text").textContent, "Validated");
 });
 
