@@ -678,7 +678,11 @@
           classicVideo,
           previewHomeNext && previewHomeNext.parentNode === previewHome ? previewHomeNext : null
         );
-        if (classicVideo.srcObject && !classicVideo.hidden) classicVideo.play().catch(() => {});
+        // Reparenting should not issue redundant play() calls to an already
+        // playing video; resume only if Chromium actually paused it.
+        if (classicVideo.srcObject && !classicVideo.hidden && classicVideo.paused) {
+          classicVideo.play().catch(() => {});
+        }
       }
       const hasPreview = inStudio && Boolean(classicVideo.srcObject) && !classicVideo.hidden;
       const empty = el("wr-preview-empty");
