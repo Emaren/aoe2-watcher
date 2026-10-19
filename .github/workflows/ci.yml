@@ -83,7 +83,7 @@ jobs:
               Select-Object Algorithm, Hash, Path | Format-Table -AutoSize
           }
           $version = (node -p "require('./package.json').version").Trim()
-          if ($version -ne "1.6.4") { throw "Wrong candidate version: $version" }
+          if ($version -ne "1.6.5") { throw "Wrong candidate version: $version" }
           if (@($binaries | Where-Object { -not $_.Name.Contains($version) }).Count) {
             throw "Candidate filename and version disagree."
           }
@@ -94,8 +94,8 @@ jobs:
           $binaries | ForEach-Object {
             "$((Get-FileHash -Algorithm SHA256 -Path $_.FullName).Hash.ToLowerInvariant())  $($_.Name)"
           } | Set-Content -Path "dist/WINDOWS_TEST_ONLY_SHA256.txt" -Encoding utf8
-          Write-Output "Windows 1.6.4 package smoke passed. Still unsigned and unreleased."
-      - name: Preserve restricted 1.6.4 Windows test artifacts for two days
+          Write-Output "Windows 1.6.5 package smoke passed. Still unsigned and unreleased."
+      - name: Preserve restricted 1.6.5 Windows test artifacts for two days
         uses: actions/upload-artifact@v4
         with:
           name: watcher-1.6.5-windows-unsigned-test-only
@@ -139,7 +139,7 @@ jobs:
         run: |
           set -euo pipefail
           version="$(node -p "require('./package.json').version")"
-          test "$version" = "1.6.4"
+          test "$version" = "1.6.5"
           shopt -s nullglob
           dmg_files=(dist/*"$version"*arm64.dmg)
           zip_files=(dist/aoe2hdbets-watcher-direct.zip)
@@ -190,7 +190,7 @@ jobs:
         run: |
           set -euo pipefail
           version="$(node -p "require('./package.json').version")"
-          test "$version" = "1.6.4"
+          test "$version" = "1.6.5"
           shopt -s nullglob
           images=(dist/*"$version"*.AppImage)
           test "${#images[@]}" -eq 1
