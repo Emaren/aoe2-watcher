@@ -270,6 +270,13 @@
       subtree: false
     });
   }
+  // Class updates carry the selected capture-quality mode even when disabled
+  // state remains unchanged. Keep the new controls in sync without polling.
+  for (const mode of classic.querySelectorAll("[data-stream-mode]")) {
+    new MutationObserver(syncCaptureControls).observe(mode, {
+      attributes: true, attributeFilter: ["class", "disabled"]
+    });
+  }
   function paintReadiness() {
     const oldStatus = String(el("watcherStateText")?.textContent || "").trim();
     const oldDetail = String(el("watcherStateDetailText")?.textContent || "").trim();
