@@ -76,6 +76,24 @@
     return Object.freeze({ sessions, airtimeSeconds, peakConcurrentViewers });
   }
 
+  const safeProfileLocale = value => {
+    const text = typeof value === "string" ? value.trim().toLowerCase().replace(/_/g, "-") : "";
+    return text === "fr" || text.startsWith("fr-") ? "fr"
+      : text === "en" || text.startsWith("en-") ? "en" : null;
+  };
+
+  function safePublicAvatar(value) {
+    if (typeof value !== "string" || value.length > 600) return null;
+    try {
+      const url = new URL(value);
+      if (url.protocol !== "https:" ||
+          !["aoe2war.com", "www.aoe2war.com"].includes(url.hostname) ||
+          url.username || url.password || !url.pathname.startsWith("/") ||
+          url.pathname.includes("\\\\")) return null;
+      return url.href;
+    } catch { return null; }
+  }
+
   function normalize(input, now = Date.now()) {
     if (!input || typeof input !== "object" || Array.isArray(input)) return placeholder;
     // Offline, stale, re-pairing or permission errors must NEVER reuse
@@ -107,6 +125,8 @@
       status: "verified",
       generatedAt: input.generatedAt,
       displayName: name,
+      preferredLanguage: safeProfileLocale(input.player?.language ?? input.player?.locale),
+      avatarUrl: safePublicAvatar(input.player?.avatarUrl),
       record: validRecord ? Object.freeze({ wins, losses, unresolved, winRate }) : null,
       ratings: Object.freeze({ rm: normalizeRating(rating.rm, asOf), dm: normalizeRating(rating.dm, asOf) }),
       recentMatches: Object.freeze(list),

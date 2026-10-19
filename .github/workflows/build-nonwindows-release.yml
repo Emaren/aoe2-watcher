@@ -39,63 +39,39 @@ jobs:
       - name: Run Watcher contracts
         run: npm test
 
-      - name: Refuse uncredentialed macOS release
+      # Owner policy: use unsigned macOS manual builds until project revenue supports Apple Developer.
+      - name: Build unsigned macOS DMG and ZIP
         env:
-          CSC_LINK: ${{ secrets.CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        shell: bash
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+          APPLE_ID: ""
+          APPLE_APP_SPECIFIC_PASSWORD: ""
+          APPLE_TEAM_ID: ""
         run: |
           set -euo pipefail
-          for required in CSC_LINK CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
-            if [[ -z "${!required:-}" ]]; then
-              echo "STOP: official macOS release requires $required" >&2
-              exit 1
-            fi
-          done
-
-      - name: Build macOS Watcher
-        env:
-          CSC_LINK: ${{ secrets.CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: |
           rm -rf dist
           npm run dist:mac
           npm run dist:manual-zip
           npm run verify:mac-updater
 
-      - name: Notarize and staple DMG
-        env:
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      - name: Verify and attest unsigned macOS manual release
         shell: bash
         run: |
           set -euo pipefail
           version="$(node -p "require('./package.json').version")"
           dmg="dist/AoE2HDBets Watcher-${version}-arm64.dmg"
+          app="dist/mac-arm64/AoE2HDBets Watcher.app"
           test -s "$dmg"
-          xcrun notarytool submit "$dmg" \
-            --apple-id "$APPLE_ID" \
-            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
-            --team-id "$APPLE_TEAM_ID" \
-            --wait
-          xcrun stapler staple "$dmg"
-
-      - name: Verify signed/notarized macOS release
-        env:
-          CSC_LINK: ${{ secrets.CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        shell: bash
-        run: bash scripts/verify-mac-signed-release.sh
+          test -d "$app"
+          test -s dist/aoe2hdbets-watcher-direct.zip
+          test -s dist/latest-mac.yml
+          npm run verify:mac-updater
+          if codesign -dv --verbose=2 "$app" 2>&1 | grep -q 'Authority=Developer ID Application:'; then
+            echo "STOP: unsigned lane unexpectedly produced a Developer ID binary" >&2
+            exit 1
+          fi
+          shasum -a 256 "$dmg" dist/aoe2hdbets-watcher-direct.zip dist/*-arm64*.zip dist/latest-mac.yml > dist/UNSIGNED_MACOS_SHA256.txt
+          cat dist/UNSIGNED_MACOS_SHA256.txt
+          echo "UNSIGNED_MACOS_MANUAL_ONLY=1 — no notarization or automatic installation."
 
       - name: Upload macOS release
         uses: actions/upload-artifact@v4
@@ -108,7 +84,7 @@ jobs:
             dist/aoe2hdbets-watcher-direct.zip
             dist/*-arm64*.zip
             dist/latest-mac.yml
-            dist/SIGNED_MACOS_SHA256.txt
+            dist/UNSIGNED_MACOS_SHA256.txt
 
   linux:
     runs-on: ubuntu-latest

@@ -152,7 +152,7 @@ jobs:
             echo "Unsafe macOS installation instruction found" >&2
             exit 1
           fi
-          unzip -p "${zip_files[0]}" "AoE2HDBets Watcher Direct/README.txt" | grep -Fq "Developer ID signed and Apple notarized"
+          unzip -p "${zip_files[0]}" "AoE2HDBets Watcher Direct/README.txt" | grep -Fq "intentionally UNSIGNED and is not Apple notarized"
           shasum -a 256 "${dmg_files[@]}" "${zip_files[@]}" dist/*"$version"*arm64*.zip | tee dist/MACOS_TEST_ONLY_SHA256.txt
       - name: Preserve two-day unsigned macOS test artifacts
         uses: actions/upload-artifact@v4

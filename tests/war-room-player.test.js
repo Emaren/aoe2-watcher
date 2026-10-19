@@ -123,3 +123,25 @@ test("contract explicitly exposes ten-minute age limit without scheduling networ
   assert.equal(contract.MAX_AGE_MS, 600000);
   assert.equal(contract.normalize(summary(), now + 600001).status, "stale");
 });
+
+test("verified profile language and first-party avatar are accepted only with valid owner summary", () => {
+  const legitimate = contract.normalize(summary({ player: {
+    displayName: "Tekki", language: "fr-FR",
+    avatarUrl: "https://aoe2war.com/avatars/tekki.webp"
+  }}), now);
+  assert.equal(legitimate.status, "verified");
+  assert.equal(legitimate.preferredLanguage, "fr");
+  assert.equal(legitimate.avatarUrl, "https://aoe2war.com/avatars/tekki.webp");
+  for (const input of ["http://aoe2war.com/a.jpg","https://evil.example/a.jpg",
+    "https://aoe2war.com.evil.example/a.jpg","javascript:alert(1)"]) {
+    const result = contract.normalize(summary({ player: {
+      displayName: "Tekki", language: "fr", avatarUrl: input
+    }}), now);
+    assert.equal(result.avatarUrl, null, input);
+  }
+  const unavailable = contract.normalize(summary({ status: "unauthorized", player: {
+    displayName: "Tekki", language: "fr", avatarUrl: "https://aoe2war.com/a.jpg"
+  }}), now);
+  assert.notEqual(unavailable.status, "verified");
+  assert.equal(unavailable.preferredLanguage, undefined);
+});

@@ -13,7 +13,39 @@ review_interval_days: 30
 sensitivity: "internal"
 ---
 
-# War Room / Old Blue — source-only v1.6.5 work
+# War Room / Old Blue — v1.6.5 presentation and release contract
+
+## October 19 owner policy — production unsigned Mac, signed Windows, bilingual Watcher
+
+The owner has explicitly chosen **no paid Apple Developer membership until
+project revenue justifies USD $99/year**. Mac releases are unsigned manual
+DMG/direct ZIP, visibly marked as such; notarization and auto-install are
+not promised. No Apple certificate, Apple secrets, notarization step or
+purchasing instruction may block the macOS release lane. Preserve the Apple
+identity attestor as an inactive future option only. Windows installers and
+portable EXEs continue to require real Azure signing and timestamp receipts.
+Linux remains an ordinary unsigned AppImage. Publication should certify the
+exact source SHA and binary hashes, separately from the website-download
+promotion. No Gatekeeper bypass instructions.
+
+War Room supports **French and English**; the persistent EN/FR picker overrides
+an authenticated paired-profile locale, which overrides OS language (FR/EN),
+which defaults to English. The current website has no independently verified
+owner-scoped summary route; therefore profile-language auto-sync, avatar
+delivery, record, and website financial statuses are **not active yet**.
+The presentation contract accepts only verified first-party `avatarUrl`
+and `player.language`; invalid, stale, cross-account or absent summaries
+must not populate identity data or control language. Until a reviewed
+read-only endpoint exists, the local FR toggle and OS language work, and the
+avatar remains a neutral placeholder.
+
+The War Satchel / Auto Bets tile is an **explicit financial HOLD notice**,
+not a ledger, funded balance, status API, mandate or bet command. The
+financial app's separate workflow owns deposits, escrow, authorization and
+activation. No UI change in Watcher is authority to deploy or activate the
+financial bridge. Do not touch app-prodn, api-prodn, WoloChain or the separate
+agents' working trees from the Watcher release lane.
+
 
 ## Scope and provenance
 
