@@ -218,3 +218,21 @@ test("Old Blue (Classic) stylesheet remains byte-identical to original", () => {
     "Old Blue styling drifted from the 1.6.5 parent; review separately"
   );
 });
+
+test("command post never announces ready when credentials, directory, or Watcher are not", () => {
+  assert.match(controller, /id="wr-hero-headline"/);
+  assert.match(controller, /const readyToPlay = paired && folderReady/);
+  assert.match(controller, /const needsAttention = \/issue\|error\|attention\|failed\|missing\|retrying/i);
+  assert.match(controller, /"Finish setup"/);
+  assert.match(controller, /"Attention needed"/);
+  assert.match(controller, /"Preparing command post…"/);
+});
+
+test("systems telemetry reuses existing genuine process metrics only", () => {
+  assert.match(controller, /id="wr-sys-network"/);
+  assert.match(controller, /id="wr-sys-wakeups"/);
+  assert.match(controller, /validSample && typeof profile\.networkMbps === "number"/);
+  assert.match(controller, /profile\.idleWakeupsAvailable === true/);
+  assert.match(controller, /"Not reported"/);
+  assert.doesNotMatch(controller, /powerWatts\s*\|\|/);
+});
