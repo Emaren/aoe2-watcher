@@ -78,7 +78,7 @@
     '</div></div></section>',
     '<section data-wr-panel="broadcast" hidden><div class="wr-layout"><div class="wr-stack">',
     '<section class="wr-card wr-ornate"><div class="wr-kicker">TELEVISION WOLO</div><h2 style="margin:8px 0">Your broadcast studio</h2>',
-    '<video class="wr-video" id="wr-preview" muted autoplay playsinline hidden aria-label="Existing Watcher capture preview"></video>',
+    '<div class="wr-preview-slot" id="wr-preview-slot" aria-label="Existing Watcher capture preview"></div>',
     '<div class="wr-empty" id="wr-preview-empty">No live capture. Choose your game window or display in capture controls before broadcasting.</div>',
     '<div class="wr-statline"><span class="wr-muted">Broadcast</span><strong id="wr-broadcast-status">Off air</strong></div>',
     '<div class="wr-statline"><span class="wr-muted">Source protection</span><strong>Explicit choice / safe fallback</strong></div>',
@@ -160,6 +160,7 @@
   let detectedReplays = 0;
   let observedStreamStarts = 0;
   let previousLiveState = false;
+  let streamStatusBaselineRead = false;
   const cpuSamples = [];
 
   function chooseTheme(next, persist = true) {
@@ -224,6 +225,7 @@
     original.dispatchEvent(new Event("change", { bubbles: true }));
   });
   function syncCaptureControls() {
+    if (theme !== "war-room") return;
     const original = el("streamSourceSelect");
     if (original && sourcePicker) {
       const options = Array.from(original.options).map(option => ({ value: option.value, text: option.textContent }));
@@ -423,24 +425,34 @@
     write("wr-capture-details", details.slice(0, 400) || "Live capture details will appear here.");
     const pill = el("streamStatePill");
     const classicVideo = el("streamPreview");
-    const mirror = el("wr-preview");
     const state = String(pill && pill.textContent || "Idle").trim();
     const live = state === "Live";
-    if (live && !previousLiveState) {
+    if (streamStatusBaselineRead && live && !previousLiveState) {
       observedStreamStarts += 1;
       write("wr-session-streams", observedStreamStarts);
     }
     previousLiveState = live;
+    streamStatusBaselineRead = true;
     write("wr-stream-status", live ? "● On air" : state === "Starting" ? "Starting…" : "Off air");
     write("wr-stream-detail", live ? "Existing Watcher capture is streaming." : "Game capture inactive.");
     write("wr-broadcast-status", live ? "Live" : state);
     syncCaptureControls();
-    const media = live && theme === "war-room" && tab === "broadcast" && classicVideo ? classicVideo.srcObject : null;
-    if (mirror && mirror.srcObject !== media) {
-      mirror.srcObject = media;
-      mirror.hidden = !media;
-      el("wr-preview-empty").hidden = Boolean(media);
-      if (media && theme === "war-room" && tab === "broadcast") mirror.play().catch(() => {});
+    // Reparent the ONE original preview node. The renderer retains control
+    // of srcObject, stream upload, MediaRecorder, and native source selection.
+    if (classicVideo && previewHome && previewSlot) {
+      const inStudio = theme === "war-room" && tab === "broadcast";
+      const destination = inStudio ? previewSlot : previewHome;
+      if (classicVideo.parentNode !== destination) {
+        if (inStudio) previewSlot.appendChild(classicVideo);
+        else previewHome.insertBefore(
+          classicVideo,
+          previewHomeNext && previewHomeNext.parentNode === previewHome ? previewHomeNext : null
+        );
+        if (classicVideo.srcObject && !classicVideo.hidden) classicVideo.play().catch(() => {});
+      }
+      const hasPreview = inStudio && Boolean(classicVideo.srcObject) && !classicVideo.hidden;
+      const empty = el("wr-preview-empty");
+      if (empty) empty.hidden = hasPreview;
     }
   }
   // The Classic renderer may paint its first status before our independent listener attaches.
@@ -460,6 +472,11 @@
       childList: true, characterData: true, subtree: true
     });
   }
+  // Store Classic's exact original video position for lossless restoration.
+  const previewVideo = el("streamPreview");
+  const previewHome = previewVideo?.parentNode || null;
+  const previewHomeNext = previewVideo?.nextSibling || null;
+  const previewSlot = el("wr-preview-slot");
   const bridge = window.watcherApi;
   if (bridge) {
     if (typeof bridge.onState === "function") bridge.onState(state => {
