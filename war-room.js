@@ -159,6 +159,7 @@
   let watching = false;
   let paired = false;
   let folderReady = false;
+  let verifiedFolderFromInfo = null;
   let lastResourceSampleEpoch = Number.NEGATIVE_INFINITY;
   let recentEvents = [];
   let detectedReplays = 0;
@@ -397,8 +398,13 @@
     // A configured path is not evidence that the SaveGame folder is valid.
     // Original renderer validation is the authoritative presentation here.
     const classicFolder = String(el("folderReadyText")?.textContent || "").trim();
-    if (classicFolder === "Folder ready") folderReady = true;
-    else if (classicFolder === "Folder missing") folderReady = false;
+    // Native validation must never be overridden by a stale "Folder ready"
+    // label from the other view. Missing evidence must not imply readiness.
+    if (verifiedFolderFromInfo === false || classicFolder === "Folder missing") {
+      folderReady = false;
+    } else if (verifiedFolderFromInfo === true || classicFolder === "Folder ready") {
+      folderReady = true;
+    }
 
     // Presence of an upload key is NOT a verified player identity.
     write("wr-paired", paired ? "Watcher key configured" : "Watcher key needed");
@@ -424,7 +430,10 @@
     // Fail closed: never retain a previous account's verified player record.
     renderPlayerSummary(null);
     paired = Boolean(config.uploadApiKey);
-    if (!config.watchDir) folderReady = false;
+    if (!config.watchDir) {
+      folderReady = false;
+      verifiedFolderFromInfo = false;
+    }
     paintReadiness();
   }
   function onInfo(info) {
@@ -433,6 +442,7 @@
     write("wr-version", "v" + version);
     write("wr-sys-build", version);
     if (info.watchDirStatus && typeof info.watchDirStatus.valid === "boolean") {
+      verifiedFolderFromInfo = info.watchDirStatus.valid;
       folderReady = info.watchDirStatus.valid;
       paintReadiness();
     }
