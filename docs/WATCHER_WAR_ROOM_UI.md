@@ -1,10 +1,10 @@
 ---
-id: "aoe2war.watcher.war-room-ui"
+id: "aoe2war.aoe2-watcher.docs-watcher-war-room-ui"
 title: "Watcher War Room Appearance and Safety Contract"
-type: "development"
+type: "working"
 status: "active"
 owner: "aoe2war-watcher"
-systems: ["aoe2-watcher", "aoe2hdbets"]
+systems: ["aoe2-watcher"]
 audience: ["developers", "operators", "ai-agents"]
 source_of_truth: "git"
 authority: "watcher-presentation-only"
