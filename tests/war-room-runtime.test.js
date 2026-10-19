@@ -470,3 +470,35 @@ test("Overview and Broadcast totals come from the same verified streaming projec
   for (const id of ["wr-total-streams","wr-overview-streams","wr-total-airtime","wr-overview-airtime"])
     assert.equal(app.byId.get(id).textContent, "—");
 });
+
+test("native invalid replay folder cannot be made green by a stale Classic label", () => {
+  const app = launch();
+  app.callbacks.get("onConfig")({ watchDir: "/replays", uploadApiKey: "present" });
+  assert.equal(app.byId.get("wr-folder-text").textContent, "Validated");
+  app.callbacks.get("onAppInfo")({ watchDirStatus: { valid: false } });
+  assert.equal(app.byId.get("wr-folder-text").textContent, "Check in Old Blue");
+  assert.equal(app.byId.get("wr-hero-headline").textContent, "Finish setup");
+  // Valid native status still requires no explicit missing-folder evidence.
+  app.byId.get("folderReadyText").textContent = "Folder missing";
+  app.callbacks.get("onAppInfo")({ watchDirStatus: { valid: true } });
+  assert.equal(app.byId.get("wr-folder-text").textContent, "Check in Old Blue");
+  app.byId.get("folderReadyText").textContent = "Folder ready";
+  app.callbacks.get("onState")({ isWatching: true });
+  assert.equal(app.byId.get("wr-folder-text").textContent, "Validated");
+});
+
+test("ten active-stream theme changes do not spawn extra native actions or duplicate preview", () => {
+  const app = launch({ alreadyLive: true });
+  app.preview.srcObject = { identity: "original-capture" };
+  app.preview.hidden = false;
+  for (let i = 0; i < 10; i++) {
+    app.clickTab("broadcast");
+    assert.strictEqual(app.preview.parentNode, app.byId.get("wr-preview-slot"));
+    app.clickTheme("old-blue");
+    assert.strictEqual(app.preview.parentNode, app.previewHome);
+    app.clickTheme("war-room");
+  }
+  assert.equal(app.byId.get("wr-session-streams").textContent, "0");
+  for (const id of app.originalControlIds) assert.equal(app.byId.get(id).clicks, 0);
+  assert.strictEqual(app.preview.srcObject.identity, "original-capture");
+});
