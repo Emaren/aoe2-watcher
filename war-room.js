@@ -27,13 +27,14 @@
     '<section data-wr-panel="overview"><div class="wr-layout"><div class="wr-stack">',
     '<section class="wr-card wr-ornate wr-hero"><div class="wr-avatar" aria-hidden="true">⚔</div><div class="wr-hero-copy">',
     '<div class="wr-kicker">YOUR COMMAND POST</div><h2 id="wr-hero-headline">Preparing command post…</h2>',
+    '<p class="wr-player-identity" id="wr-player-name">Player profile awaiting verification</p>',
     '<p class="wr-muted wr-small" id="wr-identity">Pair your Watcher to prepare your battlefield.</p>',
     '<div class="wr-chips"><span class="wr-chip" id="wr-paired">Checking pairing</span><span class="wr-chip" id="wr-folder">Checking replay folder</span></div>',
     '</div></section>',
     '<section class="wr-metrics" aria-label="Player record; values require verified player data">',
-    '<div class="wr-metric"><span>Verified wins / losses</span><strong>— / —</strong><small>Awaiting paired player statistics</small></div>',
-    '<div class="wr-metric"><span>Battle win rate</span><strong>—</strong><small>Decided results only</small></div>',
-    '<div class="wr-metric"><span>RM / DM rating</span><strong>— / —</strong><small>Chronology-qualified Steam rating</small></div></section>',
+    '<div class="wr-metric"><span>Verified wins / losses</span><strong id="wr-wins-losses">— / —</strong><small id="wr-record-note">Awaiting verified player statistics</small></div>',
+    '<div class="wr-metric"><span>Battle win rate</span><div class="wr-win-meter" id="wr-win-meter"><strong id="wr-win-rate">—</strong></div><small>Decided results only</small></div>',
+    '<div class="wr-metric"><span>RM / DM rating</span><strong id="wr-rating">— / —</strong><small id="wr-rating-note">Verified ratings only</small></div></section>',
     '<section class="wr-card"><div class="wr-heading"><div><div class="wr-kicker">LIVE TELEMETRY</div><h2>Resource pulse</h2></div><span class="wr-chip" id="wr-cpu">Measuring CPU…</span></div>',
     '<div class="wr-chart" id="wr-chart" role="img" aria-label="Recent Watcher CPU samples"><span class="wr-chart-note">Waiting for real process samples. No simulated charts.</span></div>',
     '<div class="wr-line wr-muted wr-small" style="margin-top:12px"><span>Recent in-session samples · no extra polling</span><span id="wr-memory">RAM —</span></div></section>',
@@ -67,8 +68,9 @@
     '<section class="wr-card"><div class="wr-kicker">REPLAY EVENTS</div><h2 style="margin:8px 0 15px">This session</h2>',
     '<div class="wr-list" id="wr-battle-events"><div class="wr-empty">Replay events will appear as they happen. Uploads are not win/loss decisions.</div></div></section>',
     '</div><div class="wr-stack">',
-    '<section class="wr-card"><div class="wr-kicker">RECENT FORM</div><h2 style="margin:8px 0">Awaiting verified results</h2>',
-    '<div class="wr-chart" style="margin-top:18px"><span class="wr-chart-note">Verified wins, losses and unresolved matches will have distinct marks. No fake streaks.</span></div></section>',
+    '<section class="wr-card"><div class="wr-kicker">RECENT FORM</div><h2 style="margin:8px 0" id="wr-form-title">Awaiting verified results</h2>',
+    '<div class="wr-form-strip" id="wr-form-strip" aria-label="Recent verified battle outcomes">—</div>',
+    '<div class="wr-list" id="wr-recent-matches"><div class="wr-empty">Verified recent battles will appear after a trusted player-summary connection.</div></div></section>',
     '<section class="wr-card"><div class="wr-kicker">ARCHIVE</div><h2 style="margin:8px 0">Historical imports</h2>',
     '<div class="wr-statline"><span class="wr-muted">Uploaded</span><strong id="wr-battle-imported">—</strong></div>',
     '<div class="wr-statline"><span class="wr-muted">Review routed</span><strong id="wr-battle-review">—</strong></div>',
@@ -98,9 +100,9 @@
     '<button type="button" class="wr-action" data-wr-action="stopNativeStreamBtn">Stop video</button>',
     '<button type="button" class="wr-action" id="wr-capture-controls">Classic capture settings</button></div></section></div>',
     '<div class="wr-stack"><section class="wr-card"><div class="wr-kicker">BROADCAST HISTORY</div><h2 style="margin:8px 0 12px">Your time on air</h2>',
-    '<div class="wr-statline"><span class="wr-muted">Lifetime streams</span><strong>Not yet tracked</strong></div>',
-    '<div class="wr-statline"><span class="wr-muted">Verified airtime</span><strong>Not yet tracked</strong></div>',
-    '<div class="wr-statline"><span class="wr-muted">Peak concurrent viewers</span><strong>Not yet tracked</strong></div>',
+    '<div class="wr-statline"><span class="wr-muted">Verified lifetime streams</span><strong id="wr-total-streams">—</strong></div>',
+    '<div class="wr-statline"><span class="wr-muted">Verified airtime</span><strong id="wr-total-airtime">—</strong></div>',
+    '<div class="wr-statline"><span class="wr-muted">Peak concurrent viewers</span><strong id="wr-peak-viewers">—</strong></div>',
     '<p class="wr-muted wr-small" style="margin-top:14px">These require durable authenticated broadcast history. Capturing a display is not proof of viewers.</p>',
     '</section></div></div></section>',
     '<section data-wr-panel="systems" hidden><div class="wr-layout"><div class="wr-stack">',
@@ -278,6 +280,81 @@
       attributes: true, attributeFilter: ["class", "disabled"]
     });
   }
+  // This listener is intentionally dormant until an independently reviewed,
+  // owner-authenticated player-summary IPC is added to the preload/main process.
+  // No renderer fetch, guessed identity or key forwarding is permitted.
+  function renderPlayerSummary(payload) {
+    const contract = window.WarRoomPlayer;
+    const model = contract?.normalize(payload) || { status: "unavailable" };
+    const ready = model.status === "verified";
+    const stats = ready ? model.record : null;
+    write("wr-player-name", ready ? model.displayName : model.status === "stale"
+      ? "Player profile needs refreshing" : "Player profile awaiting verification");
+    write("wr-wins-losses", stats ? stats.wins + " / " + stats.losses : "— / —");
+    write("wr-record-note", stats && stats.unresolved !== null
+      ? stats.unresolved + " unresolved • decided battles only" : "Decided results only • awaiting authority");
+    write("wr-win-rate", stats && stats.winRate !== null ? stats.winRate + "%" : "—");
+    const meter = el("wr-win-meter");
+    if (meter) {
+      const rate = stats?.winRate;
+      meter.style.setProperty("--wr-rate", rate === null || rate === undefined ? "0%" : rate + "%");
+      meter.classList.toggle("available", rate !== null && rate !== undefined);
+    }
+    const rm = ready ? model.ratings.rm : null;
+    const dm = ready ? model.ratings.dm : null;
+    write("wr-rating", (rm ? rm.value : "—") + " / " + (dm ? dm.value : "—"));
+    write("wr-rating-note", "RM / DM • " + (rm || dm ? "provenance-qualified" : "awaiting authority"));
+
+    const matches = ready ? model.recentMatches : [];
+    const strip = el("wr-form-strip");
+    const list = el("wr-recent-matches");
+    if (strip) {
+      strip.replaceChildren();
+      if (!matches.length) strip.textContent = "No verified recent battles available";
+      else {
+        const frag = document.createDocumentFragment();
+        for (const match of matches) {
+          const marker = document.createElement("span");
+          marker.className = "wr-result " + match.result;
+          marker.textContent = match.result === "win" ? "W" : match.result === "loss" ? "L" : "?";
+          marker.setAttribute("title", match.mode.toUpperCase() + " • " + match.opponent);
+          frag.appendChild(marker);
+        }
+        strip.appendChild(frag);
+      }
+    }
+    write("wr-form-title", matches.length ? "Last " + matches.length + " battles" : "Awaiting verified results");
+    if (list) {
+      const frag = document.createDocumentFragment();
+      if (!matches.length) {
+        const empty = document.createElement("div");
+        empty.className = "wr-empty";
+        empty.textContent = model.status === "stale"
+          ? "Statistics have expired. No stale player record is shown."
+          : "No verified recent battles available.";
+        frag.appendChild(empty);
+      } else for (const match of matches) {
+        const item = document.createElement("div");
+        item.className = "wr-list-item wr-match";
+        const title = document.createElement("strong");
+        title.textContent = match.mode.toUpperCase() + " • " + match.opponent;
+        const meta = document.createElement("span");
+        meta.className = "wr-muted";
+        meta.textContent = match.map + " • " + (match.result === "win" ? "Victory" :
+          match.result === "loss" ? "Defeat" : "Unresolved");
+        item.appendChild(title);
+        item.appendChild(meta);
+        frag.appendChild(item);
+      }
+      list.replaceChildren(frag);
+    }
+    const stream = ready ? model.streaming : null;
+    write("wr-total-streams", stream?.sessions ?? "—");
+    write("wr-total-airtime", stream && contract
+      ? contract.duration(stream.airtimeSeconds) : "—");
+    write("wr-peak-viewers", stream?.peakConcurrentViewers ?? "—");
+  }
+
   function paintReadiness() {
     // Old Blue already renders the Watcher's authoritative status, including
     // upload failures, historical imports, and replay validation errors.
@@ -533,12 +610,15 @@
     if (typeof bridge.onConfig === "function") bridge.onConfig(onConfig);
     if (typeof bridge.onAppInfo === "function") bridge.onAppInfo(onInfo);
     if (typeof bridge.onResourceProfile === "function") bridge.onResourceProfile(onResource);
+    // Optional future verified IPC; absent in current preload, therefore no new work.
+    if (typeof bridge.onPlayerSummary === "function") bridge.onPlayerSummary(renderPlayerSummary);
     if (typeof bridge.onImportState === "function") bridge.onImportState(onImport);
     if (typeof bridge.onRuntimeEvent === "function") bridge.onRuntimeEvent(onRuntime);
     if (typeof bridge.getConfig === "function") bridge.getConfig().then(onConfig).catch(() => {});
     if (typeof bridge.getAppInfo === "function") bridge.getAppInfo().then(onInfo).catch(() => {});
   }
   paintReadiness();
+  renderPlayerSummary(null);
   syncPreview();
   let initial = "war-room";
   try {
