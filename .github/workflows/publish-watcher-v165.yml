@@ -20,8 +20,8 @@ jobs:
       VERSION: "1.6.5"
       # Pins may be replaced ONLY after Windows Azure signatures and unsigned
       # macOS/Linux manual artifacts succeed at one exact build-source SHA.
-      WINDOWS_RUN_ID: "0"
-      NONWINDOWS_RUN_ID: "0"
+      WINDOWS_RUN_ID: "39315028329"
+      NONWINDOWS_RUN_ID: "39315028352"
       RUNTIME_SOURCE_SHA: "8d8a5faf9e92cb51e79aeef2df450df703d5f59c"
       BUILD_SOURCE_SHA: "b49f31bb69fea629378072faa22220cdfcc2f1ef"
 
