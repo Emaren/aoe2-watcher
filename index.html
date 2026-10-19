@@ -3,6 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <title>AoE2HDBets Watcher</title>
+    <link rel="stylesheet" href="./war-room.css" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <style>
       :root {
@@ -961,7 +962,7 @@
   </head>
   <body>
     <div class="app-shell">
-      <main class="shell">
+      <main class="shell" id="oldBlueShell">
         <section class="card hero">
           <div>
             <div class="eyebrow">AoE2HDBets / Watcher</div>
@@ -1424,9 +1425,11 @@
           </div>
         </section>
       </main>
+      <div id="warRoomHost" hidden></div>
     </div>
 
     <script src="./captureSourcePolicy.js"></script>
     <script src="./renderer.js"></script>
+    <script src="./war-room.js"></script>
   </body>
 </html>
