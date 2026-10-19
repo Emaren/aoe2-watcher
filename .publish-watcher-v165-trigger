@@ -1,0 +1,7 @@
+AoE2HDBets Watcher production publication
+version=1.6.5
+build_source=b49f31bb69fea629378072faa22220cdfcc2f1ef
+windows_run=39315028329
+nonwindows_run=39315028352
+macos_policy=UNSIGNED_MANUAL_NO_APPLE_SUBSCRIPTION
+owner_authorized=2026-10-19
