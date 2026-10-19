@@ -290,6 +290,21 @@
       if (media && theme === "war-room" && tab === "broadcast") mirror.play().catch(() => {});
     }
   }
+  // The Classic renderer may paint its first status before our independent listener attaches.
+  // Mirror its authoritative presentation until a watcher:state event arrives.
+  const classicStatus = el("watcherStateText");
+  if (classicStatus) {
+    const syncInitialStatus = () => {
+      if (statusKnown) return;
+      const label = String(classicStatus.textContent || "").trim();
+      if (label && label !== "Loading watcher…") {
+        write("wr-status", label);
+        write("wr-detail", String(el("watcherStateDetailText")?.textContent || "").trim());
+      }
+    };
+    new MutationObserver(syncInitialStatus).observe(classicStatus, { childList: true, characterData: true, subtree: true });
+    syncInitialStatus();
+  }
   const pill = el("streamStatePill");
   if (pill) {
     const observer = new MutationObserver(syncPreview);
