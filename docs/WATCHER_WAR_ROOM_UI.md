@@ -62,6 +62,39 @@ The existing app has rich server-side player projections in `lib/playerProfile.t
 
 Until that independently reviewed server and main-process contract exists, the War Room presents honest unavailable states and sends users to the existing public website profile.
 
+## Verified player summary display adapter (UI-only, no authenticated endpoint yet)
+
+War Room now packages `war-room-player.js`, a pure, read-only presentation contract. The `war-room.js` renderer subscribes to **optional** `watcherApi.onPlayerSummary` only when that explicitly approved preload method exists. It does **not** add that method to today's preload, make any HTTP request, forward keys, or initiate a watcher-summary fetch. Consequently every actual public build still shows unpopulated verified player statistics until the separately governed main-process/server integration is approved.
+
+The proposed version-1 payload for that future **owner-authenticated IPC** is:
+
+```json
+{
+  "schemaVersion": 1,
+  "status": "verified",
+  "generatedAt": "2026-10-19T17:00:00Z",
+  "player": { "displayName": "Server-authoritative name" },
+  "record": { "wins": 0, "losses": 0, "unresolved": 0 },
+  "ratings": {
+    "rm": { "value": 1200, "authority": "steam", "asOf": "2026-10-19T16:00:00Z" },
+    "dm": null
+  },
+  "recentMatches": [
+    { "opponent": "Opponent", "map": "Arabia", "mode": "rm", "result": "unresolved",
+      "playedAt": "2026-10-19T16:00:00Z" }
+  ],
+  "streaming": { "sessions": null, "airtimeSeconds": null, "peakConcurrentViewers": null }
+}
+```
+
+This is a **schema example, not an actual player result or a live HTTP response**. Only a reviewer-approved first-party main-process IPC backed by server-verified Watcher-key ownership may publish it. A client-supplied `status: "verified"` flag by itself does not prove identity or authenticity.
+
+The adapter fails closed for unsupported versions, stale or future-dated generation times (10-minute maximum age), malformed records, missing ratings, unauthenticated states and absent viewer counts. Win rate uses decided wins/(wins+losses) only; unresolved outcomes remain separately counted. RM and DM ratings stay separate and require an authority and rating timestamp. At most five adjudicated battle observations are rendered, with neutral unresolved markers. Lifetime streams, airtime and viewer metrics remain dashes when not server-proven. All received names and match details enter the DOM through `textContent`, not HTML interpolation. The win-rate ring uses lightweight CSS, not a chart framework.
+
+Any Watcher configuration update clears the displayed verified player data immediately, preventing a previous account's records from persisting through a credential change. Future main-process integration must also fence in-flight responses from superseded credentials and handle revoked or switched accounts. Rendering is passive and does not add a periodic refresh or an IPC call when today's preload lacks the authorized method.
+
+Dedicated pure-contract tests: `tests/war-room-player.test.js`. The simulated Electron DOM tests in `tests/war-room-runtime.test.js` cover a verified → unauthorized transition and credential reset. These do not replace a two-account server authorization test or a full native Electron run.
+
 ## Non-negotiable boundaries
 
 - No change to `Emaren/app-prodn`, `Emaren/api-prodn`, `Emaren/wolochain`, Auto Bets, War Satchel, financial custody, signer keys, settlement or chain state.
