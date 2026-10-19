@@ -58,9 +58,12 @@ test("single existing capture preview returns to Classic without a duplicate dec
   assert.match(controller, /function chooseTheme\(next/);
 });
 
-test("unavailable player stats are not fabricated; authentic source remains website", () => {
-  assert.match(controller, /Awaiting paired player statistics/);
-  assert.match(controller, /Not yet tracked/);
+test("unavailable player stats stay blank; future auth must come through approved IPC", () => {
+  assert.match(controller, /Awaiting verified player statistics/);
+  assert.match(controller, /Player profile awaiting verification/);
+  assert.match(controller, /renderPlayerSummary\(null\)/);
+  assert.match(controller, /typeof bridge\.onPlayerSummary === "function"/);
+  assert.doesNotMatch(controller, /fetch\s*\(/);
   assert.match(controller, /does not guess a winner/);
   assert.match(controller, /https:\/\/aoe2war\.com\/profile/);
 });
