@@ -103,7 +103,7 @@
       "review_interval_days": 30,
       "reviewed_at": "2026-10-19",
       "sensitivity": "internal",
-      "sha256": "4f0ad458d42cf254f8f13f879df2f4a16614efff73e2f493dbad3e22a9f6dd39",
+      "sha256": "e52e0d48dbc107851d70468ef2156bff9fcef36fc268446ffbce443d4d8bc2f0",
       "source_of_truth": "git",
       "status": "active",
       "systems": [
