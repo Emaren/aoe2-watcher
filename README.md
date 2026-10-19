@@ -15,6 +15,37 @@ sensitivity: "internal"
 
 # aoe2-watcher
 
+## Watcher 1.6.5 release policy — owner decision (2026-10-19)
+
+**Permanent release rule until owner explicitly changes it:** Windows NSIS and
+portable binaries are **Azure Artifact Signed and RFC3161 timestamped**. macOS
+DMG and direct ZIP are intentionally **unsigned and not Apple notarized**.
+AoE2WAR does **not** hold a paid Apple Developer membership/certificate and
+must not ask the owner to purchase the USD $99/year plan merely to release
+Watcher. Revisit Apple Developer signing **only after the project earns
+revenue and the owner approves the expense**. Linux AppImage remains unsigned.
+Never mislabel an unsigned Mac build as Developer ID signed, notarized or
+automatically installable. Publish artifact identities and SHA-256 checksums;
+Mac users may see Gatekeeper warnings and should verify the authentic release
+before opening. Never advise disabling Gatekeeper or removing quarantine.
+
+War Room v1.6.5 provides a French (FR) and English (EN) toggle; a matching
+French OS setting selects French when no explicit local override exists.
+An **authenticated** profile locale takes priority over OS locale once the
+website exposes a separately reviewed, paired Watcher owner-summary API.
+The current live website lacks that route, so **website-profile automatic
+language sync and avatar synchronization are not yet live**. Never infer
+locale, profile or avatar from a Watcher key's presence or a claimed player
+name. A verified summary is allowed to supply a first-party avatar and
+language; a local language override takes priority and can always be changed.
+
+War Satchel and Auto Bets are **website-owned financial features**. The
+Watcher displays a read-only, accurately labelled pending-activation tile
+linking to profile settings. It never holds WOLO, creates a custody vault,
+signs financial transactions or places bets. App PR #684 and the WoloChain
+financial review are held pending independent security controls; a successful
+Watcher release must not activate or falsely certify that separate system.
+
 ## Watcher 1.6.5 — production integration candidate (October 19, 2026)
 
 This candidate combines the original 1.6.5 development lineage with War Room
