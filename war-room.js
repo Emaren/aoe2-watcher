@@ -164,8 +164,11 @@
   });
 
   function paintReadiness() {
-    write("wr-status", !statusKnown ? "Connecting…" : watching ? "Monitoring replays" : "Standing by");
-    write("wr-detail", !statusKnown ? "Waiting for Watcher state." : watching
+    const oldStatus = String(el("watcherStateText")?.textContent || "").trim();
+    const oldDetail = String(el("watcherStateDetailText")?.textContent || "").trim();
+    const initialLabel = oldStatus && oldStatus !== "Loading watcher…" ? oldStatus : "Connecting…";
+    write("wr-status", !statusKnown ? initialLabel : watching ? "Monitoring replays" : "Standing by");
+    write("wr-detail", !statusKnown ? oldDetail || "Waiting for Watcher state." : watching
       ? "Listening for new Age of Empires II replay events."
       : "Monitoring is stopped. Start it before your next match.");
     const dot = el("wr-dot");
@@ -295,12 +298,7 @@
   const classicStatus = el("watcherStateText");
   if (classicStatus) {
     const syncInitialStatus = () => {
-      if (statusKnown) return;
-      const label = String(classicStatus.textContent || "").trim();
-      if (label && label !== "Loading watcher…") {
-        write("wr-status", label);
-        write("wr-detail", String(el("watcherStateDetailText")?.textContent || "").trim());
-      }
+      if (!statusKnown) paintReadiness();
     };
     new MutationObserver(syncInitialStatus).observe(classicStatus, { childList: true, characterData: true, subtree: true });
     syncInitialStatus();
