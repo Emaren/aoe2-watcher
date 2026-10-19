@@ -127,7 +127,7 @@
       button.setAttribute("aria-pressed", String(button.dataset.wrTheme === next));
     });
     if (persist) { try { window.localStorage.setItem(STORAGE_KEY, next); } catch {} }
-    if (next === "war-room") syncPreview();
+    syncPreview();
   }
   function chooseTab(next) {
     if (!["overview", "battles", "broadcast", "systems"].includes(next)) return;
@@ -136,7 +136,7 @@
     host.querySelectorAll("[data-wr-tab]").forEach(button => {
       button.setAttribute("aria-selected", String(button.dataset.wrTab === next));
     });
-    if (next === "broadcast") syncPreview();
+    syncPreview();
   }
   function forward(originalId) {
     const button = el(originalId);
@@ -281,7 +281,7 @@
     write("wr-stream-status", live ? "● On air" : state === "Starting" ? "Starting…" : "Off air");
     write("wr-stream-detail", live ? "Existing Watcher capture is streaming." : "Game capture inactive.");
     write("wr-broadcast-status", live ? "Live" : state);
-    const media = live && classicVideo ? classicVideo.srcObject : null;
+    const media = live && theme === "war-room" && tab === "broadcast" && classicVideo ? classicVideo.srcObject : null;
     if (mirror && mirror.srcObject !== media) {
       mirror.srcObject = media;
       mirror.hidden = !media;
