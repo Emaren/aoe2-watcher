@@ -68,3 +68,10 @@
 @media(max-width:1060px){.war-room .wr-layout{grid-template-columns:1fr}.war-room .wr-top{padding-right:215px}}
 @media(max-width:690px){.war-room{padding:19px 14px 24px}.war-room .wr-top{padding-right:0;padding-top:48px}.war-room .wr-metrics{grid-template-columns:1fr 1fr}.war-room .wr-mini-grid{grid-template-columns:1fr}.war-room .wr-nav{width:100%}.war-room .wr-nav button{flex:1;padding:9px 7px}.war-room .wr-hero{align-items:flex-start}.war-room .wr-avatar{width:72px;height:72px;font-size:30px}.war-room .wr-hero-copy h2{font-size:23px}.war-room h1{font-size:27px}.war-room .wr-card{padding:17px}.wr-theme-picker{right:12px;top:65px}}
 @media(prefers-reduced-motion:reduce){.wr-theme-picker button,.war-room .wr-minibar>i{transition:none}}
+
+.war-room .wr-field-label{display:block;color:#d5c19d;font-size:11px;font-weight:750;letter-spacing:.1em;text-transform:uppercase;margin:4px 0 9px}
+.war-room .wr-select{display:block;width:100%;max-width:100%;min-height:42px;background:#0a1018;border:1px solid #bc995e60;border-radius:11px;padding:10px 12px;color:#f0e6d3;font:inherit;font-size:12px;cursor:pointer}
+.war-room .wr-select:focus-visible{outline:2px solid #fad27b;outline-offset:2px}
+.war-room .wr-select:disabled{opacity:.55;cursor:not-allowed}
+.war-room .wr-mode-options{display:flex;gap:8px;flex-wrap:wrap;margin:4px 0 13px}
+.war-room .wr-mode-options button[aria-pressed=true]{background:linear-gradient(125deg,#ad8849,#e9c77d);color:#14171a;border-color:#eccb86}
