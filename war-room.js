@@ -160,6 +160,7 @@
   let paired = false;
   let folderReady = false;
   let verifiedFolderFromInfo = null;
+  let configuredReplayPath = null;
   let lastResourceSampleEpoch = Number.NEGATIVE_INFINITY;
   let recentEvents = [];
   let detectedReplays = 0;
@@ -397,14 +398,9 @@
 
     // A configured path is not evidence that the SaveGame folder is valid.
     // Original renderer validation is the authoritative presentation here.
-    const classicFolder = String(el("folderReadyText")?.textContent || "").trim();
-    // Native validation must never be overridden by a stale "Folder ready"
-    // label from the other view. Missing evidence must not imply readiness.
-    if (verifiedFolderFromInfo === false || classicFolder === "Folder missing") {
-      folderReady = false;
-    } else if (verifiedFolderFromInfo === true || classicFolder === "Folder ready") {
-      folderReady = true;
-    }
+    // folderReady is updated by explicit app-info validation or subsequent
+    // Classic validation *changes*. Do not repeatedly reread a stale label:
+    // the renderer may validate a new folder after getAppInfo has finished.
 
     // Presence of an upload key is NOT a verified player identity.
     write("wr-paired", paired ? "Watcher key configured" : "Watcher key needed");
@@ -430,9 +426,11 @@
     // Fail closed: never retain a previous account's verified player record.
     renderPlayerSummary(null);
     paired = Boolean(config.uploadApiKey);
-    if (!config.watchDir) {
+    const path = typeof config.watchDir === "string" ? config.watchDir : "";
+    if (path !== configuredReplayPath) {
+      configuredReplayPath = path;
       folderReady = false;
-      verifiedFolderFromInfo = false;
+      verifiedFolderFromInfo = null;
     }
     paintReadiness();
   }
@@ -615,10 +613,21 @@
     syncInitialStatus();
   }
   const classicFolder = el("folderReadyText");
+  function syncClassicFolderValidation() {
+    const label = String(classicFolder?.textContent || "").trim();
+    if (label !== "Folder ready" && label !== "Folder missing") return;
+    // The original renderer's async validateWatchDir is guarded against
+    // out-of-order responses and renders the latest validated result here.
+    // This newer result supersedes an earlier app-info snapshot.
+    verifiedFolderFromInfo = null;
+    folderReady = label === "Folder ready";
+    paintReadiness();
+  }
   if (classicFolder) {
-    new MutationObserver(paintReadiness).observe(classicFolder, {
+    new MutationObserver(syncClassicFolderValidation).observe(classicFolder, {
       childList: true, characterData: true, subtree: true
     });
+    syncClassicFolderValidation();
   }
   // Observe only existing capture readouts, not the full Classic DOM tree.
   for (const id of ["streamStatePill", "streamReadoutSummary", "streamReadoutDetail"]) {
