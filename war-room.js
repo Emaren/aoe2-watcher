@@ -26,7 +26,7 @@
     '<button type="button" data-wr-tab="systems" aria-selected="false">Systems</button></nav>',
     '<section data-wr-panel="overview"><div class="wr-layout"><div class="wr-stack">',
     '<section class="wr-card wr-ornate wr-hero"><div class="wr-avatar" aria-hidden="true">⚔</div><div class="wr-hero-copy">',
-    '<div class="wr-kicker">YOUR COMMAND POST</div><h2>Ready for battle.</h2>',
+    '<div class="wr-kicker">YOUR COMMAND POST</div><h2 id="wr-hero-headline">Preparing command post…</h2>',
     '<p class="wr-muted wr-small" id="wr-identity">Pair your Watcher to prepare your battlefield.</p>',
     '<div class="wr-chips"><span class="wr-chip" id="wr-paired">Checking pairing</span><span class="wr-chip" id="wr-folder">Checking replay folder</span></div>',
     '</div></section>',
@@ -107,7 +107,7 @@
     '<section class="wr-card"><div class="wr-kicker">ENGINE ROOM</div><h2 style="margin:8px 0">Watcher systems</h2>',
     '<div class="wr-statline"><span class="wr-muted">Build</span><strong id="wr-sys-build">Checking…</strong></div>',
     '<div class="wr-statline"><span class="wr-muted">CPU</span><strong id="wr-sys-cpu">Measuring…</strong></div>',
-    '<div class="wr-statline"><span class="wr-muted">RAM</span><strong id="wr-sys-ram">Measuring…</strong></div>',
+    '<div class="wr-statline"><span class="wr-muted">RAM</span><strong id="wr-sys-ram">Measuring…</strong></div><div class="wr-statline"><span class="wr-muted">Upload attempt rate</span><strong id="wr-sys-network">Measuring…</strong></div><div class="wr-statline"><span class="wr-muted">Processor wakeups</span><strong id="wr-sys-wakeups">Not reported</strong></div>',
     '<div class="wr-statline"><span class="wr-muted">Latest upload</span><strong id="wr-sys-upload">None this session</strong></div><div class="wr-statline"><span class="wr-muted">Replay detections this session</span><strong id="wr-session-replays">0</strong></div>',
     '<div class="wr-actions"><button type="button" class="wr-action wr-primary" id="wr-open-classic-settings">Open Old Blue settings</button>',
     '<button type="button" class="wr-action" data-wr-action="copySupportBtn">Copy support snapshot</button></div>',
@@ -310,6 +310,13 @@
     write("wr-folder-text", folderReady ? "Validated" : "Check in Old Blue");
     el("wr-paired").className = "wr-chip" + (paired ? " ok" : " warn");
     el("wr-folder").className = "wr-chip" + (folderReady ? " ok" : " warn");
+    const needsAttention = /issue|error|attention|failed|missing|retrying/i.test(statusLabel);
+    const readyToPlay = paired && folderReady;
+    const headline = needsAttention ? "Attention needed"
+      : !readyToPlay ? "Finish setup"
+      : !hasClassicStatus && !statusKnown ? "Preparing command post…"
+      : watching ? "Your battles are being watched." : "Ready for battle.";
+    write("wr-hero-headline", headline);
     write("wr-identity", paired
       ? "Watcher credential configured. Player identity requires server verification."
       : "Set up a Watcher key in Old Blue to attribute replay uploads.");
@@ -350,6 +357,15 @@
     if (validSample && Number.isFinite(ram) && ram >= 0) {
       write("wr-memory", "RAM " + Math.round(ram) + " MB");
       write("wr-sys-ram", Math.round(ram) + " MB");
+    }
+    if (validSample && typeof profile.networkMbps === "number" &&
+        Number.isFinite(profile.networkMbps) && profile.networkMbps >= 0) {
+      write("wr-sys-network", profile.networkMbps.toFixed(2) + " Mbps");
+    }
+    if (validSample && profile.idleWakeupsAvailable === true &&
+        typeof profile.idleWakeupsPerSecond === "number" &&
+        Number.isFinite(profile.idleWakeupsPerSecond) && profile.idleWakeupsPerSecond >= 0) {
+      write("wr-sys-wakeups", profile.idleWakeupsPerSecond.toFixed(1) + " /s");
     }
   }
   function drawChart() {
