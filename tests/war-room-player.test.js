@@ -99,3 +99,27 @@ test("module performs no file, fetch, timer, credential or signing activity", ()
   assert.doesNotMatch(text, /\bfetch\s*\(|\bsetInterval\s*\(|\bXMLHttpRequest\b/);
   assert.doesNotMatch(text, /uploadApiKey|secret|wallet|signAndBroadcast|localStorage/);
 });
+
+test("calendar, timezone, and evidence chronology reject misleading timestamps", () => {
+  const invalidDates = ["2026-02-30T11:00:00Z", "2025-02-29T12:00:00Z",
+    "2026-10-19T26:00:00Z", "2026-10-19T16:00:00",
+    "2026-10-19T17:00:00+15:00", "2026-10-19T17:00:00+14:15"];
+  for (const generatedAt of invalidDates) {
+    assert.equal(contract.normalize(summary({ generatedAt }), now).status, "stale", generatedAt);
+  }
+  const leap = contract.normalize(summary({ generatedAt: "2024-02-29T16:58:00Z" }),
+    Date.parse("2024-02-29T17:00:00Z"));
+  assert.equal(leap.status, "verified", "real leap date is valid");
+  const future = contract.normalize(summary({
+    ratings: { rm: { value: 1400, authority: "steam", asOf: "2026-10-19T17:05:00Z" }, dm: null },
+    recentMatches: [{ opponent: "Jim", map: "Arabia", mode: "rm",
+      result: "win", playedAt: "2026-10-19T17:05:00Z" }]
+  }), now);
+  assert.equal(future.ratings.rm, null, "rating dated after generatedAt is not trusted");
+  assert.equal(future.recentMatches.length, 0, "future replay outcome is not trusted");
+});
+
+test("contract explicitly exposes ten-minute age limit without scheduling network activity", () => {
+  assert.equal(contract.MAX_AGE_MS, 600000);
+  assert.equal(contract.normalize(summary(), now + 600001).status, "stale");
+});
