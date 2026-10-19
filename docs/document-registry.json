@@ -1,147 +1,172 @@
 {
+  "schema_version": "2.1.0",
+  "generated_at": "2026-08-04T02:09:37Z",
+  "repo": "aoe2-watcher",
+  "owner": "aoe2war-watcher",
+  "implementation_baseline": {
+    "branch": "feature/watcher-1.6.6-development",
+    "commit": "068de12018143044bc745684fe36b8a028f51387"
+  },
   "documents": [
     {
-      "audience": [
-        "developers",
-        "operators",
-        "ai-agents"
-      ],
-      "authority": "generated-repository-index",
       "id": "aoe2war.aoe2-watcher.docs-documentation-control-plane",
-      "owner": "aoe2war-watcher",
-      "path": "docs/DOCUMENTATION_CONTROL_PLANE.md",
-      "review_interval_days": 0,
-      "reviewed_at": "2026-07-26",
-      "sensitivity": "internal",
-      "sha256": "e60125263b3e45448c6550504a6752bb650ec7ec71934c55c70d0d454618df09",
-      "source_of_truth": "generated",
+      "title": "aoe2-watcher Documentation Index",
+      "type": "generated",
       "status": "generated",
+      "owner": "aoe2war-watcher",
       "systems": [
         "aoe2-watcher"
       ],
-      "title": "aoe2-watcher Documentation Index",
-      "type": "generated"
-    },
-    {
       "audience": [
         "developers",
         "operators",
         "ai-agents"
       ],
-      "authority": "watcher-1.6.2-engineering-plan",
-      "id": "aoe2war.aoe2-watcher.docs-watcher-1-6-2-audit",
-      "owner": "aoe2war-watcher",
-      "path": "docs/WATCHER_1_6_2_AUDIT.md",
-      "review_interval_days": 14,
-      "reviewed_at": "2026-09-29",
+      "source_of_truth": "generated",
+      "authority": "generated-repository-index",
+      "reviewed_at": "2026-07-26",
+      "review_interval_days": 0,
       "sensitivity": "internal",
-      "sha256": "e90b0a07d96c74c92746212561cba2731036c9af20d926751fc3965e31f878e1",
-      "source_of_truth": "git",
+      "path": "docs/DOCUMENTATION_CONTROL_PLANE.md",
+      "sha256": "22c0559a7d871b91601d018c303544c8ec4d729396046d8fcf8e5a1b6240fa39"
+    },
+    {
+      "id": "aoe2war.aoe2-watcher.docs-watcher-1-6-2-audit",
+      "title": "Watcher 1.6.2 Engineering Audit",
+      "type": "working",
       "status": "active",
+      "owner": "aoe2war-watcher",
       "systems": [
         "aoe2-watcher",
         "api-prodn"
       ],
-      "title": "Watcher 1.6.2 Engineering Audit",
-      "type": "working"
-    },
-    {
       "audience": [
         "developers",
         "operators",
         "ai-agents"
       ],
-      "authority": "watcher-1.6.3-development-plan",
-      "id": "aoe2war.aoe2-watcher.docs-watcher-1-6-3-development",
-      "owner": "aoe2war-watcher",
-      "path": "docs/WATCHER_1_6_3_DEVELOPMENT.md",
-      "review_interval_days": 0,
-      "reviewed_at": "2026-10-13",
-      "sensitivity": "internal",
-      "sha256": "f19584b0d97130c6a9919ef3f84dbc9c61177b17b68a35999eaab974dc83285f",
       "source_of_truth": "git",
+      "authority": "watcher-1.6.2-engineering-plan",
+      "reviewed_at": "2026-09-29",
+      "review_interval_days": 14,
+      "sensitivity": "internal",
+      "path": "docs/WATCHER_1_6_2_AUDIT.md",
+      "sha256": "e90b0a07d96c74c92746212561cba2731036c9af20d926751fc3965e31f878e1"
+    },
+    {
+      "id": "aoe2war.aoe2-watcher.docs-watcher-1-6-3-development",
+      "title": "Watcher 1.6.3 Development",
+      "type": "historical",
       "status": "historical",
+      "owner": "aoe2war-watcher",
       "systems": [
         "aoe2-watcher",
         "app-prodn"
       ],
-      "title": "Watcher 1.6.3 Development",
-      "type": "historical"
-    },
-    {
       "audience": [
         "developers",
         "operators",
         "ai-agents"
       ],
-      "authority": "watcher-update-lifecycle-contract",
-      "id": "aoe2war.aoe2-watcher.docs-watcher-1-6-4-update-lifecycle",
-      "owner": "aoe2war-watcher",
-      "path": "docs/WATCHER_1_6_4_UPDATE_LIFECYCLE.md",
-      "review_interval_days": 30,
-      "reviewed_at": "2026-10-08",
-      "sensitivity": "internal",
-      "sha256": "037e7e053abf2f5b5b708db5695af9fcf3fc754184759ebd98b77e87c607490c",
       "source_of_truth": "git",
-      "status": "active",
-      "systems": [
-        "aoe2-watcher"
-      ],
-      "title": "Watcher 1.6.4 Update Lifecycle Development",
-      "type": "working"
-    },
-    {
-      "audience": [
-        "developers",
-        "operators",
-        "ai-agents"
-      ],
-      "authority": "watcher-presentation-only",
-      "id": "aoe2war.aoe2-watcher.docs-watcher-war-room-ui",
-      "owner": "aoe2war-watcher",
-      "path": "docs/WATCHER_WAR_ROOM_UI.md",
-      "review_interval_days": 30,
-      "reviewed_at": "2026-10-19",
-      "sensitivity": "internal",
-      "sha256": "312716bed7efa0d48d36cf3dcba99cd6019cee927b5f106b4f29642b05bfeb4c",
-      "source_of_truth": "git",
-      "status": "active",
-      "systems": [
-        "aoe2-watcher"
-      ],
-      "title": "Watcher War Room Appearance and Safety Contract",
-      "type": "working"
-    },
-    {
-      "audience": [
-        "developers",
-        "operators",
-        "ai-agents"
-      ],
-      "authority": "repository-entrypoint",
-      "id": "aoe2war.aoe2-watcher.readme",
-      "owner": "aoe2war-watcher",
-      "path": "README.md",
-      "review_interval_days": 60,
+      "authority": "watcher-1.6.3-development-plan",
       "reviewed_at": "2026-10-13",
+      "review_interval_days": 0,
       "sensitivity": "internal",
-      "sha256": "482cbab41057b75f4b6c33b15ac9d55c8ef948ce69809ec0ce6d89ddecfd00be",
-      "source_of_truth": "git",
+      "path": "docs/WATCHER_1_6_3_DEVELOPMENT.md",
+      "sha256": "f19584b0d97130c6a9919ef3f84dbc9c61177b17b68a35999eaab974dc83285f"
+    },
+    {
+      "id": "aoe2war.aoe2-watcher.docs-watcher-1-6-4-update-lifecycle",
+      "title": "Watcher 1.6.4 Update Lifecycle Development",
+      "type": "working",
       "status": "active",
+      "owner": "aoe2war-watcher",
+      "systems": [
+        "aoe2-watcher"
+      ],
+      "audience": [
+        "developers",
+        "operators",
+        "ai-agents"
+      ],
+      "source_of_truth": "git",
+      "authority": "watcher-update-lifecycle-contract",
+      "reviewed_at": "2026-10-08",
+      "review_interval_days": 30,
+      "sensitivity": "internal",
+      "path": "docs/WATCHER_1_6_4_UPDATE_LIFECYCLE.md",
+      "sha256": "cec506fc05cb636014f0056ca04f606849018d01a4ec23b96abb5a674c687e11"
+    },
+    {
+      "id": "aoe2war.aoe2-watcher.docs-watcher-1-6-6-development",
+      "title": "Watcher 1.6.6 Development — Authenticated Player Companion and Independent Evidence",
+      "type": "working",
+      "status": "active",
+      "owner": "aoe2war-watcher",
+      "systems": [
+        "aoe2-watcher",
+        "app-prodn",
+        "api-prodn",
+        "wolochain"
+      ],
+      "audience": [
+        "developers",
+        "operators",
+        "ai-agents"
+      ],
+      "source_of_truth": "git",
+      "authority": "watcher-1.6.6-development-contract",
+      "reviewed_at": "2026-10-19",
+      "review_interval_days": 14,
+      "sensitivity": "internal",
+      "path": "docs/WATCHER_1_6_6_DEVELOPMENT.md",
+      "sha256": "6f6ca6928118f0bfc3b0b67d47f57c21d6a750c0caf8b978ceed5d84bba98982"
+    },
+    {
+      "id": "aoe2war.aoe2-watcher.docs-watcher-war-room-ui",
+      "title": "Watcher War Room Appearance and Safety Contract",
+      "type": "working",
+      "status": "active",
+      "owner": "aoe2war-watcher",
+      "systems": [
+        "aoe2-watcher"
+      ],
+      "audience": [
+        "developers",
+        "operators",
+        "ai-agents"
+      ],
+      "source_of_truth": "git",
+      "authority": "watcher-presentation-only",
+      "reviewed_at": "2026-10-19",
+      "review_interval_days": 30,
+      "sensitivity": "internal",
+      "path": "docs/WATCHER_WAR_ROOM_UI.md",
+      "sha256": "769fe8e8e47fd2754578ff237b2c011a8734b8135e63d750bc087b023e79d7e9"
+    },
+    {
+      "id": "aoe2war.aoe2-watcher.readme",
+      "title": "aoe2-watcher",
+      "type": "reference",
+      "status": "active",
+      "owner": "aoe2war-watcher",
       "systems": [
         "aoe2-watcher",
         "api-prodn"
       ],
-      "title": "aoe2-watcher",
-      "type": "reference"
+      "audience": [
+        "developers",
+        "operators",
+        "ai-agents"
+      ],
+      "source_of_truth": "git",
+      "authority": "repository-entrypoint",
+      "reviewed_at": "2026-10-13",
+      "review_interval_days": 60,
+      "sensitivity": "internal",
+      "path": "README.md",
+      "sha256": "482cbab41057b75f4b6c33b15ac9d55c8ef948ce69809ec0ce6d89ddecfd00be"
     }
-  ],
-  "generated_at": "2026-08-04T02:09:37Z",
-  "implementation_baseline": {
-    "branch": "feature/watcher-1.6.5-development",
-    "commit": "56cbea5e38f585547e0f041798c9f05a600ab089"
-  },
-  "owner": "aoe2war-watcher",
-  "repo": "aoe2-watcher",
-  "schema_version": "2.1.0"
+  ]
 }

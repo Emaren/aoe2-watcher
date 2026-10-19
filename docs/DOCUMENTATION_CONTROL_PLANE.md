@@ -19,7 +19,7 @@ Repository ID: `aoe2-watcher`
 
 Documentation owner: `aoe2war-watcher`
 
-Implementation baseline: `feature/watcher-1.6.5-development` at `56cbea5e38f585547e0f041798c9f05a600ab089`
+Implementation baseline: `feature/watcher-1.6.6-development` at `068de12018143044bc745684fe36b8a028f51387`
 
 The implementation baseline identifies the code commit described by this documentation. Documentation-only commits may follow it without creating a self-referential registry hash.
 
@@ -27,29 +27,33 @@ This page is generated from the validated front matter in this repository. Cross
 
 ## Documentation health
 
-- Authoritative repository documents: **6**
+- Authoritative repository documents: **7**
 - Path moves in this migration: **0**
 - Every listed document has an explicit owner, lifecycle, authority, and review interval.
 
 ### Types
 
 - `generated`: 1
+- `historical`: 1
 - `reference`: 1
-- `working`: 3
+- `working`: 4
 
 ### Lifecycle
 
-- `active`: 4
+- `active`: 5
 - `generated`: 1
+- `historical`: 1
 
 ## Documents
 
 | Document | Type | Status | Authority |
 | --- | --- | --- | --- |
-| [aoe2-watcher](../README.md) | `reference` | `active` | `repository-entrypoint` |
 | [Watcher 1.6.2 Engineering Audit](WATCHER_1_6_2_AUDIT.md) | `working` | `active` | `watcher-1.6.2-engineering-plan` |
 | [Watcher 1.6.3 Development](WATCHER_1_6_3_DEVELOPMENT.md) | `historical` | `historical` | `watcher-1.6.3-development-plan` |
 | [Watcher 1.6.4 Update Lifecycle Development](WATCHER_1_6_4_UPDATE_LIFECYCLE.md) | `working` | `active` | `watcher-update-lifecycle-contract` |
+| [Watcher 1.6.6 Development — Authenticated Player Companion and Independent Evidence](WATCHER_1_6_6_DEVELOPMENT.md) | `working` | `active` | `watcher-1.6.6-development-contract` |
+| [Watcher War Room Appearance and Safety Contract](WATCHER_WAR_ROOM_UI.md) | `working` | `active` | `watcher-presentation-only` |
+| [aoe2-watcher](../README.md) | `reference` | `active` | `repository-entrypoint` |
 
 ## Canonical commands
 
