@@ -77,7 +77,7 @@ test("War Room Broadcast delegates source and quality controls to the original e
   assert.match(controller, /data-wr-mode="screen"/);
   assert.match(controller, /data-wr-mode="sharp"/);
   assert.match(controller, /original\.dispatchEvent\(new Event\("change"/);
-  assert.match(controller, /originalMode\.click\(\)/);
+  assert.match(controller, /if \(original && !original\.disabled\) original\.click\(\)/);
   assert.match(controller, /button\.disabled = originalButton\.disabled/);
   assert.match(controller, /sourcePicker\.disabled = original\.disabled/);
   assert.match(controller, /syncCaptureControls\(\)/);
