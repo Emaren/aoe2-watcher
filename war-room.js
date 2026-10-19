@@ -116,6 +116,32 @@
     '<span>Actual measurements only. No custody or financial functions.</span></footer></main>'
   ].join("");
 
+  // Accessible tab structure, including arrow-key navigation.
+  const tabButtons = Array.from(host.querySelectorAll("[data-wr-tab]"));
+  const nav = host.querySelector(".wr-nav");
+  nav.setAttribute("role", "tablist");
+  for (const button of tabButtons) {
+    const key = button.dataset.wrTab;
+    button.id = "wr-tab-" + key;
+    button.setAttribute("role", "tab");
+    button.setAttribute("aria-controls", "wr-panel-" + key);
+    button.tabIndex = key === "overview" ? 0 : -1;
+    const panel = host.querySelector('[data-wr-panel="' + key + '"]');
+    panel.id = "wr-panel-" + key;
+    panel.setAttribute("role", "tabpanel");
+    panel.setAttribute("aria-labelledby", button.id);
+  }
+  nav.addEventListener("keydown", event => {
+    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+    const at = tabButtons.indexOf(document.activeElement);
+    if (at < 0) return;
+    event.preventDefault();
+    const targetIndex = event.key === "Home" ? 0
+      : event.key === "End" ? tabButtons.length - 1
+      : (at + (event.key === "ArrowRight" ? 1 : -1) + tabButtons.length) % tabButtons.length;
+    chooseTab(tabButtons[targetIndex].dataset.wrTab);
+    tabButtons[targetIndex].focus();
+  });
   const el = (id) => document.getElementById(id);
   const write = (id, val) => { const node = el(id); if (node) node.textContent = String(val); };
   const THEMES = ["old-blue", "war-room"];
@@ -146,7 +172,9 @@
     tab = next;
     host.querySelectorAll("[data-wr-panel]").forEach(panel => panel.hidden = panel.dataset.wrPanel !== next);
     host.querySelectorAll("[data-wr-tab]").forEach(button => {
-      button.setAttribute("aria-selected", String(button.dataset.wrTab === next));
+      const selected = button.dataset.wrTab === next;
+      button.setAttribute("aria-selected", String(selected));
+      button.tabIndex = selected ? 0 : -1;
     });
     syncPreview();
   }
