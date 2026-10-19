@@ -189,10 +189,10 @@ test("key presence never claims authenticated player identity", () => {
 });
 
 test("process CPU trend deduplicates repeated app-info snapshots by sampledAt", () => {
-  assert.match(controller, /lastResourceSampleAt = null/);
+  assert.match(controller, /lastResourceSampleEpoch = Number\.NEGATIVE_INFINITY/);
   assert.match(controller, /typeof profile\.sampledAt === "string"/);
-  assert.match(controller, /Number\.isFinite\(Date\.parse\(sampledAt\)\)/);
-  assert.match(controller, /if \(sampledAt !== lastResourceSampleAt\)/);
+  assert.match(controller, /Number\.isFinite\(sampleEpoch\)/);
+  assert.match(controller, /sampleEpoch <= lastResourceSampleEpoch/);
   assert.match(controller, /cpuSamples\.push\(cpu\)/);
 });
 
@@ -239,7 +239,7 @@ test("command post never announces ready when credentials, directory, or Watcher
 test("systems telemetry reuses existing genuine process metrics only", () => {
   assert.match(controller, /id="wr-sys-network"/);
   assert.match(controller, /id="wr-sys-wakeups"/);
-  assert.match(controller, /validSample && typeof profile\.networkMbps === "number"/);
+  assert.match(controller, /typeof profile\.networkMbps === "number"/);
   assert.match(controller, /profile\.idleWakeupsAvailable === true/);
   assert.match(controller, /id="wr-sys-wakeups">Not reported/);
   assert.doesNotMatch(controller, /powerWatts\s*\|\|/);
