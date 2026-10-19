@@ -295,3 +295,10 @@ test("empty-source manual broadcast may only use the native macOS picker, never 
   assert.match(controller, /capturePlatform = info\.platform/);
   assert.doesNotMatch(controller, /navigator\.mediaDevices\.getDisplayMedia\s*\(/);
 });
+
+test("source label alone cannot downgrade full-display risk", () => {
+  assert.match(controller, /\/\^screen:\/i\.test\(option\.value\)/);
+  assert.match(controller, /\/\^window:\/i\.test\(option\.value\)/);
+  assert.match(controller, /gameWindowSource\(selected\)/);
+  assert.match(controller, /sources\.some\(displaySource\)/);
+});
