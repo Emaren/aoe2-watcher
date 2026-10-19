@@ -33,11 +33,16 @@ Recommended:
 3. Paste your watcher key from https://aoe2war.com/profile once.
 4. Leave the watcher open while you play.
 
-If macOS blocks the unsigned app, run:
-xattr -dr com.apple.quarantine "/Applications/${appBundleName}"
-open "/Applications/${appBundleName}"
+Security and authenticity:
+Only install an AoE2WAR Watcher release downloaded from https://aoe2war.com/ .
+The official macOS release must be Developer ID signed and Apple notarized.
+If macOS reports an unidentified developer, damaged app, or failed verification,
+stop. Do not disable Gatekeeper, remove quarantine attributes, or bypass
+signature checks. Obtain the latest verified release or contact AoE2WAR support.
 
-If you keep the app somewhere else, replace the /Applications path above with the path on your Mac.
+Before replacing an existing installation, close Watcher after current replay
+uploads have finished. Your existing configuration and replay files should
+remain in their normal locations; do not delete or relocate them to upgrade.
 `;
 
 async function main() {

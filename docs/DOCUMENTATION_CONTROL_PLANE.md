@@ -19,7 +19,7 @@ Repository ID: `aoe2-watcher`
 
 Documentation owner: `aoe2war-watcher`
 
-Implementation baseline: `fix/bounded-runtime-event-coalescer-20261015` at `166c2def9150d2e4fea15b6bce296a6b42743559`
+Implementation baseline: `feature/watcher-1.6.5-development` at `56cbea5e38f585547e0f041798c9f05a600ab089`
 
 The implementation baseline identifies the code commit described by this documentation. Documentation-only commits may follow it without creating a self-referential registry hash.
 
@@ -27,29 +27,29 @@ This page is generated from the validated front matter in this repository. Cross
 
 ## Documentation health
 
-- Authoritative repository documents: **4**
+- Authoritative repository documents: **6**
 - Path moves in this migration: **0**
 - Every listed document has an explicit owner, lifecycle, authority, and review interval.
 
 ### Types
 
 - `generated`: 1
-- `historical`: 2
 - `reference`: 1
+- `working`: 3
 
 ### Lifecycle
 
-- `active`: 1
+- `active`: 4
 - `generated`: 1
-- `historical`: 2
 
 ## Documents
 
 | Document | Type | Status | Authority |
 | --- | --- | --- | --- |
 | [aoe2-watcher](../README.md) | `reference` | `active` | `repository-entrypoint` |
-| [Watcher 1.6.2 Engineering Audit](WATCHER_1_6_2_AUDIT.md) | `historical` | `historical` | `watcher-1.6.2-engineering-plan` |
+| [Watcher 1.6.2 Engineering Audit](WATCHER_1_6_2_AUDIT.md) | `working` | `active` | `watcher-1.6.2-engineering-plan` |
 | [Watcher 1.6.3 Development](WATCHER_1_6_3_DEVELOPMENT.md) | `historical` | `historical` | `watcher-1.6.3-development-plan` |
+| [Watcher 1.6.4 Update Lifecycle Development](WATCHER_1_6_4_UPDATE_LIFECYCLE.md) | `working` | `active` | `watcher-update-lifecycle-contract` |
 
 ## Canonical commands
 

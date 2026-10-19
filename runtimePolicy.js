@@ -12,6 +12,7 @@ function getUpdateBlocker({
 } = {}) {
   if (importRunning) return "historical_import";
   if (nativeStreamActive) return "native_stream";
+  if (runtimeStatus.replayScanInFlight) return "replay_scan";
   if (Number(runtimeStatus.uploadQueueLength || 0) > 0) {
     return "replay_upload";
   }

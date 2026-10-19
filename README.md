@@ -15,6 +15,20 @@ sensitivity: "internal"
 
 # aoe2-watcher
 
+## Watcher 1.6.5 — production integration candidate (October 19, 2026)
+
+This candidate combines the original 1.6.5 development lineage with War Room
+and preserves the latest bounded runtime diagnostic coalescer from production
+`main`. Its release is not public until the Windows Azure-signing, macOS
+Developer ID signing/notarization, Linux build, immutable artifact receipts,
+GitHub draft-publication, and website-download gates have all completed.
+The latest **published** GitHub Watcher release remains 1.6.4 until then.
+
+War Room and original Old Blue share the same recorder and replay engine.
+War Room's manual full-display Go Live adds single-use explicit consent; a
+verified player-data read-only endpoint is **not** implemented in this candidate.
+Do not infer player results, audience sizes or financial operations from uploads.
+
 ## 2026-10-15 — Runtime diagnostic coalescer memory bound (candidate source)
 
 The Watcher is intended to create barely measurable background CPU/memory

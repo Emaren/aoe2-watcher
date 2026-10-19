@@ -6,6 +6,7 @@ const path = require("node:path");
 const test = require("node:test");
 
 const {
+  buildProcessTopology,
   classifyPowerSignal,
   createResourceProfiler,
   selectResourceSampleInterval,
@@ -50,6 +51,89 @@ test("summarizeAppMetrics combines the Electron process tree", () => {
     Browser: 1,
     Tab: 1,
   });
+});
+
+test("normal Electron helpers are distinguished from the application main process", () => {
+  const topology = buildProcessTopology([
+    { pid: 581, creationTime: 1000, type: "Browser" },
+    { pid: 593, creationTime: 1001, type: "GPU", sandboxed: true },
+    { pid: 594, creationTime: 1002, type: "Utility", sandboxed: true, name: "Network Service", serviceName: "network.mojom.NetworkService" },
+    { pid: 595, creationTime: 1003, type: "Tab", sandboxed: true },
+    { pid: 596, creationTime: 1004, type: "Tab", sandboxed: true },
+  ]);
+
+  assert.equal(topology.scope, "current-electron-application");
+  assert.equal(topology.status, "observed");
+  assert.equal(topology.browserProcessCount, 1);
+  assert.equal(topology.helperProcessCount, 4);
+  assert.equal(topology.unknownProcessCount, 0);
+  assert.deepEqual(topology.processes.map((entry) => entry.role), [
+    "main", "gpu", "utility", "renderer", "renderer",
+  ]);
+  assert.deepEqual(topology.processes.map((entry) => entry.expectedHelper), [
+    false, true, true, true, true,
+  ]);
+  assert.equal(topology.processes[2].serviceName, "network.mojom.NetworkService");
+  assert.match(topology.description, /helpers are normal Electron processes/);
+  assert.match(topology.description, /does not prove global single-instance or orphan cleanup status/);
+  assert.equal("duplicateInstance" in topology, false);
+  assert.equal("orphaned" in topology, false);
+});
+
+test("topology diagnostics normalize optional fields without assuming sandbox state", () => {
+  const topology = buildProcessTopology([
+    null,
+    [],
+    "not a metric",
+    {
+      type: "Utility",
+      pid: -1,
+      creationTime: Infinity,
+      sandboxed: "true",
+      name: "  Network\nService\u0000  ",
+      serviceName: "x".repeat(200),
+    },
+    { type: "future-process", pid: "594", creationTime: 0, name: 123 },
+  ]);
+
+  assert.equal(topology.processes.length, 2);
+  assert.deepEqual(topology.processes[0], {
+    pid: null,
+    creationTime: null,
+    type: "Utility",
+    role: "utility",
+    expectedHelper: true,
+    sandboxed: null,
+    name: "Network Service",
+    serviceName: "x".repeat(160),
+  });
+  assert.equal(topology.processes[1].type, "Unknown");
+  assert.equal(topology.processes[1].expectedHelper, false);
+  assert.equal(topology.processes[1].pid, null);
+  assert.equal(topology.unknownProcessCount, 1);
+  assert.equal(topology.browserProcessCount, 0);
+  assert.equal(buildProcessTopology(null).status, "unavailable");
+  assert.equal(buildProcessTopology([]).status, "unavailable");
+});
+
+test("resource snapshots expose only the latest observed topology and retain PID creation identity", () => {
+  let metrics = [
+    { type: "Browser", pid: 581, creationTime: 1000 },
+    { type: "Tab", pid: 595, creationTime: 1001 },
+  ];
+  let timestamp = 2000;
+  const profiler = createResourceProfiler({ getMetrics: () => metrics, now: () => timestamp });
+
+  assert.equal(profiler.sample().processTopology.helperProcessCount, 1);
+  metrics = [{ type: "Browser", pid: 581, creationTime: 1000 }];
+  timestamp += 1000;
+  assert.equal(profiler.sample().processTopology.helperProcessCount, 0);
+  metrics.push({ type: "Tab", pid: 595, creationTime: 3000 });
+  timestamp += 1000;
+  const snapshot = profiler.sample();
+  assert.equal(snapshot.processTopology.processes[1].pid, 595);
+  assert.equal(snapshot.processTopology.processes[1].creationTime, 3000);
+  assert.equal(snapshot.sampleCount, 3);
 });
 
 test("resource sampling backs off when the Watcher is truly idle", () => {
@@ -241,6 +325,7 @@ test("remote resource heartbeat uses a compact support profile instead of the fu
   assert.match(helper, /networkMbps/);
   assert.match(helper, /powerSignal/);
   assert.doesNotMatch(helper, /processTypes/);
+  assert.doesNotMatch(helper, /processTopology/);
   assert.doesNotMatch(helper, /replayUploadBytes/);
   assert.doesNotMatch(helper, /streamUploadBytes/);
 });
