@@ -94,6 +94,8 @@ class Element {
       if (/\shidden(?:\s|$)/.test(match[2])) attrs.hidden = "";
       if (!attrs.id && attrs.class !== "wr-nav" && !Object.keys(attrs).some(x => x.startsWith("data-wr-"))) continue;
       const node = new Element(match[1], attrs.id || "", attrs);
+      // Mirror literal initial text such as <strong id="wr-session-streams">0</strong>.
+      node.textContent = markup.slice(match.index + match[0].length).split("<", 1)[0].trim();
       node.document = this.document;
       node.parentNode = this;
       this.descendants.push(node);
