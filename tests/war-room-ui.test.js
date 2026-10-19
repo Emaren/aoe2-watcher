@@ -284,3 +284,14 @@ test("War Room must secure manual whole-display broadcast without touching Class
   assert.match(controller, /hasUnselectedDisplay/);
   assert.match(controller, /new Event\("change", \{ bubbles: true \}\)/);
 });
+
+test("empty-source manual broadcast may only use the native macOS picker, never fallback refresh", () => {
+  assert.match(controller, /let capturePlatform = ""/);
+  assert.match(controller, /capturePlatform === "darwin"/);
+  assert.match(controller, /navigator\.mediaDevices\?\.getDisplayMedia === "function"/);
+  assert.match(controller, /noEnumeratedSources && !systemPickerAvailable/);
+  assert.match(controller, /!state\.unknownNoSource/);
+  assert.match(controller, /Refresh capture sources and choose a game window or display/);
+  assert.match(controller, /capturePlatform = info\.platform/);
+  assert.doesNotMatch(controller, /navigator\.mediaDevices\.getDisplayMedia\s*\(/);
+});
