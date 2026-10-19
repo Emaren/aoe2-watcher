@@ -311,6 +311,24 @@ test("CPU chart uses distinct timestamped samples and ignores duplicate app-info
   assert.match(app.byId.get("wr-chart").getAttribute("aria-label"), /2 actual CPU samples/);
 });
 
+test("out-of-order CPU measurements cannot rewind charts or current process readouts", () => {
+  const app = launch();
+  const profile = app.callbacks.get("onResourceProfile");
+  profile({ sampledAt: "2026-10-19T12:02:00Z", cpuPercent: 0.3, workingSetMb: 208 });
+  profile({ sampledAt: "2026-10-19T12:03:00Z", cpuPercent: 0.5, workingSetMb: 211 });
+  assert.equal(app.byId.get("wr-sys-cpu").textContent, "0.5%");
+  assert.equal(app.byId.get("wr-sys-ram").textContent, "211 MB");
+  assert.match(app.byId.get("wr-chart").getAttribute("aria-label"), /2 actual CPU samples/);
+  profile({ sampledAt: "2026-10-19T12:01:00Z", cpuPercent: 99, workingSetMb: 900 });
+  profile({ sampledAt: "2026-10-19T12:03:00Z", cpuPercent: 77, workingSetMb: 800 });
+  assert.equal(app.byId.get("wr-sys-cpu").textContent, "0.5%");
+  assert.equal(app.byId.get("wr-sys-ram").textContent, "211 MB");
+  assert.match(app.byId.get("wr-chart").getAttribute("aria-label"), /2 actual CPU samples/);
+  profile({ sampledAt: "2026-10-19T12:04:00Z", cpuPercent: 0.7, workingSetMb: 215 });
+  assert.equal(app.byId.get("wr-sys-cpu").textContent, "0.7%");
+  assert.match(app.byId.get("wr-chart").getAttribute("aria-label"), /3 actual CPU samples/);
+});
+
 test("launching with an already-live stream does not invent another start", () => {
   const app = launch({ alreadyLive: true });
   assert.equal(app.byId.get("wr-session-streams").textContent, "0");
