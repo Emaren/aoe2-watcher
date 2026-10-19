@@ -388,3 +388,18 @@ test("verified owner-supplied summary paints concise battle and broadcast intell
   assert.equal(app.byId.get("wr-rating").textContent, "— / —");
   assert.equal(app.byId.get("wr-total-streams").textContent, "—");
 });
+
+test("a credential configuration update clears any previously verified player's display", () => {
+  const app = launch();
+  const now = new Date().toISOString();
+  app.callbacks.get("onPlayerSummary")({
+    schemaVersion: 1, status: "verified", generatedAt: now,
+    player: { displayName: "FirstPlayer" },
+    record: { wins: 10, losses: 2, unresolved: 0 },
+    ratings: {}, recentMatches: [], streaming: null
+  });
+  assert.equal(app.byId.get("wr-player-name").textContent, "FirstPlayer");
+  app.callbacks.get("onConfig")({ watchDir: "/replays", uploadApiKey: "rotated" });
+  assert.equal(app.byId.get("wr-player-name").textContent, "Player profile awaiting verification");
+  assert.equal(app.byId.get("wr-wins-losses").textContent, "— / —");
+});
