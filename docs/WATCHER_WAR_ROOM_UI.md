@@ -30,7 +30,10 @@ Appearance preference resides under the localStorage key `aoe2war.watcher.displa
 3. **Broadcast**: mirrored source choices and capture modes; Go Live, Stop Video, Refresh Sources. These delegate exclusively to the original controls, renderer authorization, and source-selection policy. Broadcast temporarily reparents the **one original Classic video element** into its visible preview slot, then restores it to its exact original DOM position when the player leaves. The existing renderer remains sole owner of `srcObject` and recording; there is no duplicate decoding surface or second MediaRecorder.
 4. **Systems**: restrained diagnostics with one-click access to the untouched original setup and support details.
 
-The interface deliberately displays unavailable values for verified player wins/losses, RM/DM ELO and historical streaming totals until authoritative read-only APIs are approved. Never estimate ELO from current upload timestamps, infer a winner from persisted bytes, treat a capture as proof of viewers, or derive user identity from an unverified local filename.
+The interface deliberately displays unavailable values for verified player wins/losses, RM/DM ELO and historical streaming totals until authoritative read-only APIs are approved.
+A saved replay directory is **not** evidence of a valid replay directory. The War Room readiness label follows Old Blue's validated `folderReadyText` and `watchDirStatus.valid`, and watches that label for changes. A locally configured Watcher upload key is **not** proof of a server-verified player identity; the UI labels it as a credential, not an authenticated profile.
+
+Monitoring status and detail mirror Old Blue's authoritative renderer state, including replay upload failures and background import phases. Green monitoring status must not mask a recent issue. The process-CPU mini-graph ingests only profiles with a valid `sampledAt` and adds at most one graph point per unique sampled timestamp: duplicate `getAppInfo` snapshots are not independent measurements. Never estimate ELO from current upload timestamps, infer a winner from persisted bytes, treat a capture as proof of viewers, or derive user identity from an unverified local filename.
 
 ## Future trusted profile feed — separate, independently reviewed work
 
