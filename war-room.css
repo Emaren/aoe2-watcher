@@ -96,3 +96,10 @@
 .war-room .wr-match{display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:space-between}
 .war-room .wr-match strong{font-weight:700}
 .war-room .wr-match span{font-size:12px}
+
+/* Manual full-display broadcast requires an explicit player acknowledgment. */
+.war-room .wr-display-consent{display:flex;align-items:flex-start;gap:11px;margin:6px 0 10px;padding:12px 14px;border:1px solid #dbad626b;border-radius:12px;background:#79512e26;color:#e9d8b9;font-size:12px;line-height:1.45;cursor:pointer}
+.war-room .wr-display-consent[hidden]{display:none!important}
+.war-room .wr-display-consent input{margin:3px 0 0;flex:none;accent-color:#eac47b;width:16px;height:16px;cursor:pointer}
+.war-room .wr-display-consent input:focus-visible{outline:2px solid #f4d181;outline-offset:3px}
+.war-room #wr-capture-guard{margin:0 0 14px;min-height:1.5em}
