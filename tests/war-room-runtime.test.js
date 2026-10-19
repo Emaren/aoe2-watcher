@@ -92,7 +92,7 @@ class Element {
         attrs[attr[1]] = attr[2] ?? attr[3];
       }
       if (/\shidden(?:\s|$)/.test(match[2])) attrs.hidden = "";
-      if (!attrs.id && !Object.keys(attrs).some(x => x.startsWith("data-wr-"))) continue;
+      if (!attrs.id && attrs.class !== "wr-nav" && !Object.keys(attrs).some(x => x.startsWith("data-wr-"))) continue;
       const node = new Element(match[1], attrs.id || "", attrs);
       node.document = this.document;
       node.parentNode = this;
@@ -107,6 +107,7 @@ class Element {
     return this.descendants.filter(node => node.dataset[key] !== undefined);
   }
   querySelector(selector) {
+    if (selector === ".wr-nav") return this.descendants.find(node => node.className === "wr-nav") || null;
     const data = /^\[data-([a-z-]+)="([^"]+)"\]$/.exec(selector);
     if (!data) return null;
     const key = data[1].replace(/-([a-z])/g, (_match, char) => char.toUpperCase());
