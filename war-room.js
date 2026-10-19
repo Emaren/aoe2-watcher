@@ -159,7 +159,7 @@
   let watching = false;
   let paired = false;
   let folderReady = false;
-  let verifiedFolderFromInfo = null;
+  let classicFolderObserved = false;
   let configuredReplayPath = null;
   let lastResourceSampleEpoch = Number.NEGATIVE_INFINITY;
   let recentEvents = [];
@@ -430,7 +430,6 @@
     if (path !== configuredReplayPath) {
       configuredReplayPath = path;
       folderReady = false;
-      verifiedFolderFromInfo = null;
     }
     paintReadiness();
   }
@@ -439,8 +438,11 @@
     const version = String(info.version || "Unknown");
     write("wr-version", "v" + version);
     write("wr-sys-build", version);
-    if (info.watchDirStatus && typeof info.watchDirStatus.valid === "boolean") {
-      verifiedFolderFromInfo = info.watchDirStatus.valid;
+    // The original renderer owns async folder validation and avoids stale
+    // responses with its validateWatchDirToken. App-info is a fallback only
+    // before that renderer has presented a validated status.
+    if (!classicFolderObserved &&
+        info.watchDirStatus && typeof info.watchDirStatus.valid === "boolean") {
       folderReady = info.watchDirStatus.valid;
       paintReadiness();
     }
@@ -619,7 +621,7 @@
     // The original renderer's async validateWatchDir is guarded against
     // out-of-order responses and renders the latest validated result here.
     // This newer result supersedes an earlier app-info snapshot.
-    verifiedFolderFromInfo = null;
+    classicFolderObserved = true;
     folderReady = label === "Folder ready";
     paintReadiness();
   }
