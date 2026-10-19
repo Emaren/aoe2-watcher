@@ -88,7 +88,8 @@
       const url = new URL(value);
       if (url.protocol !== "https:" ||
           !["aoe2war.com", "www.aoe2war.com"].includes(url.hostname) ||
-          url.username || url.password || !/^\\/(?:[^\\\\]|%[0-9a-fA-F]{2})*$/.test(url.pathname)) return null;
+          url.username || url.password || !url.pathname.startsWith("/") ||
+          url.pathname.includes("\\\\")) return null;
       return url.href;
     } catch { return null; }
   }
