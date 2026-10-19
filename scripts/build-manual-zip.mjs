@@ -35,10 +35,13 @@ Recommended:
 
 Security and authenticity:
 Only install an AoE2WAR Watcher release downloaded from https://aoe2war.com/ .
-The official macOS release must be Developer ID signed and Apple notarized.
-If macOS reports an unidentified developer, damaged app, or failed verification,
-stop. Do not disable Gatekeeper, remove quarantine attributes, or bypass
-signature checks. Obtain the latest verified release or contact AoE2WAR support.
+This macOS release is intentionally UNSIGNED and is not Apple notarized.
+It is a manual installation: AoE2WAR does not currently pay for an Apple
+Developer ID certificate. macOS Gatekeeper may warn or block opening.
+Verify the official download source and published SHA-256 checksums.
+Do not disable Gatekeeper, remove quarantine attributes, or bypass
+signature checks. If authenticity cannot be verified, stop and contact support.
+Automatic macOS installation is unavailable.
 
 Before replacing an existing installation, close Watcher after current replay
 uploads have finished. Your existing configuration and replay files should
