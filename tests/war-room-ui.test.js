@@ -90,7 +90,8 @@ test("War Room Broadcast delegates source and quality controls to the original e
   assert.match(controller, /data-wr-mode="sharp"/);
   assert.match(controller, /original\.dispatchEvent\(new Event\("change"/);
   assert.match(controller, /if \(original && !original\.disabled\) original\.click\(\)/);
-  assert.match(controller, /button\.disabled = originalButton\.disabled/);
+  assert.match(controller, /button\.disabled = Boolean\(originalButton\.disabled/);
+  assert.match(controller, /button\.dataset\.wrAction === "startNativeStreamBtn" && !captureReady/);
   assert.match(controller, /sourcePicker\.disabled = original\.disabled/);
   assert.match(controller, /syncCaptureControls\(\)/);
   assert.match(styles, /\.wr-select:focus-visible/);
@@ -268,4 +269,16 @@ test("native replay-folder invalidity wins over stale presentation labels", () =
   assert.match(controller, /if \(!classicFolderObserved &&/);
   assert.match(controller, /classicFolderObserved = true/);
   assert.match(controller, /folderReady = label === "Folder ready"/);
+});
+
+test("War Room must secure manual whole-display broadcast without touching Classic", () => {
+  assert.match(controller, /id="wr-display-confirm"/);
+  assert.match(controller, /function captureConsentReady\(/);
+  assert.match(controller, /function paintCaptureConsent\(/);
+  assert.match(controller, /captureConsentState\(\)/);
+  assert.match(controller, /originalId === "startNativeStreamBtn" && !captureConsentReady\(\)/);
+  assert.match(controller, /confirmedCaptureDescriptor = ""/);
+  assert.match(controller, /displayConsent\.checked = false/);
+  assert.match(controller, /hasUnselectedDisplay/);
+  assert.match(controller, /new Event\("change", \{ bubbles: true \}\)/);
 });
