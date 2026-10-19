@@ -244,11 +244,16 @@
     const original = el("streamSourceSelect");
     const sources = original ? Array.from(original.options) : [];
     const selected = sources.find(option => option.value && option.value === original.value);
-    const isDisplay = Boolean(selected && /^Display\s*-\s*/i.test(selected.textContent || ""));
-    const hasUnselectedDisplay = !selected && sources.some(option =>
-      option.value && /^Display\s*-\s*/i.test(option.textContent || ""));
-    // Unknown, non-window selections require the same precaution as displays.
-    const unknownSelection = Boolean(selected && !/^Window\s*-\s*/i.test(selected.textContent || "") && !isDisplay);
+    // Electron desktopCapturer IDs encode "screen:" vs "window:". A stale,
+    // mislabeled or future-formatted screen must not masquerade as a window.
+    const displaySource = option => Boolean(option?.value &&
+      (/^screen:/i.test(option.value) || /^Display\s*-\s*/i.test(option.textContent || "")));
+    const gameWindowSource = option => Boolean(option?.value &&
+      /^window:/i.test(option.value) && /^Window\s*-\s*/i.test(option.textContent || ""));
+    const isDisplay = Boolean(selected && displaySource(selected));
+    const hasUnselectedDisplay = !selected && sources.some(displaySource);
+    // Unrecognized source formats are high-privilege until proven otherwise.
+    const unknownSelection = Boolean(selected && !isDisplay && !gameWindowSource(selected));
     const needsConfirmation = isDisplay || unknownSelection;
     // With no sources the native engine may refresh and choose a display.
     // Only an actual macOS system picker gives the user a fresh OS-mediated
