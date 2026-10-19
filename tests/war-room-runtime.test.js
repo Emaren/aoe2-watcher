@@ -19,7 +19,7 @@ class Element {
     this.listeners = new Map();
     this.children = [];
     this.descendants = [];
-    this.style = {};
+    this.style = { setProperty(key, value) { this[key] = value; } };
     this.hidden = Boolean(attrs.hidden !== undefined);
     this.disabled = false;
     this.value = attrs.value || "";
@@ -32,7 +32,12 @@ class Element {
     this.tabIndex = 0;
     this.className = attrs.class || "";
     this.classList = {
-      contains: (name) => this.className.split(/\s+/).includes(name)
+      contains: (name) => this.className.split(/\s+/).includes(name),
+      toggle: (name, enabled) => {
+        const all = new Set(this.className.split(/\s+/).filter(Boolean));
+        if (enabled) all.add(name); else all.delete(name);
+        this.className = Array.from(all).join(" ");
+      }
     };
     for (const [name, value] of Object.entries(attrs)) {
       if (name.startsWith("data-")) {
@@ -182,11 +187,12 @@ function launch({ alreadyLive = false } = {}) {
   const callbacks = new Map();
   const watcherApi = {};
   for (const name of [
-    "onState", "onConfig", "onAppInfo", "onResourceProfile", "onImportState", "onRuntimeEvent"
+    "onState", "onConfig", "onAppInfo", "onResourceProfile", "onImportState", "onRuntimeEvent", "onPlayerSummary"
   ]) watcherApi[name] = callback => callbacks.set(name, callback);
   const preferences = new Map();
   const window = {
     watcherApi,
+    WarRoomPlayer: require("../war-room-player"),
     localStorage: {
       getItem: key => preferences.get(key) ?? null,
       setItem: (key, value) => preferences.set(key, value)
@@ -350,4 +356,35 @@ test("Watcher issue is visible in the War Room and never shown as healthy", () =
   assert.equal(app.byId.get("wr-hero-headline").textContent, "Attention needed");
   assert.equal(app.byId.get("wr-detail").textContent, "A replay upload failed.");
   assert.equal(app.byId.get("wr-dot").className.includes(" ok"), false);
+});
+
+test("verified owner-supplied summary paints concise battle and broadcast intelligence", () => {
+  const app = launch();
+  const now = new Date().toISOString();
+  const publish = app.callbacks.get("onPlayerSummary");
+  publish({
+    schemaVersion: 1, status: "verified", generatedAt: now,
+    player: { displayName: "Emaren" },
+    record: { wins: 12, losses: 3, unresolved: 2 },
+    ratings: {
+      rm: { value: 1350, authority: "steam", asOf: now },
+      dm: { value: 1500, authority: "steam", asOf: now }
+    },
+    recentMatches: [{ opponent: "Jim", map: "Forest Prison", mode: "dm",
+      result: "win", playedAt: now }],
+    streaming: { sessions: 4, airtimeSeconds: 3720, peakConcurrentViewers: null }
+  });
+  assert.equal(app.byId.get("wr-player-name").textContent, "Emaren");
+  assert.equal(app.byId.get("wr-wins-losses").textContent, "12 / 3");
+  assert.equal(app.byId.get("wr-win-rate").textContent, "80%");
+  assert.equal(app.byId.get("wr-rating").textContent, "1350 / 1500");
+  assert.equal(app.byId.get("wr-recent-matches").children.length, 1);
+  assert.equal(app.byId.get("wr-total-streams").textContent, "4");
+  assert.equal(app.byId.get("wr-total-airtime").textContent, "1h 02m");
+  assert.equal(app.byId.get("wr-peak-viewers").textContent, "—");
+  publish({ schemaVersion: 1, status: "unauthorized" });
+  assert.equal(app.byId.get("wr-player-name").textContent, "Player profile awaiting verification");
+  assert.equal(app.byId.get("wr-wins-losses").textContent, "— / —");
+  assert.equal(app.byId.get("wr-rating").textContent, "— / —");
+  assert.equal(app.byId.get("wr-total-streams").textContent, "—");
 });
