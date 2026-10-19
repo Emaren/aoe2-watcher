@@ -1,0 +1,155 @@
+name: Finalize certified Watcher 1.6.5 draft
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - ".finalize-watcher-v165-trigger"
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      VERSION: "1.6.5"
+      RELEASE_ID: "417695236"
+      CERTIFIED_BUNDLE_RUN_ID: "39316285140"
+      WINDOWS_RUN_ID: "39315028329"
+      NONWINDOWS_RUN_ID: "39315028352"
+      RUNTIME_SOURCE_SHA: "8d8a5faf9e92cb51e79aeef2df450df703d5f59c"
+      BUILD_SOURCE_SHA: "b49f31bb69fea629378072faa22220cdfcc2f1ef"
+
+    steps:
+      - name: Checkout Watcher release authority
+        uses: actions/checkout@v4
+
+      - name: Authenticate signed Windows and unsigned Mac/Linux source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$(node -p "require('./package.json').version")" = "$VERSION"
+          for entry in "$WINDOWS_RUN_ID:Sign Windows Watcher" "$NONWINDOWS_RUN_ID:Build non-Windows Watcher Release"; do
+            id="${entry%%:*}"
+            name="${entry#*:}"
+            gh run view "$id" --repo "$GITHUB_REPOSITORY" --json name,event,headSha,conclusion > "run-$id.json"
+            python3 - "$id" "$name" <<'PY'
+          import json, os, sys
+          row = json.load(open("run-" + sys.argv[1] + ".json"))
+          for key, expected in {
+            "name":sys.argv[2], "event":"push",
+            "headSha":os.environ["BUILD_SOURCE_SHA"],"conclusion":"success",
+          }.items():
+            if row.get(key) != expected:
+              raise SystemExit(f"STOP: signer/source release authority mismatch: {key}")
+          PY
+          done
+
+      - name: Retrieve previously certified complete twelve-file bundle
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p release
+          gh run download "$CERTIFIED_BUNDLE_RUN_ID" --repo "$GITHUB_REPOSITORY" \
+            --name "certified-watcher-$VERSION" --dir release
+          test "$(find release -maxdepth 1 -type f | wc -l | tr -d ' ')" = "12"
+
+      - name: Read existing exact draft by immutable release ID
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" > existing-release.json
+
+      - name: Verify exact draft files, per-asset GitHub SHA-256 and unsigned Mac disclosure
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib
+          root = pathlib.Path("release")
+          remote = json.loads(pathlib.Path("existing-release.json").read_text())
+          manifest = json.loads((root / "watcher-release-manifest-1.6.5.json").read_text())
+          source = os.environ["BUILD_SOURCE_SHA"]
+          if not (remote.get("id") == int(os.environ["RELEASE_ID"])
+                  and remote.get("draft") is True
+                  and remote.get("tag_name") == "v1.6.5"
+                  and remote.get("target_commitish") == source):
+              raise SystemExit("STOP: existing GitHub draft is not the pinned release")
+          if (manifest.get("build_source_sha") != source
+              or manifest.get("runtime_source_sha") != os.environ["RUNTIME_SOURCE_SHA"]
+              or manifest.get("windows_signing_run_id") != int(os.environ["WINDOWS_RUN_ID"])
+              or manifest.get("nonwindows_build_run_id") != int(os.environ["NONWINDOWS_RUN_ID"])
+              or manifest.get("macos_signature") != "UNSIGNED"
+              or manifest.get("macos_notarization") != "NONE"
+              or manifest.get("macos_installation") != "MANUAL_ONLY"
+              or manifest.get("financial_bridge_activation") != "NOT_AUTHORIZED_BY_WATCHER_RELEASE"):
+              raise SystemExit("STOP: certified owner policy or signer source mismatch")
+          files = [p for p in root.iterdir() if p.is_file()]
+          if len(files) != 12 or len(manifest.get("files",[])) != 10:
+              raise SystemExit("STOP: certified twelve-file inventory incomplete")
+          expected = {}
+          for p in files:
+              raw = p.read_bytes()
+              normalized = p.name.replace(" ", ".")  # GitHub release asset name normalization
+              if normalized in expected:
+                  raise SystemExit("STOP: normalized filename collision")
+              expected[normalized] = {
+                "digest": "sha256:" + hashlib.sha256(raw).hexdigest(),
+                "size": len(raw),
+              }
+          for row in manifest["files"]:
+              name = row["filename"]
+              p = root / name
+              if not p.is_file() or p.stat().st_size != row["bytes"]:
+                  raise SystemExit("STOP: certified manifest file size mismatch")
+              if hashlib.sha256(p.read_bytes()).hexdigest() != row["sha256"]:
+                  raise SystemExit("STOP: certified manifest checksum mismatch")
+          checksums = (root / "SHA256SUMS-1.6.5.txt").read_text()
+          for row in manifest["files"]:
+              if f'{row["sha256"]}  {row["filename"]}' not in checksums.splitlines():
+                  raise SystemExit("STOP: certified checksum ledger mismatch")
+          actual = {}
+          for asset in remote.get("assets", []):
+              name = asset.get("name")
+              if name in actual:
+                  raise SystemExit("STOP: duplicate GitHub asset name")
+              actual[name] = {"digest": asset.get("digest"), "size": asset.get("size")}
+          if actual != expected:
+              raise SystemExit("STOP: exact twelve-file GitHub SHA256/size inventory differs")
+          print("PASS: all 12 GitHub draft assets match certified local digests and source pins")
+          PY
+
+      - name: Publish verified Watcher 1.6.5 GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release edit "v$VERSION" --repo "$GITHUB_REPOSITORY" --draft=false
+
+      - name: Authenticate published release and newly created exact Git tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" > published-release.json
+          gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/v$VERSION" > published-tag.json
+          python3 - <<'PY'
+          import json,os
+          from pathlib import Path
+          release=json.loads(Path("published-release.json").read_text())
+          tag=json.loads(Path("published-tag.json").read_text())
+          if (release.get("draft") or not release.get("published_at")
+              or release.get("tag_name")!="v1.6.5"
+              or len(release.get("assets", []))!=12
+              or tag.get("object",{}).get("sha")!=os.environ["BUILD_SOURCE_SHA"]):
+            raise SystemExit("STOP: live release or final source tag verification failed")
+          print("PUBLIC: v1.6.5 points to verified Watcher build source",os.environ["BUILD_SOURCE_SHA"])
+          print("NOTE: aoe2war.com website download is a separate protected app release transaction.")
+          PY
