@@ -12,7 +12,8 @@ test("direct ZIP readme never instructs bypassing macOS Gatekeeper or quarantine
   assert.doesNotMatch(zipSource, /spctl\s+--master-disable|spctl\s+--global-disable/i);
   assert.doesNotMatch(zipSource, /If macOS blocks the unsigned app, run:/);
   assert.match(zipSource, /Only install an AoE2WAR Watcher release downloaded from https:\/\/aoe2war\.com\//);
-  assert.match(zipSource, /Developer ID signed and Apple notarized/);
+  assert.match(zipSource, /intentionally UNSIGNED and is not Apple notarized/);
+  assert.match(zipSource, /Automatic macOS installation is unavailable/);
   assert.match(zipSource, /Do not disable Gatekeeper, remove quarantine attributes, or bypass/);
   assert.match(zipSource, /do not delete or relocate them to upgrade/i);
 });
