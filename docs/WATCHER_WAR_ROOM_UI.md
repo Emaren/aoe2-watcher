@@ -41,6 +41,27 @@ The paired client must retrieve an authenticated, owner-scoped summary through a
 
 Candidate narrow response fields after separate server design/review: `player` (canonical display name, public/avatar URL only), `verifiedRecord` (resolved wins, losses, unclassified count and source effective-as-of), `ratings` (separate RM/DM dated, provenance-qualified values), `recentMatches` (bounded adjudicated outcomes), and `streaming` (durable sessions, airtime, separately verified peak concurrent audience). Include explicit `unknown`/no-data and stale-state handling and safe caching, never manufacture zeros for missing evidence. The server remains sole authority for historical result and financial disposition.
 
+## Observed player-data API inventory (read-only inspection, October 19)
+
+The existing app has rich server-side player projections in `lib/playerProfile.ts`, including adjudicated match outcomes, Steam RM/DM ratings, Watcher statistics and stream summaries. These are not, by themselves, a safe Watcher endpoint.
+
+- `app/api/user/watcher-key/route.ts` lists/mints key prefixes under a **browser session**. It does not return a Watcher-client profile summary.
+- `lib/watcherTelemetry.ts` has `resolveWatcherTelemetryIdentity`, which validates hashed, unrevoked `kind=watcher` credentials against canonical users; `readWatcherTelemetryApiKey` reads `x-api-key`. This is a useful existing identity authority, but an attempted key is not identity until the server confirms `resolved=true`.
+- `lib/streamRequestAuth.ts` already resolves a `watcher_key` actor for the **stream** service. It should be referenced for consistency without granting any stream mutation capability to a statistics reader.
+- `app/api/player-profile/matches/route.ts` accepts client-supplied `kind=claimed&uid=...` or replay name and returns a public page of matches. It **does not cryptographically bind that query to the Watcher key owner**. The desktop must not guess or trust its own submitted UID/name to claim this is the current player's record.
+
+**Conclusion:** an authenticated, owner-scoped, *read-only* profile-summary operation is still missing from the audited public `main` route inventory. Do not fetch those values anonymously and relabel them as paired-user facts. Other application branches are out of scope and may independently evolve.
+
+### Proposed separately reviewed integration contract
+
+1. An application-side `GET /api/watcher/player-summary` (proposed route name, **not implemented** here) validates `x-api-key` using the existing hashed/unrevoked watcher identity resolver, requires `resolved=true`, and derives all user identity from the server-side key-to-user relationship. It ignores client-supplied `uid`, `name`, wallet or Steam identifier selectors. No settlement or financial mutations.
+2. The response is strictly bounded and provenance-qualified: `schemaVersion`, `generatedAt`, canonical public `displayName` and optional approved avatar, effective RM/DM ratings with their own `asOf` and authority, decided `wins`/`losses` plus `unresolved`, a small `recentMatches` list with effective winner adjudications, and streaming session count/airtime. Unknown metrics must be nullable/explicitly unavailable, especially viewer counts. Never count unproven uploads as wins or a capture-start as public viewers.
+3. The desktop main process, not arbitrary renderer `fetch`, can later request the summary from a pinned first-party HTTPS origin with the Watcher key in the expected header. Reject redirects to untrusted origins, avoid query-string keys, and never send that key to a user-configured fallback or third-party URL.
+4. Add a minimal `watcher:get-player-summary` read-only IPC method only in a **separate approved integration PR**, with key-scoped cache invalidation after re-pairing/revocation, bounded TTL (e.g. 60s), cancellation/single-flight, explicit offline/401/403/stale states and no extra background polling. Do not hold the full key in a renderer graph or diagnostic log.
+5. Acceptance: two disjoint accounts + one revoked key must demonstrate owner isolation, correct RM/DM chronology, replay result finality, absent-metric states and absence of financial writes. A response from a public `kind=claimed` selector does not pass this gate.
+
+Until that independently reviewed server and main-process contract exists, the War Room presents honest unavailable states and sends users to the existing public website profile.
+
 ## Non-negotiable boundaries
 
 - No change to `Emaren/app-prodn`, `Emaren/api-prodn`, `Emaren/wolochain`, Auto Bets, War Satchel, financial custody, signer keys, settlement or chain state.
