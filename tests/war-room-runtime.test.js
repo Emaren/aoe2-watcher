@@ -190,6 +190,14 @@ function launch({ alreadyLive = false } = {}) {
     "onState", "onConfig", "onAppInfo", "onResourceProfile", "onImportState", "onRuntimeEvent", "onPlayerSummary"
   ]) watcherApi[name] = callback => callbacks.set(name, callback);
   const preferences = new Map();
+  const timers = new Map();
+  let nextTimerId = 0;
+  const setTimeoutFake = (fn, delay) => {
+    const id = ++nextTimerId;
+    timers.set(id, { fn, delay });
+    return id;
+  };
+  const clearTimeoutFake = (id) => timers.delete(id);
   const window = {
     watcherApi,
     WarRoomPlayer: require("../war-room-player"),
@@ -202,6 +210,7 @@ function launch({ alreadyLive = false } = {}) {
   vm.runInNewContext(source, {
     window, document, MutationObserver: Observer, Event: class { constructor(type) { this.type = type; } },
     Date, String, Number, Boolean, Array, Object, Math, Promise,
+    setTimeout: setTimeoutFake, clearTimeout: clearTimeoutFake,
   }, { filename: "war-room.js" });
   const picker = root.children.find(node => node.className === "wr-theme-picker");
   assert.ok(picker, "appearance picker must be mounted");
@@ -218,7 +227,7 @@ function launch({ alreadyLive = false } = {}) {
     return button;
   };
   return { document, root, classic, host, preview, previewHome, originalSelect,
-    originalControlIds, preferences, callbacks, clickTheme, clickTab, byId };
+    originalControlIds, preferences, callbacks, clickTheme, clickTab, byId, timers };
 }
 
 test("Old Blue and War Room switch without changing the original renderer or monitoring", () => {
@@ -402,4 +411,44 @@ test("a credential configuration update clears any previously verified player's 
   app.callbacks.get("onConfig")({ watchDir: "/replays", uploadApiKey: "rotated" });
   assert.equal(app.byId.get("wr-player-name").textContent, "Player profile awaiting verification");
   assert.equal(app.byId.get("wr-wins-losses").textContent, "— / —");
+});
+
+test("one-shot expiry clears verified player data; a newer response cancels the previous timer", () => {
+  const app = launch();
+  const event = app.callbacks.get("onPlayerSummary");
+  const make = name => ({
+    schemaVersion: 1, status: "verified", generatedAt: new Date().toISOString(),
+    player: { displayName: name }, record: { wins: 1, losses: 0, unresolved: 0 },
+    ratings: {}, recentMatches: [], streaming: { sessions: null, airtimeSeconds: null, peakConcurrentViewers: null }
+  });
+  event(make("First"));
+  assert.equal(app.timers.size, 1);
+  const earlier = [...app.timers.values()][0].fn;
+  event(make("Second"));
+  assert.equal(app.timers.size, 1, "new summary replaces the one pending expiry");
+  earlier();
+  assert.equal(app.byId.get("wr-player-name").textContent, "Second", "obsolete timeout cannot clear newer summary");
+  const latest = [...app.timers.values()][0].fn;
+  latest();
+  assert.equal(app.byId.get("wr-player-name").textContent, "Player profile awaiting verification");
+  assert.equal(app.byId.get("wr-total-airtime").textContent, "—");
+  assert.equal(app.byId.get("wr-overview-airtime").textContent, "—");
+  assert.equal(app.timers.size, 0);
+});
+
+test("Overview and Broadcast totals come from the same verified streaming projection", () => {
+  const app = launch();
+  app.callbacks.get("onPlayerSummary")({
+    schemaVersion: 1, status: "verified", generatedAt: new Date().toISOString(),
+    player: { displayName: "Commander" },
+    record: { wins: 5, losses: 2, unresolved: null }, ratings: {}, recentMatches: [],
+    streaming: { sessions: 7, airtimeSeconds: 9000, peakConcurrentViewers: null }
+  });
+  assert.equal(app.byId.get("wr-total-streams").textContent, "7");
+  assert.equal(app.byId.get("wr-overview-streams").textContent, "7");
+  assert.equal(app.byId.get("wr-total-airtime").textContent, "2h 30m");
+  assert.equal(app.byId.get("wr-overview-airtime").textContent, "2h 30m");
+  app.callbacks.get("onConfig")({ watchDir: "/saved", uploadApiKey: "" });
+  for (const id of ["wr-total-streams","wr-overview-streams","wr-total-airtime","wr-overview-airtime"])
+    assert.equal(app.byId.get(id).textContent, "—");
 });
