@@ -156,6 +156,7 @@
   let watching = false;
   let paired = false;
   let folderReady = false;
+  let lastResourceSampleAt = null;
   let recentEvents = [];
   let detectedReplays = 0;
   let observedStreamStarts = 0;
@@ -278,33 +279,45 @@
     });
   }
   function paintReadiness() {
+    // Old Blue already renders the Watcher's authoritative status, including
+    // upload failures, historical imports, and replay validation errors.
     const oldStatus = String(el("watcherStateText")?.textContent || "").trim();
     const oldDetail = String(el("watcherStateDetailText")?.textContent || "").trim();
-    const initialLabel = oldStatus && oldStatus !== "Loading watcher…" ? oldStatus : "Connecting…";
-    write("wr-status", !statusKnown ? initialLabel : watching ? "Monitoring replays" : "Standing by");
-    write("wr-detail", !statusKnown ? oldDetail || "Waiting for Watcher state." : watching
-      ? "Listening for new Age of Empires II replay events."
-      : "Monitoring is stopped. Start it before your next match.");
-    // A late-loaded presentation adapter can miss the first watcher:state.
-    // In that case trust the already-rendered Classic status, not a guess
-    // made from the saved configuration or replay directory.
-    const visuallyMonitoring = statusKnown ? watching : oldStatus === "Watching for new replays";
+    const hasClassicStatus = Boolean(oldStatus && oldStatus !== "Loading watcher…");
+    const statusLabel = hasClassicStatus ? oldStatus
+      : !statusKnown ? "Connecting…" : watching ? "Watching for new replays" : "Standing by";
+    const statusDetail = hasClassicStatus ? oldDetail
+      : !statusKnown ? "Waiting for Watcher state."
+      : watching ? "Listening for replay events." : "Monitoring is stopped.";
+    write("wr-status", statusLabel);
+    write("wr-detail", statusDetail);
+    const healthy = hasClassicStatus
+      ? oldStatus === "Watching for new replays"
+      : statusKnown && watching;
     const dot = el("wr-dot");
-    if (dot) dot.className = "wr-status-dot" + (visuallyMonitoring ? " ok" : statusKnown || initialLabel !== "Connecting…" ? " warn" : "");
-    write("wr-paired", paired ? "Profile paired" : "Profile not paired");
-    write("wr-pair-text", paired ? "Paired" : "Pair in Old Blue");
-    write("wr-folder", folderReady ? "Replay path configured" : "Replay folder needed");
-    write("wr-folder-text", folderReady ? "Configured" : "Choose in Old Blue");
+    if (dot) dot.className = "wr-status-dot" + (healthy ? " ok" : hasClassicStatus || statusKnown ? " warn" : "");
+
+    // A configured path is not evidence that the SaveGame folder is valid.
+    // Original renderer validation is the authoritative presentation here.
+    const classicFolder = String(el("folderReadyText")?.textContent || "").trim();
+    if (classicFolder === "Folder ready") folderReady = true;
+    else if (classicFolder === "Folder missing") folderReady = false;
+
+    // Presence of an upload key is NOT a verified player identity.
+    write("wr-paired", paired ? "Watcher key configured" : "Watcher key needed");
+    write("wr-pair-text", paired ? "Key configured" : "Configure in Old Blue");
+    write("wr-folder", folderReady ? "Valid replay folder" : "Replay folder needs verification");
+    write("wr-folder-text", folderReady ? "Validated" : "Check in Old Blue");
     el("wr-paired").className = "wr-chip" + (paired ? " ok" : " warn");
     el("wr-folder").className = "wr-chip" + (folderReady ? " ok" : " warn");
     write("wr-identity", paired
-      ? "Watcher paired. Player record needs a verified statistics feed."
-      : "Pair in Old Blue to link your replays to your player profile.");
+      ? "Watcher credential configured. Player identity requires server verification."
+      : "Set up a Watcher key in Old Blue to attribute replay uploads.");
   }
   function onConfig(config) {
     if (!config || typeof config !== "object") return;
     paired = Boolean(config.uploadApiKey);
-    folderReady = Boolean(config.watchDir);
+    if (!config.watchDir) folderReady = false;
     paintReadiness();
   }
   function onInfo(info) {
@@ -322,14 +335,19 @@
     if (!profile || typeof profile !== "object") return;
     const cpu = typeof profile.cpuPercent === "number" ? profile.cpuPercent : NaN;
     const ram = typeof profile.workingSetMb === "number" ? profile.workingSetMb : NaN;
-    if (Number.isFinite(cpu) && cpu >= 0 && cpu <= 1000) {
-      cpuSamples.push(cpu);
-      if (cpuSamples.length > 40) cpuSamples.shift();
+    const sampledAt = typeof profile.sampledAt === "string" ? profile.sampledAt : "";
+    const validSample = sampledAt && Number.isFinite(Date.parse(sampledAt));
+    if (validSample && Number.isFinite(cpu) && cpu >= 0 && cpu <= 1000) {
       write("wr-cpu", cpu.toFixed(1) + "% CPU");
       write("wr-sys-cpu", cpu.toFixed(1) + "%");
-      if (theme === "war-room") drawChart();
+      if (sampledAt !== lastResourceSampleAt) {
+        lastResourceSampleAt = sampledAt;
+        cpuSamples.push(cpu);
+        if (cpuSamples.length > 40) cpuSamples.shift();
+        if (theme === "war-room") drawChart();
+      }
     }
-    if (Number.isFinite(ram) && ram >= 0) {
+    if (validSample && Number.isFinite(ram) && ram >= 0) {
       write("wr-memory", "RAM " + Math.round(ram) + " MB");
       write("wr-sys-ram", Math.round(ram) + " MB");
     }
@@ -466,11 +484,15 @@
   // Mirror its authoritative presentation until a watcher:state event arrives.
   const classicStatus = el("watcherStateText");
   if (classicStatus) {
-    const syncInitialStatus = () => {
-      if (!statusKnown) paintReadiness();
-    };
+    const syncInitialStatus = () => paintReadiness();
     new MutationObserver(syncInitialStatus).observe(classicStatus, { childList: true, characterData: true, subtree: true });
     syncInitialStatus();
+  }
+  const classicFolder = el("folderReadyText");
+  if (classicFolder) {
+    new MutationObserver(paintReadiness).observe(classicFolder, {
+      childList: true, characterData: true, subtree: true
+    });
   }
   // Observe only existing capture readouts, not the full Classic DOM tree.
   for (const id of ["streamStatePill", "streamReadoutSummary", "streamReadoutDetail"]) {
