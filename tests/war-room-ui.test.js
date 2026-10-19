@@ -69,9 +69,12 @@ test("unavailable player stats stay blank; future auth must come through approve
 });
 
 test("War Room assets are packaged and controls remain accessible", () => {
+  assert.ok(manifest.build.files.includes("war-room-player.js"));
   assert.ok(manifest.build.files.includes("war-room.js"));
   assert.ok(manifest.build.files.includes("war-room.css"));
   assert.match(manifest.scripts.lint, /node --check war-room\.js/);
+  assert.match(html, /src="\.\/war-room-player\.js"/);
+  assert.ok(html.indexOf('src="./war-room-player.js"') < html.indexOf('src="./war-room.js"'));
   assert.match(html, /href="\.\/war-room\.css"/);
   assert.match(styles, /focus-visible/);
   assert.match(styles, /prefers-reduced-motion/);
@@ -239,4 +242,14 @@ test("systems telemetry reuses existing genuine process metrics only", () => {
   assert.match(controller, /profile\.idleWakeupsAvailable === true/);
   assert.match(controller, /id="wr-sys-wakeups">Not reported/);
   assert.doesNotMatch(controller, /powerWatts\s*\|\|/);
+});
+
+test("player display remains dormant without authorized IPC, keeps rejected values blank", () => {
+  assert.match(controller, /typeof bridge\.onPlayerSummary === "function"/);
+  assert.match(controller, /renderPlayerSummary\(null\)/);
+  assert.match(controller, /const contract = window\.WarRoomPlayer/);
+  assert.match(controller, /stream\?\.peakConcurrentViewers \?\? "—"/);
+  assert.match(controller, /renderPlayerSummary\(null\);\s*paired = Boolean/);
+  assert.doesNotMatch(controller, /fetch\s*\(/);
+  assert.ok(manifest.scripts.lint.includes("node --check war-room-player.js"));
 });
