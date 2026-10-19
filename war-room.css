@@ -75,3 +75,9 @@
 .war-room .wr-select:disabled{opacity:.55;cursor:not-allowed}
 .war-room .wr-mode-options{display:flex;gap:8px;flex-wrap:wrap;margin:4px 0 13px}
 .war-room .wr-mode-options button[aria-pressed=true]{background:linear-gradient(125deg,#ad8849,#e9c77d);color:#14171a;border-color:#eccb86}
+
+/* Never mount a duplicate decoder. Move the original Classic video element
+ * into this slot only while the War Room Broadcast panel is visible. */
+.war-room .wr-preview-slot:empty{display:none}
+.war-room .wr-preview-slot>.stream-preview{display:block;width:100%;height:auto;aspect-ratio:16/9;object-fit:contain;background:#05070b;border:1px solid #e8c87833;border-radius:13px;margin:12px 0}
+.war-room .wr-preview-slot>.stream-preview[hidden]{display:none!important}
