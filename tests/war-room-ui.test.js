@@ -262,3 +262,10 @@ test("authenticated player summary expires once without background polling", () 
   assert.match(controller, /contract\.MAX_AGE_MS/);
   assert.doesNotMatch(controller, /setInterval\s*\(/);
 });
+
+test("native replay-folder invalidity wins over stale presentation labels", () => {
+  assert.match(controller, /let verifiedFolderFromInfo = null/);
+  assert.match(controller, /verifiedFolderFromInfo === false/);
+  assert.match(controller, /classicFolder === "Folder missing"/);
+  assert.match(controller, /verifiedFolderFromInfo = info\.watchDirStatus\.valid/);
+});
