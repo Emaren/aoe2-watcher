@@ -522,6 +522,7 @@ test("ten active-stream theme changes do not spawn extra native actions or dupli
   for (const id of app.originalControlIds) assert.equal(app.byId.get(id).clicks, 0);
   assert.strictEqual(app.preview.srcObject.identity, "original-capture");
   assert.equal(app.preview.plays, 1, "ten switches must not restart an already-playing preview");
+  app.clickTab("overview");
   app.preview.paused = true;
   app.clickTab("broadcast");
   assert.equal(app.preview.plays, 2, "a paused preview must resume when moved into Broadcast");
