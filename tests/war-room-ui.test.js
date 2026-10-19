@@ -117,3 +117,27 @@ test("session activity is observational, never a fabricated lifetime statistic",
   assert.match(controller, /Verified lifetime airtime/);
   assert.match(controller, /Not yet available/);
 });
+
+test("native streaming readouts and import receipts are observed, never promoted to match verdicts", () => {
+  assert.match(controller, /id="wr-capture-headline"/);
+  assert.match(controller, /id="wr-capture-details"/);
+  assert.match(controller, /streamReadoutSummary/);
+  assert.match(controller, /streamReadoutDetail/);
+  assert.match(controller, /id="wr-import-recent"/);
+  assert.match(controller, /Array\.isArray\(state\.recentItems\)/);
+  assert.match(controller, /state\.recentItems\.slice\(0, 5\)/);
+  assert.match(controller, /item\.fileName \|\| "Replay"/);
+  assert.doesNotMatch(controller, /row\.innerHTML\s*=/);
+  assert.match(controller, /item\.status/);
+  assert.match(controller, /"Sent to review"/);
+  assert.match(controller, /"Result ready"/);
+  assert.doesNotMatch(controller, /item\.winner/);
+});
+
+test("first boot mirrors Classic watcher state without creating another monitoring engine", () => {
+  assert.match(controller, /oldStatus === "Watching for new replays"/);
+  assert.match(controller, /new MutationObserver\(syncInitialStatus\)/);
+  assert.match(controller, /if \(!statusKnown\) paintReadiness\(\)/);
+  assert.doesNotMatch(controller, /bridge\.startWatching\s*\(/);
+  assert.doesNotMatch(controller, /bridge\.stopWatching\s*\(/);
+});
