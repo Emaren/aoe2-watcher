@@ -400,6 +400,9 @@
   }
   function onConfig(config) {
     if (!config || typeof config !== "object") return;
+    // A configuration update may revoke or rotate the Watcher credential.
+    // Fail closed: never retain a previous account's verified player record.
+    renderPlayerSummary(null);
     paired = Boolean(config.uploadApiKey);
     if (!config.watchDir) folderReady = false;
     paintReadiness();
