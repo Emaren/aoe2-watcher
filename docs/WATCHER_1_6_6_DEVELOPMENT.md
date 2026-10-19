@@ -13,7 +13,7 @@ review_interval_days: 14
 sensitivity: "internal"
 ---
 
-# Watcher 1.6.6 — authenticated companion, trusted game evidence
+# Watcher 1.6.6 Development — Authenticated Player Companion and Independent Evidence
 
 **Status: PLANNED / DEVELOPMENT ONLY — NOT IN PRODUCTION.**
 
