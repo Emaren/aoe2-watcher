@@ -52,7 +52,8 @@
     '<div class="wr-broadcast"><div class="wr-cam-icon" aria-hidden="true">◉</div><div><strong id="wr-stream-status">Off air</strong>',
     '<p class="wr-muted wr-small" id="wr-stream-detail">Game capture is inactive.</p></div></div>',
     '<div class="wr-statline"><span class="wr-muted">Live starts observed this session</span><strong id="wr-session-streams">0</strong></div>',
-    '<div class="wr-statline"><span class="wr-muted">Verified lifetime airtime</span><strong>Not yet available</strong></div>',
+    '<div class="wr-statline"><span class="wr-muted">Verified lifetime streams</span><strong id="wr-overview-streams">—</strong></div>',
+    '<div class="wr-statline"><span class="wr-muted">Verified lifetime airtime</span><strong id="wr-overview-airtime">—</strong></div>',
     '<div class="wr-actions"><button type="button" class="wr-action wr-primary" data-wr-tab-target="broadcast">Broadcast station →</button></div></section>',
     '<section class="wr-card"><div class="wr-kicker">REPLAY ARCHIVE</div><h2 style="margin:5px 0 12px">Historical imports</h2>',
     '<div class="wr-line wr-muted wr-small"><span>Recent import batch</span><span id="wr-import-label">No active import</span></div>',
@@ -283,9 +284,26 @@
   // This listener is intentionally dormant until an independently reviewed,
   // owner-authenticated player-summary IPC is added to the preload/main process.
   // No renderer fetch, guessed identity or key forwarding is permitted.
+  // A single one-shot expiration guard is scheduled ONLY when a trusted
+  // summary is received. There is no refresh polling or background request.
+  let playerExpiryTimer = null;
+  let playerSummaryGeneration = 0;
   function renderPlayerSummary(payload) {
+    const generation = ++playerSummaryGeneration;
+    if (playerExpiryTimer !== null) {
+      clearTimeout(playerExpiryTimer);
+      playerExpiryTimer = null;
+    }
     const contract = window.WarRoomPlayer;
     const model = contract?.normalize(payload) || { status: "unavailable" };
+    if (model.status === "verified") {
+      const remaining = Date.parse(model.generatedAt) + contract.MAX_AGE_MS - Date.now();
+      if (Number.isFinite(remaining) && remaining > 0) {
+        playerExpiryTimer = setTimeout(() => {
+          if (playerSummaryGeneration === generation) renderPlayerSummary(null);
+        }, remaining + 1);
+      }
+    }
     const ready = model.status === "verified";
     const stats = ready ? model.record : null;
     write("wr-player-name", ready ? model.displayName : model.status === "stale"
@@ -353,6 +371,8 @@
     write("wr-total-airtime", stream && contract
       ? contract.duration(stream.airtimeSeconds) : "—");
     write("wr-peak-viewers", stream?.peakConcurrentViewers ?? "—");
+    write("wr-overview-streams", stream?.sessions ?? "—");
+    write("wr-overview-airtime", stream ? contract.duration(stream.airtimeSeconds) : "—");
   }
 
   function paintReadiness() {
