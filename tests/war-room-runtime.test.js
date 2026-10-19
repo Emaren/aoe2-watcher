@@ -624,3 +624,51 @@ test("no-source direct OS picker remains enabled only after macOS confirmation",
   app.callbacks.get("onAppInfo")({ platform: "linux", version: "1.6.5" });
   assert.equal(goLive.disabled, true, "losing macOS system picker removes exception");
 });
+
+test("a screen ID masquerading as a Window label still requires full-display consent", () => {
+  const app = launch();
+  const spoofed = app.document.createElement("option");
+  spoofed.value = "screen:9:0";
+  spoofed.textContent = "Window - Age of Empires II HD";
+  app.originalSelect.options = [spoofed];
+  app.originalSelect.value = spoofed.value;
+  const start = app.host.querySelectorAll("[data-wr-action]")
+    .find(button => button.dataset.wrAction === "startNativeStreamBtn");
+  app.clickTab("broadcast");
+  assert.equal(app.byId.get("wr-display-consent").hidden, false);
+  assert.equal(start.disabled, true);
+  app.host.dispatch("click", { target: start });
+  assert.equal(app.byId.get("startNativeStreamBtn").clicks, 0);
+  const confirm = app.byId.get("wr-display-confirm");
+  confirm.checked = true;
+  confirm.dispatch("change", { type: "change" });
+  assert.equal(start.disabled, false);
+});
+
+test("a window-looking ID mislabeled as Display does not bypass acknowledgment", () => {
+  const app = launch();
+  const mislabeled = app.document.createElement("option");
+  mislabeled.value = "window:19:0";
+  mislabeled.textContent = "Display - Entire Desktop";
+  app.originalSelect.options = [mislabeled];
+  app.originalSelect.value = mislabeled.value;
+  const start = app.host.querySelectorAll("[data-wr-action]")
+    .find(button => button.dataset.wrAction === "startNativeStreamBtn");
+  app.clickTab("broadcast");
+  assert.equal(app.byId.get("wr-display-consent").hidden, false);
+  assert.equal(start.disabled, true);
+});
+
+test("a source with an unknown ID is not silently treated as a game window", () => {
+  const app = launch();
+  const ambiguous = app.document.createElement("option");
+  ambiguous.value = "capture:anything";
+  ambiguous.textContent = "Window - Age of Empires II";
+  app.originalSelect.options = [ambiguous];
+  app.originalSelect.value = ambiguous.value;
+  const start = app.host.querySelectorAll("[data-wr-action]")
+    .find(button => button.dataset.wrAction === "startNativeStreamBtn");
+  app.clickTab("broadcast");
+  assert.equal(start.disabled, true);
+  assert.equal(app.byId.get("wr-display-consent").hidden, false);
+});
