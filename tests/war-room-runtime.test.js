@@ -45,6 +45,7 @@ class Element {
   getAttribute(key) { return this.attrs[key] || null; }
   addEventListener(name, callback) { this.listeners.set(name, callback); }
   dispatch(name, event) { this.listeners.get(name)?.(event); }
+  dispatchEvent(event) { this.dispatch(event.type, event); return true; }
   closest(selector) {
     if (selector === "button") return this.tagName === "BUTTON" ? this : null;
     const dataName = /^\[data-([a-z-]+)\]$/.exec(selector)?.[1];
@@ -302,4 +303,51 @@ test("launching with an already-live stream does not invent another start", () =
   app.clickTheme("old-blue");
   app.clickTheme("war-room");
   assert.equal(app.byId.get("wr-session-streams").textContent, "0");
+});
+
+test("War Room source selection passes through Classic's change handler exactly once", () => {
+  const app = launch();
+  const selected = app.document.createElement("option");
+  selected.value = "window:123";
+  selected.textContent = "AoE2 HD — selected window";
+  const fallback = app.document.createElement("option");
+  fallback.value = "screen:1";
+  fallback.textContent = "Display 1";
+  app.originalSelect.options = [selected, fallback];
+  let sourceChanges = 0;
+  app.originalSelect.addEventListener("change", () => sourceChanges++);
+  app.clickTab("broadcast");
+  const warPicker = app.byId.get("wr-source");
+  assert.equal(warPicker.options.length, 2);
+  warPicker.value = "window:123";
+  warPicker.dispatch("change", { type: "change" });
+  assert.equal(app.originalSelect.value, "window:123");
+  assert.equal(sourceChanges, 1);
+  // Malicious/stale option cannot override the source list exposed by Classic.
+  warPicker.value = "window:missing";
+  warPicker.dispatch("change", { type: "change" });
+  assert.equal(app.originalSelect.value, "window:123");
+  assert.equal(sourceChanges, 1);
+});
+
+test("War Room mode selection delegates to the original mode button", () => {
+  const app = launch();
+  const warButton = app.host.querySelectorAll("[data-wr-mode]")
+    .find(button => button.dataset.wrMode === "screen");
+  const original = app.classic.descendants.find(button => button.dataset.streamMode === "screen");
+  app.host.dispatch("click", { target: warButton });
+  assert.equal(original.clicks, 1);
+  original.disabled = true;
+  app.host.dispatch("click", { target: warButton });
+  assert.equal(original.clicks, 1, "disabled Classic mode must block War Room");
+});
+
+test("Watcher issue is visible in the War Room and never shown as healthy", () => {
+  const app = launch();
+  app.byId.get("watcherStateText").textContent = "Watching with a recent issue";
+  app.byId.get("watcherStateDetailText").textContent = "A replay upload failed.";
+  app.callbacks.get("onState")({ isWatching: true });
+  assert.equal(app.byId.get("wr-hero-headline").textContent, "Attention needed");
+  assert.equal(app.byId.get("wr-detail").textContent, "A replay upload failed.");
+  assert.equal(app.byId.get("wr-dot").className.includes(" ok"), false);
 });
