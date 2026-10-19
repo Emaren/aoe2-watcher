@@ -50,8 +50,8 @@
     '<section class="wr-card"><div class="wr-kicker">TELEVISION WOLO</div><h2 style="margin:5px 0 14px">Broadcast station</h2>',
     '<div class="wr-broadcast"><div class="wr-cam-icon" aria-hidden="true">◉</div><div><strong id="wr-stream-status">Off air</strong>',
     '<p class="wr-muted wr-small" id="wr-stream-detail">Game capture is inactive.</p></div></div>',
-    '<div class="wr-statline"><span class="wr-muted">Streaming sessions</span><strong>Not yet tracked</strong></div>',
-    '<div class="wr-statline"><span class="wr-muted">Broadcast airtime</span><strong>Not yet tracked</strong></div>',
+    '<div class="wr-statline"><span class="wr-muted">Broadcasts observed this session</span><strong id="wr-session-streams">0</strong></div>',
+    '<div class="wr-statline"><span class="wr-muted">Verified lifetime airtime</span><strong>Not yet available</strong></div>',
     '<div class="wr-actions"><button type="button" class="wr-action wr-primary" data-wr-tab-target="broadcast">Broadcast station →</button></div></section>',
     '<section class="wr-card"><div class="wr-kicker">REPLAY ARCHIVE</div><h2 style="margin:5px 0 12px">Historical imports</h2>',
     '<div class="wr-line wr-muted wr-small"><span>Recent import batch</span><span id="wr-import-label">No active import</span></div>',
@@ -104,7 +104,7 @@
     '<div class="wr-statline"><span class="wr-muted">Build</span><strong id="wr-sys-build">Checking…</strong></div>',
     '<div class="wr-statline"><span class="wr-muted">CPU</span><strong id="wr-sys-cpu">Measuring…</strong></div>',
     '<div class="wr-statline"><span class="wr-muted">RAM</span><strong id="wr-sys-ram">Measuring…</strong></div>',
-    '<div class="wr-statline"><span class="wr-muted">Latest upload</span><strong id="wr-sys-upload">None this session</strong></div>',
+    '<div class="wr-statline"><span class="wr-muted">Latest upload</span><strong id="wr-sys-upload">None this session</strong></div><div class="wr-statline"><span class="wr-muted">Replay detections this session</span><strong id="wr-session-replays">0</strong></div>',
     '<div class="wr-actions"><button type="button" class="wr-action wr-primary" id="wr-open-classic-settings">Open Old Blue settings</button>',
     '<button type="button" class="wr-action" data-wr-action="copySupportBtn">Copy support snapshot</button></div>',
     '<p class="wr-muted wr-small" style="margin-top:14px">Full diagnostics, key recovery, setup, and capture sources are preserved in Old Blue.</p></section>',
@@ -153,6 +153,9 @@
   let paired = false;
   let folderReady = false;
   let recentEvents = [];
+  let detectedReplays = 0;
+  let observedStreamStarts = 0;
+  let previousLiveState = false;
   const cpuSamples = [];
 
   function chooseTheme(next, persist = true) {
@@ -345,6 +348,7 @@
       "upload-failure": "Replay upload failed",
       "final-candidate-accepted": "Final replay candidate received"
     };
+    if (event.type === "replay-detected") { detectedReplays += 1; write("wr-session-replays", detectedReplays); }
     const file = String(event.fileName || "").replace(/[\r\n\t]/g, " ").slice(0, 95);
     const time = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
     recentEvents.unshift(time + " • " + labels[event.type] + (file ? " · " + file : ""));
@@ -380,6 +384,11 @@
     const mirror = el("wr-preview");
     const state = String(pill && pill.textContent || "Idle").trim();
     const live = state === "Live";
+    if (live && !previousLiveState) {
+      observedStreamStarts += 1;
+      write("wr-session-streams", observedStreamStarts);
+    }
+    previousLiveState = live;
     write("wr-stream-status", live ? "● On air" : state === "Starting" ? "Starting…" : "Off air");
     write("wr-stream-detail", live ? "Existing Watcher capture is streaming." : "Game capture inactive.");
     write("wr-broadcast-status", live ? "Live" : state);
