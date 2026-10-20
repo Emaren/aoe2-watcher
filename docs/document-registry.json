@@ -13,7 +13,7 @@
       "review_interval_days": 60,
       "reviewed_at": "2026-10-13",
       "sensitivity": "internal",
-      "sha256": "482cbab41057b75f4b6c33b15ac9d55c8ef948ce69809ec0ce6d89ddecfd00be",
+      "sha256": "d7b668dcede623c5bfb46f8938bdc147fc2227e72d9fb98ffd0734070fac4237",
       "source_of_truth": "git",
       "status": "active",
       "systems": [
@@ -36,7 +36,7 @@
       "review_interval_days": 0,
       "reviewed_at": "2026-07-26",
       "sensitivity": "internal",
-      "sha256": "fb19a001f78ec5e9e1910e63c53cf5513d60a384379c13085e9725b55171d1ed",
+      "sha256": "8202436430d363a848ecdc1b7f53d06e1b74837607889b3e27f30c7a45e4cc9e",
       "source_of_truth": "generated",
       "status": "generated",
       "systems": [
@@ -161,8 +161,8 @@
   ],
   "generated_at": "2026-10-19T23:49:00Z",
   "implementation_baseline": {
-    "branch": "main",
-    "commit": "068de12018143044bc745684fe36b8a028f51387"
+    "branch": "fix/watcher-public-release-doc-transition-20261020",
+    "commit": "ed5286a6bae47d66de9b00fce131044d5a0b6177"
   },
   "owner": "aoe2war-watcher",
   "repo": "aoe2-watcher",
