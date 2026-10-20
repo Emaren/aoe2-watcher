@@ -565,7 +565,7 @@ test("queued retry after read failure does not block future recovery", async () 
 
 test("durable telemetry implementation does not use synchronous filesystem operations in Electron",()=>{
   const source=fs.readFileSync(path.join(__dirname,"..","telemetryQueue.js"),"utf8");
-  assert.doesNotMatch(source,/fs\\.(?:existsSync|readFileSync|writeFileSync|rmSync|renameSync|mkdirSync)\\s*\\(/);
+  assert.doesNotMatch(source,/fs\.(?:existsSync|readFileSync|writeFileSync|rmSync|renameSync|mkdirSync)\s*\(/);
   const main=fs.readFileSync(path.join(__dirname,"..","main.js"),"utf8");
   assert.match(main,/Watcher telemetry queue could not flush/);
   assert.match(main,/could not be durably queued/);
