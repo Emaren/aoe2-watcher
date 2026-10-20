@@ -13,6 +13,7 @@ const publicPem=keys.publicKey.export({format:"pem",type:"spki"});
 const approved=crypto.createHash("sha256")
   .update(keys.publicKey.export({format:"der",type:"spki"})).digest("hex");
 const sourceSha="c".repeat(40);
+const onlyPosix=process.platform==="win32"||!fs.constants.O_NOFOLLOW;
 const archive=Buffer.alloc(1048576,0x47);
 function fixture(){
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),"watcher-mac-signer-"));
@@ -22,7 +23,7 @@ function fixture(){
   return {dir,archivePath,keyPath:path.join(dir,"key.pem"),
     outputPath:path.join(dir,"watcher-mac-release-1.6.6-arm64.json")};
 }
-test("offline signed publisher output is accepted by the independently implemented client verifier",async()=>{
+test("offline signed publisher output is accepted by the independently implemented client verifier",{skip:onlyPosix},async()=>{
   const f=fixture();
   try{
     const {manifest,envelope}=await signMacRelease({archivePath:f.archivePath,
@@ -37,7 +38,7 @@ test("offline signed publisher output is accepted by the independently implement
     assert.equal(verifyDownloadedArtifactBytes(verified,corrupt),false);
   }finally{fs.rmSync(f.dir,{recursive:true,force:true});}
 });
-test("source, version, filename, approved fingerprint and key algorithm fail closed",async()=>{
+test("source, version, filename, approved fingerprint and key algorithm fail closed",{skip:onlyPosix},async()=>{
   const f=fixture();
   try{
     const input={archivePath:f.archivePath,version:"1.6.6",sourceSha,
