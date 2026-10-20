@@ -53,6 +53,7 @@ jobs:
           npm run dist:manual-zip
           npm run verify:mac-updater
           python3 scripts/audit_mac_updater_zip.py "dist/AoE2HDBets Watcher-${{ steps.package.outputs.version }}-arm64-mac.zip" --version "${{ steps.package.outputs.version }}"
+          node scripts/smoke-mac-signed-release.cjs "dist/AoE2HDBets Watcher-${{ steps.package.outputs.version }}-arm64-mac.zip" "${{ steps.package.outputs.version }}" "$GITHUB_SHA"
 
       - name: Verify and attest unsigned macOS manual release
         shell: bash
