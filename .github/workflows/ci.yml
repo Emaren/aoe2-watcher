@@ -144,6 +144,16 @@ jobs:
           version="$(node -p "require('./package.json').version")"
           python3 scripts/audit_mac_updater_zip.py "dist/AoE2HDBets Watcher-${version}-arm64-mac.zip" --version "$version"
           node scripts/smoke-mac-signed-release.cjs "dist/AoE2HDBets Watcher-${version}-arm64-mac.zip" "$version" "$GITHUB_SHA"
+      - name: Validate real native updater ZIP after isolated macOS extraction
+        shell: bash
+        run: |
+          set -euo pipefail
+          stage="$(mktemp -d "${RUNNER_TEMP}/watcher-mac-bundle-audit.XXXXXX")"
+          chmod 700 "$stage"
+          trap 'rm -rf "$stage"' EXIT
+          version="$(node -p "require('./package.json').version")"
+          ditto -x -k "dist/AoE2HDBets Watcher-${version}-arm64-mac.zip" "$stage"
+          node scripts/verify-extracted-mac-bundle.cjs "$stage/AoE2HDBets Watcher.app" "$version" arm64
       - name: Check DMG/ZIP artifacts, safe readme and content hashes
         shell: bash
         run: |
