@@ -13,7 +13,7 @@ review_interval_days: 30
 sensitivity: "internal"
 ---
 
-# Watcher 1.6.6 — One-click update, no installer scavenger hunt
+# Watcher 1.6.6 One-Click Update and Install Experience
 
 **P0 product directive from the 2026-10-19 real 1.6.5 Mac installation.**
 Issue: [#49](https://github.com/Emaren/aoe2-watcher/issues/49).
