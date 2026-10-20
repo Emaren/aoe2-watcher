@@ -586,6 +586,6 @@ test("compact atomic persistence keeps legacy pretty JSON readable while reducin
  const after=JSON.parse(bytes.toString("utf8"));
  assert.equal(after.length,3);
  assert.deepEqual(after.slice(0,2),baseline);
- assert.ok(bytes.length<before,"compact 3-event persisted queue should be smaller than old pretty 2-event fixture");
+ assert.ok(bytes.length<Buffer.byteLength(JSON.stringify(after,null,2)+"\n"),"compact format should use fewer bytes for identical entries");
  assert.equal(bytes.toString("utf8").includes("\n  {"),false);
 });
