@@ -14,6 +14,7 @@ const modules=[
   "macUnsignedUpdateTransaction.js",
   "macUnsignedUpdateJournal.js",
   "macUnsignedUpdateBundleAudit.js",
+  "macUnsignedUpdateSwapRehearsal.js",
 ];
 test("disconnected Mac installer components are source-tested but not included in desktop distributables",()=>{
   for(const moduleName of modules){

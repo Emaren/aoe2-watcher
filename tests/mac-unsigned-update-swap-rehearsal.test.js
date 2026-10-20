@@ -2,6 +2,7 @@
 const test=require("node:test");
 const assert=require("node:assert/strict");
 const fs=require("node:fs"),os=require("node:os"),path=require("node:path");
+const {spawn}=require("node:child_process");
 const {qualifySandbox,rehearseMacAppSwap}=require("../macUnsignedUpdateSwapRehearsal");
 const SKIP=process.platform==="win32"||!fs.constants.O_NOFOLLOW;
 function fixture(){
@@ -93,4 +94,45 @@ test("rehearsal contains no untrusted network, subprocess, installer, or broad c
  assert.doesNotMatch(source,/require\(["'](?:node:)?(?:child_process|https|electron)["']\)/);
  assert.doesNotMatch(source,/quitAndInstall|spctl|xattr|sudo|extractZip/);
  assert.match(source,/watcher-swap-rehearsal-/);
+});
+
+test("SIGKILL after swap retains both versions and a stale lock rather than claiming installation success",{skip:SKIP,timeout:25000},async()=>{
+ const f=fixture();
+ const childProgram=[
+  'const {rehearseMacAppSwap}=require(' + JSON.stringify(path.join(__dirname,"..","macUnsignedUpdateSwapRehearsal.js")) + ');',
+  'rehearseMacAppSwap({',
+  'sandboxRoot:process.argv[1],',
+  'assertProcessExited:async()=>true,',
+  'assertReplacementHealthy:async()=>{',
+  'process.send({checkpoint:"swapped_candidate_pending_health"});',
+  'setInterval(()=>{},1000);',
+  'return new Promise(()=>{});',
+  '}}).catch(e=>{console.error(e);process.exitCode=1;});'
+ ].join("\n");
+ const child=spawn(process.execPath,["-e",childProgram,f.root],{
+   stdio:["ignore","pipe","pipe","ipc"],
+ });
+ try{
+  const message=await Promise.race([
+    new Promise((resolve,reject)=>{
+      child.once("message",resolve);
+      child.once("error",reject);
+      child.once("exit",()=>reject(new Error("Rehearsal exited before health checkpoint")));
+    }),
+    new Promise((_,reject)=>setTimeout(()=>reject(new Error("No swap checkpoint within 12 seconds")),12000)),
+  ]);
+  assert.equal(message.checkpoint,"swapped_candidate_pending_health");
+  child.kill("SIGKILL");
+  await new Promise(resolve=>child.once("exit",resolve));
+  assert.equal(f.version(),"1.6.6","new app was present at interruption");
+  assert.equal(fs.readFileSync(path.join(f.root,"backup","AoE2HDBets Watcher.app","VERSION"),"utf8"),"1.6.5");
+  assert.equal(fs.existsSync(path.join(f.root,".swap-rehearsal.lock")),true);
+  await assert.rejects(f.run(),/existing_or_stale_lock/,
+    "restart must refuse to overwrite backup or assume success");
+  assert.equal(f.version(),"1.6.6");
+  assert.equal(f.exists("backup"),true);
+ }finally{
+   if(child.exitCode===null)child.kill("SIGKILL");
+   f.close();
+ }
 });
