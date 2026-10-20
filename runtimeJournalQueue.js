@@ -55,6 +55,8 @@ function createBoundedPendingJournalWrites({
       bytes -= first.bytes;
       return first.text;
     },
+    // A detached snapshot supports deterministic journal-failure testing.
+    snapshot() { return entries.map(entry => entry.text); },
     stats() {
       return { queuedChunks: entries.length, pendingBytes: bytes,
         maxBytes: limit, droppedChunks, droppedBytes };
