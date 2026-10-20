@@ -1,5 +1,6 @@
 const fs = require("fs");
 const path = require("path");
+const crypto = require("crypto");
 
 const DEFAULT_MAX_ENTRIES = 1000;
 const DEFAULT_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
@@ -122,64 +123,74 @@ function createRuntimeEventCoalescer({
   };
 }
 
-function readQueueFile(filePath, maxAgeMs, now = Date.now()) {
-  try {
-    if (!filePath || !fs.existsSync(filePath)) {
-      return [];
-    }
+// Persistent diagnostics are best-effort, but an unreadable queue must NEVER
+// be mistaken for an empty queue and overwritten. Replays are handled elsewhere.
+const MAX_QUEUE_FILE_BYTES = 16 * 1024 * 1024;
 
-    const raw = fs.readFileSync(filePath, "utf8");
-    const parsed = JSON.parse(raw);
-
-    if (!Array.isArray(parsed)) {
-      return [];
-    }
-
-    return parsed.filter((entry) => {
-      if (!entry || typeof entry !== "object") {
-        return false;
-      }
-
-      const queuedAt = Number(entry.queuedAtMs || 0);
-
-      return (
-        queuedAt > 0 &&
-        now - queuedAt <= maxAgeMs &&
-        entry.payload &&
-        typeof entry.payload === "object"
-      );
-    });
-  } catch {
-    return [];
-  }
+function unreadableQueue(reason) {
+  const error = new Error("Watcher telemetry queue unavailable: " + reason);
+  error.code = "AOE2_TELEMETRY_QUEUE_UNREADABLE";
+  return error;
 }
 
-function writeQueueFile(filePath, entries) {
-  if (!filePath) {
-    return;
+async function readQueueFile(filePath, maxAgeMs, now = Date.now()) {
+  if (!filePath) return { entries: [], exists: false };
+
+  let raw;
+  try {
+    const stat = await fs.promises.stat(filePath);
+    if (!stat.isFile()) throw unreadableQueue("not a regular file");
+    if (stat.size > MAX_QUEUE_FILE_BYTES) {
+      throw unreadableQueue("queue file exceeds the safe read limit");
+    }
+    raw = await fs.promises.readFile(filePath, "utf8");
+  } catch (error) {
+    if (error?.code === "ENOENT") return { entries: [], exists: false };
+    // Keep the original bytes unchanged for recovery (EACCES, EISDIR, etc.).
+    throw error;
   }
 
-  if (!Array.isArray(entries) || entries.length === 0) {
-    fs.rmSync(filePath, {
-      force: true,
-    });
-    return;
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw unreadableQueue("invalid JSON; preserved original queue file");
+  }
+  if (!Array.isArray(parsed)) {
+    throw unreadableQueue("invalid queue structure; preserved original queue file");
   }
 
-  fs.mkdirSync(path.dirname(filePath), {
-    recursive: true,
+  const entries = parsed.filter((entry) => {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) return false;
+    const queuedAt = Number(entry.queuedAtMs || 0);
+    return (
+      Number.isFinite(queuedAt) &&
+      queuedAt > 0 &&
+      now - queuedAt <= maxAgeMs &&
+      entry.payload &&
+      typeof entry.payload === "object" &&
+      !Array.isArray(entry.payload)
+    );
   });
+  return { entries, exists: true };
+}
 
-  const tempPath =
-    `${filePath}.tmp-${process.pid}-${Date.now()}`;
+async function writeQueueFile(filePath, entries) {
+  if (!filePath) return;
+  if (!Array.isArray(entries) || entries.length === 0) {
+    await fs.promises.rm(filePath, { force: true });
+    return;
+  }
 
-  fs.writeFileSync(
-    tempPath,
-    `${JSON.stringify(entries, null, 2)}\n`,
-    "utf8"
-  );
-
-  fs.renameSync(tempPath, filePath);
+  await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
+  const tempPath = `${filePath}.tmp-${process.pid}-${crypto.randomBytes(8).toString("hex")}`;
+  try {
+    await fs.promises.writeFile(tempPath, `${JSON.stringify(entries, null, 2)}\n`, "utf8");
+    await fs.promises.rename(tempPath, filePath);
+  } catch (error) {
+    await fs.promises.rm(tempPath, { force: true }).catch(() => {});
+    throw error;
+  }
 }
 
 function createDurableTelemetryQueue({
@@ -200,7 +211,7 @@ function createDurableTelemetryQueue({
   return {
     enqueue(entry) {
       return run(async () => {
-        const entries = readQueueFile(
+        const { entries } = await readQueueFile(
           filePath,
           maxAgeMs
         );
@@ -215,7 +226,7 @@ function createDurableTelemetryQueue({
         const bounded =
           entries.slice(-maxEntries);
 
-        writeQueueFile(
+        await writeQueueFile(
           filePath,
           bounded
         );
@@ -226,20 +237,14 @@ function createDurableTelemetryQueue({
 
     flush(sender, { limit = 100 } = {}) {
       return run(async () => {
-        const entries = readQueueFile(
+        const { entries, exists } = await readQueueFile(
           filePath,
           maxAgeMs
         );
 
         if (entries.length === 0) {
-          if (
-            filePath &&
-            fs.existsSync(filePath)
-          ) {
-            writeQueueFile(
-              filePath,
-              []
-            );
+          if (exists) {
+            await writeQueueFile(filePath, []);
           }
 
           return {
@@ -307,7 +312,7 @@ function createDurableTelemetryQueue({
           remaining.length !== entries.length;
 
         if (queueChanged) {
-          writeQueueFile(
+          await writeQueueFile(
             filePath,
             remaining
           );
@@ -324,10 +329,8 @@ function createDurableTelemetryQueue({
 
     size() {
       return run(async () => {
-        return readQueueFile(
-          filePath,
-          maxAgeMs
-        ).length;
+        const { entries } = await readQueueFile(filePath, maxAgeMs);
+        return entries.length;
       });
     },
   };

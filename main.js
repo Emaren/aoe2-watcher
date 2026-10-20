@@ -1958,7 +1958,12 @@ async function flushWatcherTelemetryQueue(
       {
         limit: 100,
       }
-    );
+    ).catch((error) => {
+      // A corrupt or inaccessible telemetry queue is not empty. Keep its
+      // original bytes untouched and leave replay monitoring operational.
+      console.warn(`Watcher telemetry queue could not flush: ${error.message || error}`);
+      return { attempted: 0, delivered: 0, dropped: 0, remaining: null, queueError: true };
+    });
 
   if (
     result.delivered > 0 ||
@@ -2046,20 +2051,24 @@ async function postWatcherTelemetry(
           getDurableTelemetryQueue();
 
         if (queue) {
-          const queued =
-            await queue.enqueue({
+          try {
+            const queued = await queue.enqueue({
               id: telemetryEventId,
               eventType,
-              payload:
-                telemetryPayload,
-              queuedAtMs:
-                Date.now(),
+              payload: telemetryPayload,
+              queuedAtMs: Date.now(),
             });
-
-          console.warn(
-            `Watcher telemetry ${eventType} failed: ${detail}; queued for retry (${queued} pending).`
-          );
-
+            console.warn(
+              `Watcher telemetry ${eventType} failed: ${detail}; queued for retry (${queued} pending).`
+            );
+          } catch (queueError) {
+            // Never create an unhandled rejection in the Electron main
+            // process. Existing bytes are preserved when the queue is corrupt
+            // or unwritable; local logging remains an explicit degraded mode.
+            console.warn(
+              `Watcher telemetry ${eventType} could not be durably queued: ${queueError.message || queueError}`
+            );
+          }
           return null;
         }
       }
