@@ -52,6 +52,8 @@ Watcher 1.6.5 is the current public release. The five-artifact publication gate 
 
 Watcher 1.6.5 preserves legacy Replay Truth: it does not retroactively decide unknown games. Unknown competitive results remain unknown until separately supported by outcome evidence.
 
+Claims about full 1.5.10-to-1.6.5 migration must be verified on a real installed v1.5.10 machine. A successful ordinary update from 1.6.4 cannot certify that separate legacy path.
+
 War Room and original Old Blue share the same recorder and replay engine.
 War Room's manual full-display Go Live adds single-use explicit consent; a
 verified player-data read-only endpoint is **not** implemented in this candidate.
