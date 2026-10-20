@@ -8,6 +8,7 @@ const {verifySignedMacReleaseEnvelope,verifyDownloadedArtifactBytes}=
   require("../macUnsignedUpdateManifest");
 const keys=crypto.generateKeyPairSync("ed25519");
 const privatePem=keys.privateKey.export({format:"pem",type:"pkcs8"});
+const privateKeyPem=privatePem;
 const publicPem=keys.publicKey.export({format:"pem",type:"spki"});
 const approved=crypto.createHash("sha256")
   .update(keys.publicKey.export({format:"der",type:"spki"})).digest("hex");
