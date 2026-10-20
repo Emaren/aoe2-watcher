@@ -28,6 +28,6 @@ test("unsigned Mac auto-update gate remains protected in the shipping policy",()
   const policy=fs.readFileSync(path.join(root,"updatePolicy.js"),"utf8");
   assert.match(policy,/mac_manual_unsigned/);
   assert.match(policy,/verifyMacUpdateIdentity/);
-  assert.match(policy,/AOE2_ENABLE_MAC_AUTO_UPDATE/);
+  assert.match(main,/AOE2_ENABLE_MAC_AUTO_UPDATE/);
   assert.equal(pkg.version,"1.6.5","release still requires explicit version campaign");
 });
