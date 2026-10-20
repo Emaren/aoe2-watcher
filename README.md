@@ -8,12 +8,20 @@ systems: ["aoe2-watcher","api-prodn"]
 audience: ["developers","operators","ai-agents"]
 source_of_truth: "git"
 authority: "repository-entrypoint"
-reviewed_at: "2026-10-13"
+reviewed_at: "2026-10-19"
 review_interval_days: 60
 sensitivity: "internal"
 ---
 
 # aoe2-watcher
+
+## v1.6.5 public release
+
+Watcher 1.6.5 is the current public release. The five-artifact publication gate completed for Windows Installer, Windows Portable, macOS DMG, macOS Direct ZIP, and Linux AppImage. The immutable `v1.6.5` release and its updater metadata were verified before publication.
+
+GitHub published `v1.6.5` on **2026-10-19 at 20:13:38 UTC**, with all five principal artifacts plus `SHA256SUMS-1.6.5.txt`, `watcher-release-manifest-1.6.5.json` and platform updater manifests. The release records build source `b49f31bb69fea629378072faa22220cdfcc2f1ef`, Windows signing run `39315028329` and Mac/Linux build run `39315028352`. Windows installer and portable are Azure-signed and timestamped as described in the public release; the macOS DMG/direct ZIP and Linux AppImage are intentionally unsigned. Do not claim macOS notarization.
+
+**Boundary:** GitHub publication alone does not prove website download-vault parity or end-user adoption; those are separate checks. War Satchel and Auto Bets remain preview-only and financial production remains held.
 
 ## Watcher 1.6.5 release policy — owner decision (2026-10-19)
 
@@ -46,19 +54,16 @@ signs financial transactions or places bets. App PR #684 and the WoloChain
 financial review are held pending independent security controls; a successful
 Watcher release must not activate or falsely certify that separate system.
 
-## Watcher 1.6.5 — production integration candidate (October 19, 2026)
+## Watcher 1.6.5 — pre-publication integration candidate (historical October 19, 2026)
 
-This candidate combines the original 1.6.5 development lineage with War Room
-and preserves the latest bounded runtime diagnostic coalescer from production
-`main`. Its release is not public until the Windows Azure-signing, macOS
-Developer ID signing/notarization, Linux build, immutable artifact receipts,
-GitHub draft-publication, and website-download gates have all completed.
-The latest **published** GitHub Watcher release remains 1.6.4 until then.
-Watcher 1.6.4 is the current public release. The candidate preserves legacy
-Replay Truth: it does not retroactively decide unknown games. Any claim that
-the complete 1.5.10-to-1.6.5 migration path is certified
-must be verified on a real installed v1.5.10 machine; that separate legacy claim is not inferred
-from tests of an installed 1.6.4 user's ordinary update.
+This historical candidate combined the original 1.6.5 development lineage
+with War Room and preserved the bounded runtime diagnostic coalescer from
+production `main`. The public `v1.6.5` release above supersedes this
+pre-publication status. The owner explicitly approved **unsigned, unnotarized**
+macOS builds rather than a paid Developer ID requirement; Windows retained
+Azure signing. Publication does not itself certify website download-vault
+parity. The candidate does not retroactively decide unknown games.
+The complete 1.5.10-to-1.6.5 migration path must be verified on a real installed v1.5.10 machine; tests of a v1.6.4 upgrade do not prove it.
 
 War Room and original Old Blue share the same recorder and replay engine.
 War Room's manual full-display Go Live adds single-use explicit consent; a
@@ -86,16 +91,16 @@ atomic file/stop-retry semantics. Dedicated tests exercise 5,000 unique
 replays, small-cap hot-key retention, stop reset, cap clamps, and original
 coalescing windows.
 
-This is a code-source change, **not** a published signed Watcher release:
-public `v1.6.4` artifact authority, client update metadata, and the active
-production download routes must be certified independently before claiming
-user adoption or measured memory reduction. Do not infer wattage savings from
-synthetic tests; field power and idle wakeups require release-bound telemetry.
+At this October 15 source checkpoint the change was **not yet** a published
+Watcher release; `v1.6.4` remained the public artifact authority then.
+The subsequent `v1.6.5` GitHub publication is recorded above, independently
+of website download promotion or client adoption. Do not infer wattage savings
+from synthetic tests; field power and idle wakeups require release-bound telemetry.
 
 ## Public release authority (reviewed 2026-10-13)
 
-The latest publicly published GitHub release is **v1.6.4**, published
-2026-10-10 22:37:46 UTC at tag
+At this October 13 review, the latest publicly published GitHub release was
+**v1.6.4**, published 2026-10-10 22:37:46 UTC at tag
 `a223ad41c1a877e30e6f532c915aa40499d2c746`.
 GitHub lists twelve files including the Windows installer/portable, macOS
 DMG/direct ZIP, Linux AppImage, and SHA-256 release inventory. The release

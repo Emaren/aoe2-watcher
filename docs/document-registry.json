@@ -11,9 +11,9 @@
       "owner": "aoe2war-watcher",
       "path": "README.md",
       "review_interval_days": 60,
-      "reviewed_at": "2026-10-13",
+      "reviewed_at": "2026-10-19",
       "sensitivity": "internal",
-      "sha256": "482cbab41057b75f4b6c33b15ac9d55c8ef948ce69809ec0ce6d89ddecfd00be",
+      "sha256": "558672bad47ce9708ccff0c09c4c4c8876b1b662c5caf3406b6a0085fcc1b70d",
       "source_of_truth": "git",
       "status": "active",
       "systems": [
@@ -36,7 +36,7 @@
       "review_interval_days": 0,
       "reviewed_at": "2026-07-26",
       "sensitivity": "internal",
-      "sha256": "fb19a001f78ec5e9e1910e63c53cf5513d60a384379c13085e9725b55171d1ed",
+      "sha256": "26ea8f01ac02d413ca243fc6d7f53c27c0f57785fe4bb2d2178616ae45257e12",
       "source_of_truth": "generated",
       "status": "generated",
       "systems": [
@@ -161,8 +161,8 @@
   ],
   "generated_at": "2026-10-19T23:49:00Z",
   "implementation_baseline": {
-    "branch": "main",
-    "commit": "068de12018143044bc745684fe36b8a028f51387"
+    "branch": "fix/20261019-watcher-165-release-docs-sync",
+    "commit": "69d93250adad3fec1015d563b59e2d150e20f2ac"
   },
   "owner": "aoe2war-watcher",
   "repo": "aoe2-watcher",
