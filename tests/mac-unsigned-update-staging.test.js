@@ -20,8 +20,8 @@ const manifest={
   schema:1,channel:"stable",platform:"darwin",arch:"arm64",version:"1.6.6",
   sourceSha:"ab".repeat(20),
   artifact:{
-    name:"AoE2HDBets Watcher-1.6.6-arm64.zip",bytes:archive.length,sha256:sha,
-    url:"https://aoe2war.com/downloads/AoE2HDBets%20Watcher-1.6.6-arm64.zip",
+    name:"AoE2HDBets Watcher-1.6.6-arm64-mac.zip",bytes:archive.length,sha256:sha,
+    url:"https://aoe2war.com/downloads/AoE2HDBets%20Watcher-1.6.6-arm64-mac.zip",
   },
 };
 const payload=Buffer.from(JSON.stringify(manifest),"utf8");

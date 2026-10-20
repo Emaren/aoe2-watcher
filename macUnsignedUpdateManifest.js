@@ -61,7 +61,7 @@ function validateManifest(value, { currentVersion, targetArch }) {
       typeof art.sha256 !== "string" || !/^[0-9a-f]{64}$/.test(art.sha256)) {
     return deny("artifact_size_or_hash");
   }
-  const expected = `AoE2HDBets Watcher-${value.version}-${value.arch}.zip`;
+  const expected = `AoE2HDBets Watcher-${value.version}-${value.arch}-mac.zip`;
   if (art.name !== expected) return deny("artifact_name");
   let uri;
   try { uri = new URL(art.url); } catch { return deny("artifact_url"); }

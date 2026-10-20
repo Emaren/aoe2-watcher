@@ -14,9 +14,9 @@ const sha="ab".repeat(20);
 function valid() {
  return {schema:1,channel:"stable",platform:"darwin",arch:"arm64",version:"1.6.6",
    sourceSha:sha,artifact:{
-     name:"AoE2HDBets Watcher-1.6.6-arm64.zip",
+     name:"AoE2HDBets Watcher-1.6.6-arm64-mac.zip",
      bytes:artifact.length,sha256:digest,
-     url:"https://aoe2war.com/downloads/AoE2HDBets%20Watcher-1.6.6-arm64.zip"}};
+     url:"https://aoe2war.com/downloads/AoE2HDBets%20Watcher-1.6.6-arm64-mac.zip"}};
 }
 function sign(input=valid(),key=privateKey) {
  const payload=Buffer.from(JSON.stringify(input),"utf8");
@@ -61,10 +61,10 @@ test("stable version, strict origin, exact asset and platform checks refuse unsa
   [{...valid(),arch:"x64"},"platform_or_channel"],
   [{...valid(),channel:"nightly"},"platform_or_channel"],
   [{...valid(),platform:"win32"},"platform_or_channel"],
-  [{...valid(),artifact:{...valid().artifact,url:"http://aoe2war.com/downloads/AoE2HDBets%20Watcher-1.6.6-arm64.zip"}},"artifact_origin"],
-  [{...valid(),artifact:{...valid().artifact,url:"https://evil.example/downloads/AoE2HDBets%20Watcher-1.6.6-arm64.zip"}},"artifact_origin"],
-  [{...valid(),artifact:{...valid().artifact,url:"https://aoe2war.com.evil.example/downloads/AoE2HDBets%20Watcher-1.6.6-arm64.zip"}},"artifact_origin"],
-  [{...valid(),artifact:{...valid().artifact,url:"https://aoe2war.com/downloads/AoE2HDBets%20Watcher-1.6.6-arm64.zip?token=1"}},"artifact_origin"],
+  [{...valid(),artifact:{...valid().artifact,url:"http://aoe2war.com/downloads/AoE2HDBets%20Watcher-1.6.6-arm64-mac.zip"}},"artifact_origin"],
+  [{...valid(),artifact:{...valid().artifact,url:"https://evil.example/downloads/AoE2HDBets%20Watcher-1.6.6-arm64-mac.zip"}},"artifact_origin"],
+  [{...valid(),artifact:{...valid().artifact,url:"https://aoe2war.com.evil.example/downloads/AoE2HDBets%20Watcher-1.6.6-arm64-mac.zip"}},"artifact_origin"],
+  [{...valid(),artifact:{...valid().artifact,url:"https://aoe2war.com/downloads/AoE2HDBets%20Watcher-1.6.6-arm64-mac.zip?token=1"}},"artifact_origin"],
   [{...valid(),artifact:{...valid().artifact,name:"../../Watcher.app"}},"artifact_name"],
   [{...valid(),artifact:{...valid().artifact,bytes:999}},"artifact_size_or_hash"],
   [{...valid(),artifact:{...valid().artifact,sha256:"0".repeat(63)}},"artifact_size_or_hash"],
@@ -123,4 +123,18 @@ test("large staged Mac archives use streaming no-follow verification",async(t)=>
     fs.writeFileSync(real,mutated);
     assert.equal(await verifyDownloadedArtifactFile(proof,real),false);
   }finally{fs.rmSync(dir,{recursive:true,force:true})}
+});
+
+test("Mac artifact naming is bound to the publisher's updater-native ZIP, not the direct download bundle",()=>{
+  const official=valid();
+  assert.equal(official.artifact.name,"AoE2HDBets Watcher-1.6.6-arm64-mac.zip");
+  assert.equal(verify(sign(official)).verified,true);
+  const direct={...official,artifact:{...official.artifact,
+    name:"aoe2hdbets-watcher-direct.zip",
+    url:"https://aoe2war.com/downloads/aoe2hdbets-watcher-direct.zip"}};
+  assert.equal(verify(sign(direct)).reason,"artifact_name");
+  const legacy={...official,artifact:{...official.artifact,
+    name:"AoE2HDBets Watcher-1.6.6-arm64.zip",
+    url:"https://aoe2war.com/downloads/AoE2HDBets%20Watcher-1.6.6-arm64.zip"}};
+  assert.equal(verify(sign(legacy)).reason,"artifact_name");
 });
