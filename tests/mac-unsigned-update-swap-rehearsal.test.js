@@ -113,14 +113,21 @@ test("SIGKILL after swap retains both versions and a stale lock rather than clai
    stdio:["ignore","pipe","pipe","ipc"],
  });
  try{
-  const message=await Promise.race([
-    new Promise((resolve,reject)=>{
-      child.once("message",resolve);
-      child.once("error",reject);
-      child.once("exit",()=>reject(new Error("Rehearsal exited before health checkpoint")));
-    }),
-    new Promise((_,reject)=>setTimeout(()=>reject(new Error("No swap checkpoint within 12 seconds")),12000)),
-  ]);
+  let deadline;
+  const timeout = new Promise((_,reject)=>{
+    deadline=setTimeout(()=>reject(new Error("No swap checkpoint within 12 seconds")),12000);
+  });
+  let message;
+  try {
+    message=await Promise.race([
+      new Promise((resolve,reject)=>{
+        child.once("message",resolve);
+        child.once("error",reject);
+        child.once("exit",()=>reject(new Error("Rehearsal exited before health checkpoint")));
+      }),
+      timeout,
+    ]);
+  } finally {clearTimeout(deadline);}
   assert.equal(message.checkpoint,"swapped_candidate_pending_health");
   child.kill("SIGKILL");
   await new Promise(resolve=>child.once("exit",resolve));

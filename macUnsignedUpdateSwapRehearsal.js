@@ -29,6 +29,12 @@ async function qualifySandbox(root){
     throw refused("not_a_disposable_rehearsal_root");
   }
   await assertDirectory(root,true);
+  // A killed helper can leave no staged app while its backup is retained.
+  // Diagnose an interrupted operation before requiring fresh-swap layout.
+  try {
+    await fs.promises.lstat(path.join(root,".swap-rehearsal.lock"));
+    throw refused("existing_or_stale_lock");
+  } catch(error) { if(error?.code!=="ENOENT") throw error; }
   const [realRoot,realTemp]=await Promise.all([
     fs.promises.realpath(root),fs.promises.realpath(os.tmpdir())
   ]);
