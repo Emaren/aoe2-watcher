@@ -3,6 +3,7 @@ const path = require("path");
 const crypto = require("crypto");
 
 const DEFAULT_MAX_ENTRIES = 1000;
+const HARD_MAX_ENTRIES = 4096;
 const DEFAULT_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 const DEFAULT_RUNTIME_EVENT_COALESCE_WINDOW_MS = 30 * 1000;
 const DEFAULT_RUNTIME_EVENT_COALESCE_MAX_KEYS = 512;
@@ -133,6 +134,18 @@ function unreadableQueue(reason) {
   return error;
 }
 
+function queueCapacityError() {
+  const error = new Error("Watcher telemetry entry exceeds the bounded diagnostic queue capacity");
+  error.code = "AOE2_TELEMETRY_QUEUE_TOO_LARGE";
+  return error;
+}
+
+function boundedPositiveInteger(value, fallback, maximum) {
+  return Number.isSafeInteger(value) && value > 0
+    ? Math.min(value, maximum)
+    : fallback;
+}
+
 async function readQueueFile(filePath, maxAgeMs, now = Date.now()) {
   if (!filePath) return { entries: [], exists: false };
 
@@ -209,12 +222,18 @@ async function writeQueueFile(filePath, entries) {
     return;
   }
 
+  // The reader refuses files above this size. Never let the writer create
+  // one itself: an oversize enqueue must leave the last durable queue intact.
+  const payload = `${JSON.stringify(entries)}\n`;
+  if (Buffer.byteLength(payload, "utf8") > MAX_QUEUE_FILE_BYTES) {
+    throw queueCapacityError();
+  }
   await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
   const tempPath = `${filePath}.tmp-${process.pid}-${crypto.randomBytes(8).toString("hex")}`;
   try {
     // A queue includes player/session diagnostics; never let the host umask
     // create a world-readable temporary or persisted queue.
-    await fs.promises.writeFile(tempPath, `${JSON.stringify(entries)}\n`,
+    await fs.promises.writeFile(tempPath, payload,
       { encoding: "utf8", flag: "wx", mode: 0o600 });
     await fs.promises.rename(tempPath, filePath);
   } catch (error) {
@@ -228,6 +247,10 @@ function createDurableTelemetryQueue({
   maxEntries = DEFAULT_MAX_ENTRIES,
   maxAgeMs = DEFAULT_MAX_AGE_MS,
 } = {}) {
+  // Malformed options previously made slice(-maxEntries) silently drop
+  // events or allowed invalid flush limits to attempt an unlimited send.
+  const entryLimit = boundedPositiveInteger(maxEntries, DEFAULT_MAX_ENTRIES, HARD_MAX_ENTRIES);
+  const ageLimitMs = boundedPositiveInteger(maxAgeMs, DEFAULT_MAX_AGE_MS, Number.MAX_SAFE_INTEGER);
   let operation = Promise.resolve();
 
   function run(task) {
@@ -243,7 +266,7 @@ function createDurableTelemetryQueue({
       return run(async () => {
         const { entries } = await readQueueFile(
           filePath,
-          maxAgeMs
+          ageLimitMs
         );
 
         entries.push({
@@ -254,7 +277,7 @@ function createDurableTelemetryQueue({
         });
 
         const bounded =
-          entries.slice(-maxEntries);
+          entries.slice(-entryLimit);
 
         await writeQueueFile(
           filePath,
@@ -266,10 +289,11 @@ function createDurableTelemetryQueue({
     },
 
     flush(sender, { limit = 100 } = {}) {
+      const sendLimit = boundedPositiveInteger(limit, 100, HARD_MAX_ENTRIES);
       return run(async () => {
         const { entries, exists } = await readQueueFile(
           filePath,
-          maxAgeMs
+          ageLimitMs
         );
 
         if (entries.length === 0) {
@@ -298,7 +322,7 @@ function createDurableTelemetryQueue({
         ) {
           const entry = entries[index];
 
-          if (attempted >= limit) {
+          if (attempted >= sendLimit) {
             remaining.push(
               ...entries.slice(index)
             );
@@ -359,7 +383,7 @@ function createDurableTelemetryQueue({
 
     size() {
       return run(async () => {
-        const { entries } = await readQueueFile(filePath, maxAgeMs);
+        const { entries } = await readQueueFile(filePath, ageLimitMs);
         return entries.length;
       });
     },

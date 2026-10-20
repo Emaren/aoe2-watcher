@@ -664,3 +664,67 @@ test("oversized diagnostic file is rejected before reading and left intact",asyn
    e=>e.code==="AOE2_TELEMETRY_QUEUE_UNREADABLE");
  assert.equal(fs.statSync(filePath).size,16*1024*1024+1);
 });
+
+test("an over-cap diagnostic enqueue preserves the last readable durable queue",async()=>{
+ const {filePath,dir}=tempQueue();
+ try{
+   const queue=createDurableTelemetryQueue({filePath,maxEntries:3});
+   const padding="q".repeat(16*1024*1024-450);
+   assert.equal(await queue.enqueue({
+     id:"large-but-valid",eventType:"heartbeat",
+     payload:{event_type:"heartbeat",metadata:{padding}},
+   }),1);
+   assert.equal(await queue.size(),1);
+   const before=fs.statSync(filePath);
+   const digest=require("node:crypto").createHash("sha256")
+     .update(fs.readFileSync(filePath)).digest("hex");
+   await assert.rejects(queue.enqueue({
+     id:"should-not-corrupt",eventType:"heartbeat",
+     payload:{event_type:"heartbeat",metadata:{padding:"b".repeat(600)}},
+   }),e=>e.code==="AOE2_TELEMETRY_QUEUE_TOO_LARGE");
+   assert.equal(await queue.size(),1);
+   assert.equal(fs.statSync(filePath).size,before.size);
+   assert.equal(require("node:crypto").createHash("sha256")
+     .update(fs.readFileSync(filePath)).digest("hex"),digest);
+   assert.deepEqual(fs.readdirSync(dir).sort(),["queue.json"]);
+ }finally{fs.rmSync(dir,{recursive:true,force:true})}
+});
+
+test("invalid capacities and flush limits cannot silently lose events or disable sending",async()=>{
+ const cases=[{maxEntries:0,maxAgeMs:NaN},{maxEntries:-10,maxAgeMs:-1},
+   {maxEntries:Infinity,maxAgeMs:Infinity},{maxEntries:"100",maxAgeMs:"1000"}];
+ for(const config of cases){
+   const {filePath,dir}=tempQueue();
+   try{
+     const queue=createDurableTelemetryQueue({filePath,...config});
+     for(let i=0;i<4;i++)assert.equal(await queue.enqueue({
+       id:"test-"+i,eventType:"heartbeat",payload:{event_type:"heartbeat",i},
+     }),i+1);
+     assert.equal(await queue.size(),4);
+     const sent=[];
+     const result=await queue.flush(async entry=>{
+       sent.push(entry.id);return {ok:true};
+     },{limit:NaN});
+     assert.equal(result.delivered,4);
+     assert.deepEqual(sent,["test-0","test-1","test-2","test-3"]);
+     assert.equal(await queue.size(),0);
+   }finally{fs.rmSync(dir,{recursive:true,force:true})}
+ }
+});
+
+test("flush still respects a valid finite per-cycle bound and leaves FIFO intact",async()=>{
+ const {filePath,dir}=tempQueue();
+ try{
+   const queue=createDurableTelemetryQueue({filePath,maxEntries:10});
+   for(let i=0;i<4;i++)await queue.enqueue({
+     id:String(i),eventType:"heartbeat",payload:{event_type:"heartbeat",i},
+   });
+   const seen=[];
+   const first=await queue.flush(async e=>{seen.push(e.id);return {ok:true}},{limit:2});
+   assert.deepEqual(seen,["0","1"]);
+   assert.equal(first.remaining,2);
+   const second=await queue.flush(async e=>{seen.push(e.id);return {ok:true}},{limit:2});
+   assert.equal(second.remaining,0);
+   assert.deepEqual(seen,["0","1","2","3"]);
+ }finally{fs.rmSync(dir,{recursive:true,force:true})}
+});
