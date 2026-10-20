@@ -51,7 +51,8 @@ test("unsafe directory permissions or missing install are rejected",{skip:SKIP},
  }finally{f.close();}
 });
 test("preflight is read-only and never invokes privilege escalation",()=>{
- const code=fs.readFileSync(path.join(__dirname,"..","macUnsignedUpdateInstallTarget.js"),"utf8");
+ const source=fs.readFileSync(path.join(__dirname,"..","macUnsignedUpdateInstallTarget.js"),"utf8");
+ const code=source.replace(/^\s*\/\/.*$/gm,"");
  assert.doesNotMatch(code,/execFile|spawn|child_process|sudo|xattr|spctl|chmodSync|renameSync/);
  assert.match(code,/verifiedInstallAuthority:false/);
 });
