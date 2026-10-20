@@ -1,0 +1,41 @@
+name: One-shot Watcher 1.6.5 public README docs seal
+
+on:
+  push:
+    branches:
+      - fix/watcher-public-release-doc-transition-20261020
+    paths:
+      - ".watcher-public-docs-refresh-trigger"
+
+permissions:
+  contents: write
+
+jobs:
+  seal:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/watcher-public-release-doc-transition-20261020
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Retire one-time worker and bind docs to existing certified 1.6.5 binary baseline
+        run: |
+          set -euo pipefail
+          test "$(git branch --show-current)" = "fix/watcher-public-release-doc-transition-20261020"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/refresh-watcher-public-docs.yml .watcher-public-docs-refresh-trigger
+          git commit -m "chore(watcher): retire temporary release docs seal worker"
+          python3 scripts/docs_v2_check.py --write --branch main \
+            --head 068de12018143044bc745684fe36b8a028f51387
+          python3 scripts/docs_v2_check.py
+          node --check scripts/sync-release-docs.mjs
+          node --test tests/release-doc-sync.test.js
+          git add docs/DOCUMENTATION_CONTROL_PLANE.md docs/document-registry.json
+          if ! git diff --cached --quiet; then
+            git commit -m "docs(watcher): certify published 1.6.5 README and document registry"
+          fi
+          test -z "$(git status --porcelain)"
+          git push origin HEAD:fix/watcher-public-release-doc-transition-20261020
