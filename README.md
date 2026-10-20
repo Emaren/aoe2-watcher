@@ -46,24 +46,15 @@ signs financial transactions or places bets. App PR #684 and the WoloChain
 financial review are held pending independent security controls; a successful
 Watcher release must not activate or falsely certify that separate system.
 
-## Watcher 1.6.5 — production integration candidate (October 19, 2026)
+## v1.6.5 public release
 
-This candidate combines the original 1.6.5 development lineage with War Room
-and preserves the latest bounded runtime diagnostic coalescer from production
-`main`. Its release is not public until the Windows Azure-signing, macOS
-Developer ID signing/notarization, Linux build, immutable artifact receipts,
-GitHub draft-publication, and website-download gates have all completed.
-The latest **published** GitHub Watcher release remains 1.6.4 until then.
-Watcher 1.6.4 is the current public release. The candidate preserves legacy
-Replay Truth: it does not retroactively decide unknown games. Any claim that
-the complete 1.5.10-to-1.6.5 migration path is certified
-must be verified on a real installed v1.5.10 machine; that separate legacy claim is not inferred
-from tests of an installed 1.6.4 user's ordinary update.
+Watcher 1.6.5 is the current public release. The five-artifact publication gate completed for Windows Installer, Windows Portable, macOS DMG, macOS Direct ZIP, and Linux AppImage. The immutable `v1.6.5` release and its updater metadata were verified before publication.
 
 War Room and original Old Blue share the same recorder and replay engine.
 War Room's manual full-display Go Live adds single-use explicit consent; a
 verified player-data read-only endpoint is **not** implemented in this candidate.
 Do not infer player results, audience sizes or financial operations from uploads.
+
 
 ## 2026-10-15 — Runtime diagnostic coalescer memory bound (candidate source)
 
