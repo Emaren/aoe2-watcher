@@ -40,7 +40,7 @@ class ZipAuditTest(unittest.TestCase):
         self.make(members)
         self.assertEqual(mod.audit_native_zip(self.path, "1.6.6")["symlinks"], 1)
     def test_reject_zip_slip_absolute_and_backslash(self):
-        for name in ["../outside",ROOT.name if False else "/etc/passwd",
+        for name in ["../outside","/etc/passwd",
                      PREFIX+"../../../../escape",PREFIX+r"C:\escape"]:
             with self.subTest(name=name):
                 self.make(self.plain()+[(name,b"x",stat.S_IFREG|0o644)])

@@ -15,7 +15,7 @@ MAX_FILES = 25000
 MAX_DEPTH = 32
 MAX_FILE = 768 * 1024 * 1024
 MAX_SYMLINK = 4096
-MAX_RATIO = 10000
+MAX_RATIO = 900
 
 class UnsafeZip(ValueError):
     pass
