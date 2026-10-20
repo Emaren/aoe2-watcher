@@ -32,6 +32,7 @@ const {
   createRuntimeEventCoalescer,
 } = require("./telemetryQueue");
 const { isAcceptedRuntimeTelemetryType } = require("./runtimeTelemetryContract");
+const { assertWatcherTelemetryAck } = require("./telemetryDelivery");
 const { createBoundedPendingJournalWrites } = require("./runtimeJournalQueue");
 const {
   DEFAULT_FOLDER_FRESHNESS_PROBE_MS,
@@ -1872,6 +1873,7 @@ function normalizeRuntimeEventType(type) {
 function isRetryableTelemetryError(
   error
 ) {
+  if (error?.watcherTelemetryAckRetryable === true) return true;
   const status =
     error?.response?.status;
 
@@ -1926,7 +1928,7 @@ async function flushWatcherTelemetryQueue(
     await queue.flush(
       async (entry) => {
         try {
-          await axios.post(
+          const response = await axios.post(
             `${baseUrl}/api/watcher/events`,
             entry.payload,
             {
@@ -1944,17 +1946,12 @@ async function flushWatcherTelemetryQueue(
               },
             }
           );
-
-          return {
-            ok: true,
-          };
+          assertWatcherTelemetryAck(response.data);
+          return { ok: true };
         } catch (error) {
           return {
             ok: false,
-            retryable:
-              isRetryableTelemetryError(
-                error
-              ),
+            retryable: isRetryableTelemetryError(error),
           };
         }
       },
@@ -2025,10 +2022,10 @@ async function postWatcherTelemetry(
         },
       }
     )
-    .then(
-      (response) =>
-        response.data
-    )
+    .then((response) => {
+      assertWatcherTelemetryAck(response.data);
+      return response.data;
+    })
     .catch(async (error) => {
       const detail =
         error?.response?.status
