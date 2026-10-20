@@ -15,3 +15,5 @@ The test computes each file's real Git blob SHA-1, not a guessed source checksum
 A deliberate future optimization is possible, but requires explicit baseline revision, frozen 1.6.4/1.6.5 replay-corpus equivalence tests, and real game-upload canaries. A passing hash fence alone is not proof that integrations in main.js and server ingestion never regress; those still need cross-repository failure injection and installed-client testing.
 
 Source-only gate, no additional Watcher background activity, no release or financial activation.
+
+Windows CI checked out tracked text with CRLF, while the published Git blob stores LF. The golden-check test now canonicalizes **only CRLF to LF**, preserving all other source-byte comparisons. The initial unnormalized Windows SHA mismatch was an environment newline difference, not a replay-engine modification.

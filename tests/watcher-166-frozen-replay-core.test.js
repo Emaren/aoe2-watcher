@@ -16,8 +16,12 @@ const BASELINE=Object.freeze({
   "runtimePolicy.js":"1a37f736ba7750fbbf0f427128ece732004957b4",
 });
 function gitBlobSha(content){
+ // Git for Windows may check out tracked text using CRLF even when the
+ // canonical stored Git blob is LF. Normalize only CRLF line endings;
+ // every other content byte remains subject to the immutable SHA fence.
+ const normalized=Buffer.from(content.toString("utf8").replace(/\r\n/g,"\n"),"utf8");
  return crypto.createHash("sha1")
-   .update("blob "+content.length+"\0","utf8").update(content).digest("hex");
+   .update("blob "+normalized.length+"\0","utf8").update(normalized).digest("hex");
 }
 test("Watcher 1.6.6 replay ingress, hash, retry, handoff and scheduling engines match published 1.6.5 byte-for-byte",()=>{
  for(const [file,sha] of Object.entries(BASELINE)){
@@ -31,4 +35,11 @@ test("baseline pins must be exact Git blob identities, not branch labels or simu
  for(const value of Object.values(BASELINE))assert.match(value,/^[0-9a-f]{40}$/);
  const packageVersion=JSON.parse(fs.readFileSync(path.join(ROOT,"package.json"),"utf8")).version;
  assert.equal(packageVersion,"1.6.5","candidate must not pretend to be a published 1.6.6");
+});
+
+test("Windows CRLF checkout canonicalizes to the same Git content identity without changing other bytes",()=>{
+ const baseline=Buffer.from("const example=1;\n");
+ const windows=Buffer.from("const example=1;\r\n");
+ assert.equal(gitBlobSha(baseline),gitBlobSha(windows));
+ assert.notEqual(gitBlobSha(baseline),gitBlobSha(Buffer.from("const example=2;\r\n")));
 });
