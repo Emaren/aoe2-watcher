@@ -4,6 +4,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
+const { isNewStreamChunkReceipt } = require("../resourceProfile");
 const main = fs.readFileSync(path.join(__dirname, "..", "main.js"), "utf8");
 const renderer = fs.readFileSync(path.join(__dirname, "..", "renderer.js"), "utf8");
 const start = main.indexOf("async function postStreamChunk(");
@@ -13,6 +14,7 @@ const nativeBridge = main.slice(start, stop);
 
 function makeBridge(outcome) {
   let inflight = 0;
+  let countedBytes = 0;
   const events = [];
   const ctx = {
     updateHandoffActive: false, Buffer, AbortController, Number, String, Error,
@@ -23,7 +25,8 @@ function makeBridge(outcome) {
     streamRequestHeaders: (_config, headers) => headers,
     syncAutoInstallOnQuit: () => {},
     maybeInstallPendingWatcherUpdate: () => {},
-    resourceProfiler: { recordNetworkBytes: () => {} },
+    resourceProfiler: { recordNetworkBytes: (count) => { countedBytes += count; } },
+    isNewStreamChunkReceipt,
     networkPriorityArbiter: {
       isReplayPriorityActive: () => false,
       registerStreamUpload: () => true,
@@ -36,7 +39,7 @@ function makeBridge(outcome) {
     nativeStreamRequestsInFlight: inflight,
   };
   const post = vm.runInNewContext(nativeBridge + "\npostStreamChunk", ctx);
-  return { post, ctx, events };
+  return { post, ctx, events, acceptedBytes: () => countedBytes };
 }
 function httpError(status, data) {
   const e = new Error("response rejected");
@@ -73,6 +76,15 @@ test("replay-final HTTP 200 stays a finality response and not a false new chunk 
   const response = await h.post(payload);
   assert.equal(response.ok, true);
   assert.equal(response.data.finality, "replay_final");
+  assert.equal(h.acceptedBytes(), 0, "HTTP 200 finality signal is not a newly admitted media chunk");
+});
+test("only a newly created video chunk contributes logical accepted payload bytes", async () => {
+  const created = makeBridge({ chunkCreated: true, stream: { id: 4, status: "live" } });
+  assert.equal((await created.post(payload)).ok, true);
+  assert.equal(created.acceptedBytes(), payload.bytes.length);
+  const duplicate = makeBridge({ chunkCreated: false, stream: { id: 4, status: "live" } });
+  assert.equal((await duplicate.post(payload)).ok, true);
+  assert.equal(duplicate.acceptedBytes(), 0);
 });
 test("renderer stops repeated failed video and handles ended-heartbeat 409 explicitly", () => {
   assert.match(renderer, /result\?\.terminalVideoStop/);
