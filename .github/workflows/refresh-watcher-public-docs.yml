@@ -28,8 +28,9 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git rm .github/workflows/refresh-watcher-public-docs.yml .watcher-public-docs-refresh-trigger
           git commit -m "chore(watcher): retire temporary release docs seal worker"
-          python3 scripts/docs_v2_check.py --write --branch main \
-            --head 068de12018143044bc745684fe36b8a028f51387
+          python3 scripts/docs_v2_check.py --write --refresh-baseline \
+            --branch fix/watcher-public-release-doc-transition-20261020 \
+            --head "$(git rev-parse HEAD)"
           python3 scripts/docs_v2_check.py
           node --check scripts/sync-release-docs.mjs
           node --test tests/release-doc-sync.test.js
