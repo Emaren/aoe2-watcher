@@ -133,3 +133,56 @@ test("public release rewrite is idempotent", async () => {
   const twice = rewriteReadme(once, "9.9.9");
   assert.equal(twice, once);
 });
+
+test("recognizes the dated 1.6.5 integration-candidate format without losing War Room limitations", async () => {
+  const { rewriteReadme, publicReleaseParagraph } = await moduleUnderTest();
+  const source = [
+    "# aoe2-watcher",
+    "",
+    "## Watcher 1.6.5 — production integration candidate (October 19, 2026)",
+    "",
+    "This candidate has not yet completed publication.",
+    "Watcher 1.6.4 is the current public release.",
+    "",
+    "War Room uses the shared recorder. The paired website-profile avatar API is not yet live.",
+    "",
+    "## v1.6.3 public release (historical)",
+    "",
+    "Watcher 1.6.3 was a prior public release.",
+    "",
+  ].join("\n");
+
+  const updated = rewriteReadme(source, "1.6.5");
+  assert.match(updated, /## v1\.6\.5 public release/);
+  assert.ok(updated.includes(publicReleaseParagraph("1.6.5")));
+  assert.doesNotMatch(updated, /This candidate has not yet completed publication/);
+  assert.doesNotMatch(updated, /Watcher 1\.6\.4 is the current public release/);
+  assert.match(updated, /paired website-profile avatar API is not yet live/);
+  assert.match(updated, /## v1\.6\.3 public release \(historical\)/);
+  assert.equal(rewriteReadme(updated, "1.6.5"), updated);
+});
+
+test("does not silently promote any unrecognized or unmatched future release", async () => {
+  const { rewriteReadme } = await moduleUnderTest();
+  const text = [
+    "# aoe2-watcher",
+    "",
+    "## Watcher 1.6.5 — production integration candidate (October 19, 2026)",
+    "",
+    "Still under release review.",
+    "",
+    "## Historical releases",
+    "",
+    "Old releases.",
+  ].join("\n");
+  assert.throws(() => rewriteReadme(text, "1.6.6"), /pre-publication release section missing/);
+});
+
+test("published 1.6.5 README remains compatible with release docs sync", async () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const { rewriteReadme } = await moduleUnderTest();
+  const source = fs.readFileSync(path.join(__dirname, "..", "README.md"), "utf8");
+  assert.match(source, /## v1\.6\.5 public release/);
+  assert.equal(rewriteReadme(source, "1.6.5"), source);
+});
