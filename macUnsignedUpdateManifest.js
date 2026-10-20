@@ -166,8 +166,13 @@ async function verifyDownloadedArtifactFile(verifiedManifest, filePath) {
   }
 }
 
+function isAuthenticatedMacReleaseProof(proof) {
+  return proof !== null && typeof proof === "object" && trustedProofs.has(proof);
+}
+
 module.exports = {
   verifySignedMacReleaseEnvelope,
   verifyDownloadedArtifactBytes,
   verifyDownloadedArtifactFile,
+  isAuthenticatedMacReleaseProof,
 };
