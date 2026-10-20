@@ -76,7 +76,8 @@ test("no alternate app name or root symlink is admitted",{skip},async()=>{
 });
 test("read-only audit cannot extract, install, quit, elevate or clear quarantine",()=>{
  const source=fs.readFileSync(path.join(__dirname,"..","macUnsignedUpdateBundleAudit.js"),"utf8");
- assert.doesNotMatch(source,/exec\(|spawn\(|quitAndInstall|rename\(|rmSync\(|xattr|unzip/);
+ const implementation=source.replace(/^\s*\/\/.*$/gm,"");
+ assert.doesNotMatch(implementation,/exec\(|spawn\(|quitAndInstall|rename\(|rmSync\(|xattr|unzip/);
  assert.match(source,/plutil/);
  assert.match(source,/lipo/);
 });
