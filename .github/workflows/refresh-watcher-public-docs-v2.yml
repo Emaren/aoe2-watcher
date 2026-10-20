@@ -1,0 +1,42 @@
+name: One-shot 1.6.5 README proof-preserving docs reseal
+
+on:
+  push:
+    branches:
+      - fix/watcher-public-release-doc-transition-20261020
+    paths:
+      - ".watcher-public-165-proof-reseal"
+
+permissions:
+  contents: write
+
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/watcher-public-release-doc-transition-20261020
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Remove temporary workflow and reseal exact proof-preserving source
+        run: |
+          set -euo pipefail
+          test "$(git branch --show-current)" = "fix/watcher-public-release-doc-transition-20261020"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/refresh-watcher-public-docs-v2.yml .watcher-public-165-proof-reseal
+          git commit -m "chore(watcher): retire proof-preserving docs baseline worker"
+          node --check scripts/sync-release-docs.mjs
+          node --test tests/release-doc-sync.test.js tests/legacy-upgrade-bridge.test.js
+          python3 scripts/docs_v2_check.py --write --refresh-baseline \
+            --branch fix/watcher-public-release-doc-transition-20261020 \
+            --head "$(git rev-parse HEAD)"
+          python3 scripts/docs_v2_check.py
+          git add docs/DOCUMENTATION_CONTROL_PLANE.md docs/document-registry.json
+          if ! git diff --cached --quiet; then
+            git commit -m "docs(watcher): bind published 1.6.5 and legacy evidence to exact source"
+          fi
+          test -z "$(git status --porcelain)"
+          git push origin HEAD:fix/watcher-public-release-doc-transition-20261020
