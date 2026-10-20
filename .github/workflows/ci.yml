@@ -33,6 +33,9 @@ jobs:
       - name: Run Watcher contracts
         run: npm test
 
+      - name: Prove native Mac ZIP auditor rejects unsafe entries
+        run: python3 -m unittest discover -s tests -p 'test_mac_zip_audit.py'
+
       - name: Package smoke test
         run: npm run pack
 
@@ -134,6 +137,12 @@ jobs:
         run: npm run dist:manual-zip
       - name: Verify updater-native macOS ZIP and manifest integrity
         run: npm run verify:mac-updater
+      - name: Audit actual updater-native ZIP filesystem safety
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./package.json').version")"
+          python3 scripts/audit_mac_updater_zip.py "dist/AoE2HDBets Watcher-${version}-arm64-mac.zip" --version "$version"
       - name: Check DMG/ZIP artifacts, safe readme and content hashes
         shell: bash
         run: |
