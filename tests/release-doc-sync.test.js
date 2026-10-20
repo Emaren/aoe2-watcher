@@ -143,6 +143,7 @@ test("recognizes the dated 1.6.5 integration-candidate format without losing War
     "",
     "This candidate has not yet completed publication.",
     "Watcher 1.6.4 is the current public release.",
+    "The candidate preserves legacy Replay Truth: it does not retroactively decide unknown games.",
     "",
     "War Room uses the shared recorder. The paired website-profile avatar API is not yet live.",
     "",
@@ -158,6 +159,7 @@ test("recognizes the dated 1.6.5 integration-candidate format without losing War
   assert.doesNotMatch(updated, /This candidate has not yet completed publication/);
   assert.doesNotMatch(updated, /Watcher 1\.6\.4 is the current public release/);
   assert.match(updated, /paired website-profile avatar API is not yet live/);
+  assert.match(updated, /does not retroactively decide unknown games/);
   assert.match(updated, /## v1\.6\.3 public release \(historical\)/);
   assert.equal(rewriteReadme(updated, "1.6.5"), updated);
 });
