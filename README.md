@@ -62,7 +62,7 @@ production `main`. The public `v1.6.5` release above supersedes this
 pre-publication status. The owner explicitly approved **unsigned, unnotarized**
 macOS builds rather than a paid Developer ID requirement; Windows retained
 Azure signing. Publication does not itself certify website download-vault
-parity or retroactively resolve legacy Replay Truth unknown games.
+parity. The candidate does not retroactively decide unknown games.
 The complete 1.5.10-to-1.6.5 migration path still requires evidence from a
 real installed v1.5.10 machine; tests of a v1.6.4 upgrade do not prove it.
 
