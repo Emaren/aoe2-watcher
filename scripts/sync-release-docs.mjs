@@ -37,6 +37,15 @@ export function rewriteReadme(text, version) {
     return demotePreviousCurrentReleaseClaims(text, version);
   }
 
+  // Newer Watcher releases may use a dated integration-candidate heading
+  // instead of the older vX.Y.Z candidate convention. Match the full heading
+  // for this exact version only; do not promote unrelated release history.
+  const integrationHeading = text.split("\n").find(
+    (line) =>
+      line.startsWith(`## Watcher ${version} — production integration candidate (`) &&
+      line.endsWith(")"),
+  );
+
   const lifecycleStates = [
     {
       heading: `## v${version} release candidate`,
@@ -46,6 +55,9 @@ export function rewriteReadme(text, version) {
       heading: `## v${version} certified release — public publication pending`,
       statusParagraphIndex: 1,
     },
+    ...(integrationHeading
+      ? [{ heading: integrationHeading, statusParagraphIndex: 1 }]
+      : []),
   ];
 
   const state = lifecycleStates.find(({ heading }) =>
