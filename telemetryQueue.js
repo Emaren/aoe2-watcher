@@ -1,7 +1,9 @@
 const fs = require("fs");
 const path = require("path");
+const crypto = require("crypto");
 
 const DEFAULT_MAX_ENTRIES = 1000;
+const HARD_MAX_ENTRIES = 4096;
 const DEFAULT_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 const DEFAULT_RUNTIME_EVENT_COALESCE_WINDOW_MS = 30 * 1000;
 const DEFAULT_RUNTIME_EVENT_COALESCE_MAX_KEYS = 512;
@@ -122,64 +124,122 @@ function createRuntimeEventCoalescer({
   };
 }
 
-function readQueueFile(filePath, maxAgeMs, now = Date.now()) {
-  try {
-    if (!filePath || !fs.existsSync(filePath)) {
-      return [];
-    }
+// Persistent diagnostics are best-effort, but an unreadable queue must NEVER
+// be mistaken for an empty queue and overwritten. Replays are handled elsewhere.
+const MAX_QUEUE_FILE_BYTES = 16 * 1024 * 1024;
 
-    const raw = fs.readFileSync(filePath, "utf8");
-    const parsed = JSON.parse(raw);
-
-    if (!Array.isArray(parsed)) {
-      return [];
-    }
-
-    return parsed.filter((entry) => {
-      if (!entry || typeof entry !== "object") {
-        return false;
-      }
-
-      const queuedAt = Number(entry.queuedAtMs || 0);
-
-      return (
-        queuedAt > 0 &&
-        now - queuedAt <= maxAgeMs &&
-        entry.payload &&
-        typeof entry.payload === "object"
-      );
-    });
-  } catch {
-    return [];
-  }
+function unreadableQueue(reason) {
+  const error = new Error("Watcher telemetry queue unavailable: " + reason);
+  error.code = "AOE2_TELEMETRY_QUEUE_UNREADABLE";
+  return error;
 }
 
-function writeQueueFile(filePath, entries) {
-  if (!filePath) {
-    return;
+function queueCapacityError() {
+  const error = new Error("Watcher telemetry entry exceeds the bounded diagnostic queue capacity");
+  error.code = "AOE2_TELEMETRY_QUEUE_TOO_LARGE";
+  return error;
+}
+
+function boundedPositiveInteger(value, fallback, maximum) {
+  return Number.isSafeInteger(value) && value > 0
+    ? Math.min(value, maximum)
+    : fallback;
+}
+
+async function readQueueFile(filePath, maxAgeMs, now = Date.now()) {
+  if (!filePath) return { entries: [], exists: false };
+
+  let raw;
+  let handle;
+  try {
+    // macOS/Linux: O_NOFOLLOW protects the actual opened inode, not merely a
+    // pathname checked before opening. Windows lacks this flag; retain lstat
+    // refusal there and qualify its native ACLs separately.
+    if (!fs.constants.O_NOFOLLOW) {
+      const before = await fs.promises.lstat(filePath);
+      if (!before.isFile() || before.isSymbolicLink()) {
+        throw unreadableQueue("not a regular file");
+      }
+    }
+    handle = await fs.promises.open(
+      filePath,
+      fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW || 0)
+    );
+    const stat = await handle.stat();
+    if (!stat.isFile() || stat.size > MAX_QUEUE_FILE_BYTES) {
+      throw unreadableQueue("not a regular file or beyond safe read limit");
+    }
+    const bytes = await handle.readFile();
+    // If the queue grows while reading, never parse/rewrite an unbounded
+    // partial snapshot. Preserve on-disk evidence instead.
+    if (bytes.length !== stat.size || bytes.length > MAX_QUEUE_FILE_BYTES) {
+      throw unreadableQueue("queue changed during read; preserved original");
+    }
+    raw = bytes.toString("utf8");
+  } catch (error) {
+    if (error?.code === "ENOENT") return { entries: [], exists: false };
+    if (error?.code === "ELOOP") {
+      throw unreadableQueue("symlinked telemetry queue refused");
+    }
+    throw error;
+  } finally {
+    if (handle) await handle.close().catch(() => {});
   }
 
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw unreadableQueue("invalid JSON; preserved original queue file");
+  }
+  if (!Array.isArray(parsed)) {
+    throw unreadableQueue("invalid queue structure; preserved original queue file");
+  }
+
+  // Valid JSON is not necessarily a valid queue. A partially damaged array
+  // must not be rewritten while quietly losing its malformed entries.
+  // Age-expired *well-formed* events retain the established retention policy.
+  const entries = [];
+  for (const [index, entry] of parsed.entries()) {
+    const queuedAt = Number(entry?.queuedAtMs || 0);
+    if (
+      !entry || typeof entry !== "object" || Array.isArray(entry) ||
+      !Number.isFinite(queuedAt) || queuedAt <= 0 ||
+      !entry.payload || typeof entry.payload !== "object" ||
+      Array.isArray(entry.payload)
+    ) {
+      throw unreadableQueue(`invalid event at index ${index}; preserved original queue file`);
+    }
+    if (now - queuedAt <= maxAgeMs) entries.push(entry);
+  }
+  return { entries, exists: true };
+}
+
+async function writeQueueFile(filePath, entries) {
+  if (!filePath) return;
   if (!Array.isArray(entries) || entries.length === 0) {
-    fs.rmSync(filePath, {
-      force: true,
-    });
+    await fs.promises.rm(filePath, { force: true });
     return;
   }
 
-  fs.mkdirSync(path.dirname(filePath), {
-    recursive: true,
-  });
-
-  const tempPath =
-    `${filePath}.tmp-${process.pid}-${Date.now()}`;
-
-  fs.writeFileSync(
-    tempPath,
-    `${JSON.stringify(entries, null, 2)}\n`,
-    "utf8"
-  );
-
-  fs.renameSync(tempPath, filePath);
+  // The reader refuses files above this size. Never let the writer create
+  // one itself: an oversize enqueue must leave the last durable queue intact.
+  const payload = `${JSON.stringify(entries)}\n`;
+  if (Buffer.byteLength(payload, "utf8") > MAX_QUEUE_FILE_BYTES) {
+    throw queueCapacityError();
+  }
+  await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
+  const tempPath = `${filePath}.tmp-${process.pid}-${crypto.randomBytes(8).toString("hex")}`;
+  try {
+    // A queue includes player/session diagnostics; never let the host umask
+    // create a world-readable temporary or persisted queue.
+    await fs.promises.writeFile(tempPath, payload,
+      { encoding: "utf8", flag: "wx", mode: 0o600 });
+    await fs.promises.rename(tempPath, filePath);
+  } catch (error) {
+    await fs.promises.rm(tempPath, { force: true }).catch(() => {});
+    throw error;
+  }
 }
 
 function createDurableTelemetryQueue({
@@ -187,6 +247,10 @@ function createDurableTelemetryQueue({
   maxEntries = DEFAULT_MAX_ENTRIES,
   maxAgeMs = DEFAULT_MAX_AGE_MS,
 } = {}) {
+  // Malformed options previously made slice(-maxEntries) silently drop
+  // events or allowed invalid flush limits to attempt an unlimited send.
+  const entryLimit = boundedPositiveInteger(maxEntries, DEFAULT_MAX_ENTRIES, HARD_MAX_ENTRIES);
+  const ageLimitMs = boundedPositiveInteger(maxAgeMs, DEFAULT_MAX_AGE_MS, Number.MAX_SAFE_INTEGER);
   let operation = Promise.resolve();
 
   function run(task) {
@@ -200,9 +264,9 @@ function createDurableTelemetryQueue({
   return {
     enqueue(entry) {
       return run(async () => {
-        const entries = readQueueFile(
+        const { entries } = await readQueueFile(
           filePath,
-          maxAgeMs
+          ageLimitMs
         );
 
         entries.push({
@@ -213,9 +277,9 @@ function createDurableTelemetryQueue({
         });
 
         const bounded =
-          entries.slice(-maxEntries);
+          entries.slice(-entryLimit);
 
-        writeQueueFile(
+        await writeQueueFile(
           filePath,
           bounded
         );
@@ -225,21 +289,16 @@ function createDurableTelemetryQueue({
     },
 
     flush(sender, { limit = 100 } = {}) {
+      const sendLimit = boundedPositiveInteger(limit, 100, HARD_MAX_ENTRIES);
       return run(async () => {
-        const entries = readQueueFile(
+        const { entries, exists } = await readQueueFile(
           filePath,
-          maxAgeMs
+          ageLimitMs
         );
 
         if (entries.length === 0) {
-          if (
-            filePath &&
-            fs.existsSync(filePath)
-          ) {
-            writeQueueFile(
-              filePath,
-              []
-            );
+          if (exists) {
+            await writeQueueFile(filePath, []);
           }
 
           return {
@@ -263,7 +322,7 @@ function createDurableTelemetryQueue({
         ) {
           const entry = entries[index];
 
-          if (attempted >= limit) {
+          if (attempted >= sendLimit) {
             remaining.push(
               ...entries.slice(index)
             );
@@ -307,7 +366,7 @@ function createDurableTelemetryQueue({
           remaining.length !== entries.length;
 
         if (queueChanged) {
-          writeQueueFile(
+          await writeQueueFile(
             filePath,
             remaining
           );
@@ -324,10 +383,8 @@ function createDurableTelemetryQueue({
 
     size() {
       return run(async () => {
-        return readQueueFile(
-          filePath,
-          maxAgeMs
-        ).length;
+        const { entries } = await readQueueFile(filePath, ageLimitMs);
+        return entries.length;
       });
     },
   };

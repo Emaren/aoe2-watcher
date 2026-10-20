@@ -1,0 +1,60 @@
+name: Watcher 1.6.6 Telemetry Queue Benchmark
+
+on:
+  pull_request:
+    paths:
+      - "telemetryQueue.js"
+      - "scripts/benchmark-telemetry-queue.cjs"
+      - "scripts/summarize-telemetry-benchmark.cjs"
+      - ".github/workflows/watcher-166-queue-benchmark.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  queue-comparison:
+    name: Pinned 1.6.5 vs candidate queue (synthetic Node)
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+      - name: Extract exact published v1.6.5 baseline
+        env:
+          BASE_SHA: b49f31bb69fea629378072faa22220cdfcc2f1ef
+        run: |
+          set -euo pipefail
+          git cat-file -e "${BASE_SHA}^{commit}"
+          git show "${BASE_SHA}:telemetryQueue.js" > "$RUNNER_TEMP/telemetryQueue-v1.6.5.cjs"
+          node --check "$RUNNER_TEMP/telemetryQueue-v1.6.5.cjs"
+      - name: Compare five alternating local component trials
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/telemetry-benchmark"
+          node --version > "$RUNNER_TEMP/telemetry-benchmark/node.txt"
+          uname -a > "$RUNNER_TEMP/telemetry-benchmark/host.txt"
+          for i in 1 2 3 4 5; do
+            if (( i % 2 == 1 )); then
+              node scripts/benchmark-telemetry-queue.cjs "$RUNNER_TEMP/telemetryQueue-v1.6.5.cjs" 200 >> "$RUNNER_TEMP/telemetry-benchmark/baseline.jsonl"
+              node scripts/benchmark-telemetry-queue.cjs ./telemetryQueue.js 200 >> "$RUNNER_TEMP/telemetry-benchmark/candidate.jsonl"
+            else
+              node scripts/benchmark-telemetry-queue.cjs ./telemetryQueue.js 200 >> "$RUNNER_TEMP/telemetry-benchmark/candidate.jsonl"
+              node scripts/benchmark-telemetry-queue.cjs "$RUNNER_TEMP/telemetryQueue-v1.6.5.cjs" 200 >> "$RUNNER_TEMP/telemetry-benchmark/baseline.jsonl"
+            fi
+          done
+          node scripts/summarize-telemetry-benchmark.cjs \
+            "$RUNNER_TEMP/telemetry-benchmark/baseline.jsonl" \
+            "$RUNNER_TEMP/telemetry-benchmark/candidate.jsonl" \
+            | tee "$RUNNER_TEMP/telemetry-benchmark/summary.txt"
+          cat "$RUNNER_TEMP/telemetry-benchmark/summary.txt" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: watcher-telemetry-queue-benchmark
+          path: ${{ runner.temp }}/telemetry-benchmark/
+          retention-days: 14

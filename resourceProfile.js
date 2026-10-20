@@ -209,6 +209,18 @@ function classifyPowerSignal({
   };
 }
 
+function isNewStreamChunkReceipt(data) {
+  return Boolean(
+    data &&
+    typeof data === "object" &&
+    !Array.isArray(data) &&
+    data.chunkCreated === true &&
+    data.stream &&
+    typeof data.stream === "object" &&
+    !Array.isArray(data.stream)
+  );
+}
+
 function createResourceProfiler({
   getMetrics = () => [],
   getWorkload = () => ({}),
@@ -354,6 +366,11 @@ function createResourceProfiler({
       networkMbps,
       networkBytesThisSample:
         networkDeltaBytes,
+      // Payload bytes on successful HTTP acknowledgment are accounted at
+      // completion, grouped by sample interval. This is NOT measured NIC
+      // throughput, network utilization, or actual bytes on the wire.
+      networkMeasurement:
+        "http-acknowledged-payload-estimate",
       workload: {
         streamActive:
           Boolean(workload.streamActive),
@@ -399,6 +416,7 @@ function createResourceProfiler({
         ...summarizeAppMetrics([]),
         networkMbps: 0,
         networkBytesThisSample: 0,
+        networkMeasurement: "http-acknowledged-payload-estimate",
         workload: {
           streamActive: false,
           importRunning: false,
@@ -485,6 +503,7 @@ module.exports = {
   buildProcessTopology,
   classifyPowerSignal,
   createResourceProfiler,
+  isNewStreamChunkReceipt,
   selectResourceSampleInterval,
   summarizeAppMetrics,
 };

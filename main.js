@@ -32,6 +32,8 @@ const {
   createRuntimeEventCoalescer,
 } = require("./telemetryQueue");
 const { isAcceptedRuntimeTelemetryType } = require("./runtimeTelemetryContract");
+const { assertWatcherTelemetryAck } = require("./telemetryDelivery");
+const { createBoundedPendingJournalWrites } = require("./runtimeJournalQueue");
 const {
   DEFAULT_FOLDER_FRESHNESS_PROBE_MS,
   DEFAULT_FOLDER_STATUS_CACHE_MS,
@@ -64,6 +66,7 @@ const {
   DEFAULT_RESOURCE_SAMPLE_MS,
   createResourceProfiler,
   selectResourceSampleInterval,
+  isNewStreamChunkReceipt,
 } = require("./resourceProfile");
 const {
   DEFAULT_RENDERER_BOOT_TIMEOUT_MS,
@@ -123,6 +126,11 @@ const RUNTIME_EVENT_JOURNAL_FLUSH_MS = Math.max(
     process.env.AOE2_RUNTIME_EVENT_JOURNAL_FLUSH_MS ||
       2000
   )
+);
+const RUNTIME_EVENT_JOURNAL_PENDING_MAX_BYTES = Math.max(
+  256 * 1024,
+  Math.min(8 * 1024 * 1024,
+    Number(process.env.AOE2_RUNTIME_EVENT_JOURNAL_PENDING_MAX_BYTES) || 1024 * 1024)
 );
 const RUNTIME_EVENT_JOURNAL_BUFFER_MAX_BYTES =
   Math.max(
@@ -233,7 +241,16 @@ const RESOURCE_IDLE_SAMPLE_MS = Math.max(
 const recentUiLogs = [];
 let resourceProfileTimer = null;
 let runtimeJournalLastError = null;
-const runtimeJournalPendingWrites = [];
+const runtimeJournalPendingWrites = createBoundedPendingJournalWrites({
+  maxBytes: RUNTIME_EVENT_JOURNAL_PENDING_MAX_BYTES,
+  onDrop: ({ droppedChunks, droppedBytes }) => {
+    // Diagnostic storage is optional. A full/unwritable disk must never
+    // turn the Watcher into an unbounded memory consumer or stall replay.
+    console.warn(
+      `Watcher diagnostic journal overflow: dropped ${droppedChunks} oldest chunk(s), ${droppedBytes} bytes; replay uploads unaffected.`
+    );
+  },
+});
 let runtimeEventJournalBuffer = "";
 let runtimeEventJournalBufferBytes = 0;
 let runtimeEventJournalFlushTimer = null;
@@ -552,6 +569,7 @@ function buildResourceTelemetryProfile() {
     idleWakeupsAvailable:
       profile.idleWakeupsAvailable,
     networkMbps: profile.networkMbps,
+    networkMeasurement: profile.networkMeasurement,
     averageNetworkMbps:
       profile.averageNetworkMbps,
     powerSignal: profile.powerSignal
@@ -1857,6 +1875,7 @@ function normalizeRuntimeEventType(type) {
 function isRetryableTelemetryError(
   error
 ) {
+  if (error?.watcherTelemetryAckRetryable === true) return true;
   const status =
     error?.response?.status;
 
@@ -1911,7 +1930,7 @@ async function flushWatcherTelemetryQueue(
     await queue.flush(
       async (entry) => {
         try {
-          await axios.post(
+          const response = await axios.post(
             `${baseUrl}/api/watcher/events`,
             entry.payload,
             {
@@ -1929,24 +1948,24 @@ async function flushWatcherTelemetryQueue(
               },
             }
           );
-
-          return {
-            ok: true,
-          };
+          assertWatcherTelemetryAck(response.data);
+          return { ok: true };
         } catch (error) {
           return {
             ok: false,
-            retryable:
-              isRetryableTelemetryError(
-                error
-              ),
+            retryable: isRetryableTelemetryError(error),
           };
         }
       },
       {
         limit: 100,
       }
-    );
+    ).catch((error) => {
+      // A corrupt or inaccessible telemetry queue is not empty. Keep its
+      // original bytes untouched and leave replay monitoring operational.
+      console.warn(`Watcher telemetry queue could not flush: ${error.message || error}`);
+      return { attempted: 0, delivered: 0, dropped: 0, remaining: null, queueError: true };
+    });
 
   if (
     result.delivered > 0 ||
@@ -2010,10 +2029,10 @@ async function postWatcherTelemetry(
         },
       }
     )
-    .then(
-      (response) =>
-        response.data
-    )
+    .then((response) => {
+      assertWatcherTelemetryAck(response.data);
+      return response.data;
+    })
     .catch(async (error) => {
       const detail =
         error?.response?.status
@@ -2034,20 +2053,24 @@ async function postWatcherTelemetry(
           getDurableTelemetryQueue();
 
         if (queue) {
-          const queued =
-            await queue.enqueue({
+          try {
+            const queued = await queue.enqueue({
               id: telemetryEventId,
               eventType,
-              payload:
-                telemetryPayload,
-              queuedAtMs:
-                Date.now(),
+              payload: telemetryPayload,
+              queuedAtMs: Date.now(),
             });
-
-          console.warn(
-            `Watcher telemetry ${eventType} failed: ${detail}; queued for retry (${queued} pending).`
-          );
-
+            console.warn(
+              `Watcher telemetry ${eventType} failed: ${detail}; queued for retry (${queued} pending).`
+            );
+          } catch (queueError) {
+            // Never create an unhandled rejection in the Electron main
+            // process. Existing bytes are preserved when the queue is corrupt
+            // or unwritable; local logging remains an explicit degraded mode.
+            console.warn(
+              `Watcher telemetry ${eventType} could not be durably queued: ${queueError.message || queueError}`
+            );
+          }
           return null;
         }
       }
@@ -2744,11 +2767,6 @@ async function postStreamChunk(payload = {}) {
   nativeStreamRequestsInFlight += 1;
   syncAutoInstallOnQuit();
   try {
-    resourceProfiler.recordNetworkBytes(
-      buffer.length,
-      "stream"
-    );
-
     const response = await axios.post(
       `${baseUrl}/api/streams/${streamId}/chunks?sequence=${sequence}`,
       buffer,
@@ -2765,6 +2783,12 @@ async function postStreamChunk(payload = {}) {
       }
     );
 
+    // A successful HTTP response may instead signal replay finality or an
+    // already-stored duplicate chunk. Count only a newly admitted payload.
+    // These counters remain logical acceptance estimates, not wire bytes.
+    if (isNewStreamChunkReceipt(response.data)) {
+      resourceProfiler.recordNetworkBytes(buffer.length, "stream");
+    }
     return {
       ok: true,
       status: response.status,
@@ -3166,7 +3190,7 @@ function flushRuntimeEventJournal() {
     const journalPath = getRuntimeEventJournalPath();
     await fs.promises.mkdir(path.dirname(journalPath), { recursive: true });
     while (runtimeJournalPendingWrites.length > 0) {
-      const pending = runtimeJournalPendingWrites[0];
+      const pending = runtimeJournalPendingWrites.peek();
       await rotateRuntimeEventJournalIfNeeded(journalPath, Buffer.byteLength(pending, "utf8"));
       await fs.promises.appendFile(journalPath, pending, "utf8");
       runtimeJournalPendingWrites.shift();
@@ -3192,7 +3216,7 @@ function flushRuntimeEventJournalSync() {
     const journalPath = getRuntimeEventJournalPath();
     fs.mkdirSync(path.dirname(journalPath), { recursive: true });
     while (runtimeJournalPendingWrites.length > 0) {
-      const pending = runtimeJournalPendingWrites[0];
+      const pending = runtimeJournalPendingWrites.peek();
       const incomingBytes = Buffer.byteLength(pending, "utf8");
       let currentBytes = 0;
       try {
@@ -3260,17 +3284,15 @@ function appendRuntimeEventJournal(
 }
 
 function handleWatcherRuntimeEvent(event) {
+  // Count a replay payload after HTTP acknowledgment, not on attempted
+  // transfer. Failed/retried attempts can generate significant network use,
+  // but exact wire bytes are not observable through this API.
   if (
-    event?.type === "upload-start" &&
-    Number.isFinite(
-      Number(event.fileSizeBytes)
-    ) &&
-    Number(event.fileSizeBytes) > 0
+    event?.type === "upload-success" &&
+    Number.isFinite(event.fileSizeBytes) &&
+    event.fileSizeBytes > 0
   ) {
-    resourceProfiler.recordNetworkBytes(
-      Number(event.fileSizeBytes),
-      "replay"
-    );
+    resourceProfiler.recordNetworkBytes(event.fileSizeBytes, "replay");
   }
 
   const priority =

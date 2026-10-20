@@ -1,0 +1,11 @@
+# Watcher 1.6.6 — Honest Resource Transfer Accounting
+
+The 1.6.5 profiler counted replay payload bytes at `upload-start` and video bytes before the `axios.post` network operation. A failed, blocked or preempted upload could therefore inflate the displayed network Mbps even though the server never acknowledged the payload.
+
+1.6.6 counts a replay payload only at `upload-success` and a video chunk only after the HTTP request resolves successfully. The existing bounded resource profiler continues to aggregate the same information with no extra timers, file access or per-byte instrumentation.
+
+New `networkMeasurement: "http-acknowledged-payload-estimate"` discloses the measurement scope. A successful HTTP response is not proof of parsing, settlement or finality; the replay engine's existing fields remain authoritative for those.
+
+**Limitation:** Mbps here represents acknowledged logical payloads divided by a sampling interval. This is neither actual NIC throughput nor precise transmission timing and does not count packets, TLS overhead or failed attempts. Do not present it as measured network bandwidth. Physical 1.6.5-versus-1.6.6 CPU/memory/network cohorts are still required before a 100-point score.
+
+No change to replay upload, retry, packet sending, parse admission, capture, financial authority or UI layout.
