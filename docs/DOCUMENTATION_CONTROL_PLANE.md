@@ -27,7 +27,7 @@ This page is generated from the validated front matter in this repository. Cross
 
 ## Documentation health
 
-- Authoritative repository documents: **6**
+- Authoritative repository documents: **7**
 - Path moves in this migration: **0**
 - Every listed document has an explicit owner, lifecycle, authority, and review interval.
 
@@ -35,11 +35,11 @@ This page is generated from the validated front matter in this repository. Cross
 
 - `generated`: 1
 - `reference`: 1
-- `working`: 3
+- `working`: 4
 
 ### Lifecycle
 
-- `active`: 4
+- `active`: 5
 - `generated`: 1
 
 ## Documents
@@ -50,6 +50,8 @@ This page is generated from the validated front matter in this repository. Cross
 | [Watcher 1.6.2 Engineering Audit](WATCHER_1_6_2_AUDIT.md) | `working` | `active` | `watcher-1.6.2-engineering-plan` |
 | [Watcher 1.6.3 Development](WATCHER_1_6_3_DEVELOPMENT.md) | `historical` | `historical` | `watcher-1.6.3-development-plan` |
 | [Watcher 1.6.4 Update Lifecycle Development](WATCHER_1_6_4_UPDATE_LIFECYCLE.md) | `working` | `active` | `watcher-update-lifecycle-contract` |
+| [Watcher 1.6.6 One-Click Update and Install Experience](WATCHER_1_6_6_UPDATE_EXPERIENCE.md) | `working` | `active` | `watcher-1.6.6-owner-approved-updater-acceptance` |
+| [Watcher War Room Appearance and Safety Contract](WATCHER_WAR_ROOM_UI.md) | `working` | `active` | `watcher-presentation-only` |
 
 ## Canonical commands
 
