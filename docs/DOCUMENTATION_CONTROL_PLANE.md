@@ -19,7 +19,7 @@ Repository ID: `aoe2-watcher`
 
 Documentation owner: `aoe2war-watcher`
 
-Implementation baseline: `main` at `068de12018143044bc745684fe36b8a028f51387`
+Implementation baseline: `fix/20261019-watcher-165-release-docs-sync` at `69d93250adad3fec1015d563b59e2d150e20f2ac`
 
 The implementation baseline identifies the code commit described by this documentation. Documentation-only commits may follow it without creating a self-referential registry hash.
 
