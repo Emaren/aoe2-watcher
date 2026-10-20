@@ -13,7 +13,7 @@ review_interval_days: 30
 sensitivity: "internal"
 ---
 
-# War Room / Old Blue — v1.6.5 presentation and release contract
+# Watcher War Room Appearance and Safety Contract
 
 ## October 19 owner policy — production unsigned Mac, signed Windows, bilingual Watcher
 
