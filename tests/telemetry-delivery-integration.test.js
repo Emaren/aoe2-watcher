@@ -57,7 +57,7 @@ test("real send path queues HTTP 200+failed and retires only upon actual stored 
   assert.equal(h.calls[0].options.headers["x-api-key"],"watcher-testing-key");
   assert.equal((await h.api.flush(h.config)).delivered,1);
   assert.equal(await queue.size(),0);
-  assert.deepEqual(h.calls[0].payload,h.calls[1].payload,"retry must send immutable original event ID and metadata");
+  assert.equal(JSON.stringify(h.calls[0].payload),JSON.stringify(h.calls[1].payload),"retry must send immutable original event ID and metadata across the VM and persisted JSON realms");
  }finally{fs.rmSync(f.dir,{recursive:true,force:true})}
 });
 test("HTTP 503 retries but HTTP 400 remains rejected without persistent queue churn",async()=>{
