@@ -2,7 +2,8 @@
 const test=require("node:test");
 const assert=require("node:assert/strict");
 const crypto=require("node:crypto");
-const {verifySignedMacReleaseEnvelope,verifyDownloadedArtifactBytes} =
+const fs=require("node:fs"),os=require("node:os"),path=require("node:path");
+const {verifySignedMacReleaseEnvelope,verifyDownloadedArtifactBytes,verifyDownloadedArtifactFile} =
   require("../macUnsignedUpdateManifest");
 
 const {publicKey,privateKey}=crypto.generateKeyPairSync("ed25519");
@@ -90,4 +91,36 @@ test("malformed envelopes, extra fields and forged payload types fail closed",()
 test("signature is not bypassed by unrelated key algorithm",()=>{
  const rsa=crypto.generateKeyPairSync("rsa",{modulusLength:2048}).publicKey.export({type:"spki",format:"pem"});
  assert.equal(verify(sign(),"1.6.5",rsa).verified,false);
+});
+
+test("verified manifest is immutable and cannot be spoofed through a plain object",()=>{
+  const result=verify(sign());
+  assert.equal(Object.isFrozen(result),true);
+  assert.equal(Object.isFrozen(result.manifest),true);
+  assert.equal(Object.isFrozen(result.manifest.artifact),true);
+  assert.equal(verifyDownloadedArtifactBytes({...result},artifact),false);
+  assert.equal(verifyDownloadedArtifactBytes({verified:true,manifest:result.manifest},artifact),false);
+  assert.equal(verifyDownloadedArtifactBytes(result,artifact),true);
+});
+
+test("large staged Mac archives use streaming no-follow verification",async(t)=>{
+  if(process.platform==="win32" || !fs.constants.O_NOFOLLOW) {
+    t.skip("O_NOFOLLOW is mandatory for the Mac streaming file proof");
+    return;
+  }
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),"watcher-mac-update-hash-"));
+  const real=path.join(dir,"staged.zip");
+  const link=path.join(dir,"link.zip");
+  try{
+    fs.writeFileSync(real,artifact);
+    fs.symlinkSync(real,link);
+    const proof=verify(sign());
+    assert.equal(await verifyDownloadedArtifactFile(proof,real),true);
+    assert.equal(await verifyDownloadedArtifactFile(proof,link),false);
+    assert.equal(await verifyDownloadedArtifactFile({...proof},real),false);
+    assert.equal(await verifyDownloadedArtifactFile(proof,dir),false);
+    const mutated=Buffer.from(artifact);mutated[0]^=1;
+    fs.writeFileSync(real,mutated);
+    assert.equal(await verifyDownloadedArtifactFile(proof,real),false);
+  }finally{fs.rmSync(dir,{recursive:true,force:true})}
 });

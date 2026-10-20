@@ -1,6 +1,8 @@
 "use strict";
 
 const crypto = require("node:crypto");
+const fs = require("node:fs");
+const trustedProofs = new WeakSet();
 const { isStableNewerVersion } = require("./updatePolicy");
 
 // This is a **disconnected policy primitive**, NOT a working installer.
@@ -110,15 +112,62 @@ function verifySignedMacReleaseEnvelope({
   if (!plainObject(manifest) || JSON.stringify(manifest) !== text) {
     return deny("noncanonical_payload");
   }
-  return validateManifest(manifest, {currentVersion,targetArch});
+  const result = validateManifest(manifest, {currentVersion,targetArch});
+  if (!result.verified) return result;
+  // Authenticated release identity must not be mutable after verification or
+  // forgeable through an ordinary object with {verified:true}.
+  Object.freeze(result.manifest.artifact);
+  Object.freeze(result.manifest);
+  Object.freeze(result);
+  trustedProofs.add(result);
+  return result;
 }
 
 function verifyDownloadedArtifactBytes(verifiedManifest, bytes) {
-  if (!verifiedManifest?.verified || !Buffer.isBuffer(bytes)) return false;
+  if (!trustedProofs.has(verifiedManifest) || !Buffer.isBuffer(bytes)) return false;
   const artifact=verifiedManifest.manifest.artifact;
   if (bytes.length !== artifact.bytes) return false;
   const digest=crypto.createHash("sha256").update(bytes).digest("hex");
   return crypto.timingSafeEqual(Buffer.from(digest,"hex"),Buffer.from(artifact.sha256,"hex"));
 }
 
-module.exports = { verifySignedMacReleaseEnvelope, verifyDownloadedArtifactBytes };
+// Stream archive verification through a no-follow file handle. Never load a
+// 100+MB Electron update archive into the process heap merely to hash it.
+// Caller still must enforce a private, ownership-checked staging directory,
+// bounded downloader and archive extraction safety before replacement.
+async function verifyDownloadedArtifactFile(verifiedManifest, filePath) {
+  if (!trustedProofs.has(verifiedManifest) ||
+      typeof filePath !== "string" || filePath.includes("\0") ||
+      !fs.constants.O_NOFOLLOW) return false;
+  const artifact = verifiedManifest.manifest.artifact;
+  let handle;
+  try {
+    handle = await fs.promises.open(
+      filePath, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW
+    );
+    const stat = await handle.stat();
+    if (!stat.isFile() || stat.size !== artifact.bytes) return false;
+    const hash = crypto.createHash("sha256");
+    let size = 0;
+    for await (const block of handle.createReadStream({autoClose:false})) {
+      size += block.length;
+      if (size > artifact.bytes) return false;
+      hash.update(block);
+    }
+    if (size !== artifact.bytes) return false;
+    const digest = hash.digest();
+    return crypto.timingSafeEqual(
+      digest, Buffer.from(artifact.sha256,"hex")
+    );
+  } catch {
+    return false;
+  } finally {
+    if (handle) await handle.close().catch(() => {});
+  }
+}
+
+module.exports = {
+  verifySignedMacReleaseEnvelope,
+  verifyDownloadedArtifactBytes,
+  verifyDownloadedArtifactFile,
+};
