@@ -88,8 +88,18 @@ export function rewriteReadme(text, version) {
     );
   }
 
+  const preserveReplayTruth =
+    Boolean(integrationHeading && state.heading === integrationHeading) &&
+    /does not retroactively decide unknown games/.test(paragraphs[1]);
   paragraphs[0] = publicHeading;
   paragraphs[state.statusParagraphIndex] = publicReleaseParagraph(version);
+  if (preserveReplayTruth) {
+    // A candidate's publication-status paragraph also carried an independent
+    // Replay Truth invariant. Preserve that guarantee on promotion instead of
+    // silently deleting it alongside stale candidate and 1.6.4 claims.
+    paragraphs.splice(2, 0,
+      `Watcher ${version} preserves legacy Replay Truth: it does not retroactively decide unknown games. Unknown competitive results remain unknown until separately supported by outcome evidence.`);
+  }
 
   if (state.heading.includes("certified release")) {
     const boundaryIndex = paragraphs.findIndex((paragraph) =>
