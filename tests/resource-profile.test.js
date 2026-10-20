@@ -329,3 +329,38 @@ test("remote resource heartbeat uses a compact support profile instead of the fu
   assert.doesNotMatch(helper, /replayUploadBytes/);
   assert.doesNotMatch(helper, /streamUploadBytes/);
 });
+
+test("transfer counters explicitly identify acknowledged logical payload rather than NIC throughput",()=>{
+  const src=fs.readFileSync(path.join(__dirname,"..","main.js"),"utf8");
+  const profileSource=fs.readFileSync(path.join(__dirname,"..","resourceProfile.js"),"utf8");
+  const start=src.indexOf("function handleWatcherRuntimeEvent(event)");
+  const end=src.indexOf("function focusMain",start);
+  assert.ok(start>0 && end>start);
+  const handler=src.slice(start,end);
+  assert.match(handler,/event\?\.type === "upload-success"/);
+  assert.doesNotMatch(handler,/event\?\.type === "upload-start"/);
+  assert.match(src,/resourceProfiler\.recordNetworkBytes\(buffer\.length, "stream"\)/);
+  assert.match(src,/networkMeasurement: profile\.networkMeasurement/);
+  assert.match(profileSource,/http-acknowledged-payload-estimate/);
+});
+test("unacknowledged transfers never enter the acknowledged-byte accounting",()=>{
+  let clock=0;
+  const profiler=createResourceProfiler({
+    now:()=>clock,
+    getMetrics:()=>[{type:"Browser",cpu:{percentCPUUsage:0},memory:{workingSetSize:1024}}],
+    getWorkload:()=>({monitorArmed:true}),
+  });
+  profiler.sample();
+  clock=10_000;
+  profiler.sample();
+  let state=profiler.getSnapshot();
+  assert.equal(state.networkMbps,0);
+  assert.equal(state.networkMeasurement,"http-acknowledged-payload-estimate");
+  profiler.recordNetworkBytes(2_000_000,"replay");
+  clock=20_000;
+  profiler.sample();
+  state=profiler.getSnapshot();
+  assert.equal(state.networkBytesThisSample,2_000_000);
+  assert.equal(state.replayUploadBytes,2_000_000);
+  assert.equal(state.networkMbps,1.6);
+});

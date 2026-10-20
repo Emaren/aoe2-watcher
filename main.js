@@ -568,6 +568,7 @@ function buildResourceTelemetryProfile() {
     idleWakeupsAvailable:
       profile.idleWakeupsAvailable,
     networkMbps: profile.networkMbps,
+    networkMeasurement: profile.networkMeasurement,
     averageNetworkMbps:
       profile.averageNetworkMbps,
     powerSignal: profile.powerSignal
@@ -2765,11 +2766,6 @@ async function postStreamChunk(payload = {}) {
   nativeStreamRequestsInFlight += 1;
   syncAutoInstallOnQuit();
   try {
-    resourceProfiler.recordNetworkBytes(
-      buffer.length,
-      "stream"
-    );
-
     const response = await axios.post(
       `${baseUrl}/api/streams/${streamId}/chunks?sequence=${sequence}`,
       buffer,
@@ -2786,6 +2782,9 @@ async function postStreamChunk(payload = {}) {
       }
     );
 
+    // HTTP-acknowledged media bytes; this is application payload accounting,
+    // NOT socket-level throughput. Preempted/failed uploads do not inflate it.
+    resourceProfiler.recordNetworkBytes(buffer.length, "stream");
     return {
       ok: true,
       status: response.status,
@@ -3281,17 +3280,15 @@ function appendRuntimeEventJournal(
 }
 
 function handleWatcherRuntimeEvent(event) {
+  // Count a replay payload after HTTP acknowledgment, not on attempted
+  // transfer. Failed/retried attempts can generate significant network use,
+  // but exact wire bytes are not observable through this API.
   if (
-    event?.type === "upload-start" &&
-    Number.isFinite(
-      Number(event.fileSizeBytes)
-    ) &&
-    Number(event.fileSizeBytes) > 0
+    event?.type === "upload-success" &&
+    Number.isFinite(event.fileSizeBytes) &&
+    event.fileSizeBytes > 0
   ) {
-    resourceProfiler.recordNetworkBytes(
-      Number(event.fileSizeBytes),
-      "replay"
-    );
+    resourceProfiler.recordNetworkBytes(event.fileSizeBytes, "replay");
   }
 
   const priority =
