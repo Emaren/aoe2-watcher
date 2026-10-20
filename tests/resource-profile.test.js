@@ -9,6 +9,7 @@ const {
   buildProcessTopology,
   classifyPowerSignal,
   createResourceProfiler,
+  isNewStreamChunkReceipt,
   selectResourceSampleInterval,
   summarizeAppMetrics,
 } = require("../resourceProfile");
@@ -363,4 +364,15 @@ test("unacknowledged transfers never enter the acknowledged-byte accounting",()=
   assert.equal(state.networkBytesThisSample,2_000_000);
   assert.equal(state.replayUploadBytes,2_000_000);
   assert.equal(state.networkMbps,1.6);
+});
+
+test("media accounting requires actual newly created stream chunk receipt",()=>{
+  assert.equal(isNewStreamChunkReceipt({stream:{id:14},chunkCreated:true}),true);
+  assert.equal(isNewStreamChunkReceipt({stream:{id:14},chunkCreated:false}),false);
+  assert.equal(isNewStreamChunkReceipt({finality:"replay_final"}),false);
+  assert.equal(isNewStreamChunkReceipt({stream:{id:14}}),false);
+  assert.equal(isNewStreamChunkReceipt({chunkCreated:true}),false);
+  assert.equal(isNewStreamChunkReceipt(null),false);
+  const main=fs.readFileSync(path.join(__dirname,"..","main.js"),"utf8");
+  assert.match(main,/if \(isNewStreamChunkReceipt\(response\.data\)\)/);
 });

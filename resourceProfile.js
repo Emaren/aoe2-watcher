@@ -209,6 +209,18 @@ function classifyPowerSignal({
   };
 }
 
+function isNewStreamChunkReceipt(data) {
+  return Boolean(
+    data &&
+    typeof data === "object" &&
+    !Array.isArray(data) &&
+    data.chunkCreated === true &&
+    data.stream &&
+    typeof data.stream === "object" &&
+    !Array.isArray(data.stream)
+  );
+}
+
 function createResourceProfiler({
   getMetrics = () => [],
   getWorkload = () => ({}),
@@ -491,6 +503,7 @@ module.exports = {
   buildProcessTopology,
   classifyPowerSignal,
   createResourceProfiler,
+  isNewStreamChunkReceipt,
   selectResourceSampleInterval,
   summarizeAppMetrics,
 };

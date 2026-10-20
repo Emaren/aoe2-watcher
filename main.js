@@ -66,6 +66,7 @@ const {
   DEFAULT_RESOURCE_SAMPLE_MS,
   createResourceProfiler,
   selectResourceSampleInterval,
+  isNewStreamChunkReceipt,
 } = require("./resourceProfile");
 const {
   DEFAULT_RENDERER_BOOT_TIMEOUT_MS,
@@ -2782,9 +2783,12 @@ async function postStreamChunk(payload = {}) {
       }
     );
 
-    // HTTP-acknowledged media bytes; this is application payload accounting,
-    // NOT socket-level throughput. Preempted/failed uploads do not inflate it.
-    resourceProfiler.recordNetworkBytes(buffer.length, "stream");
+    // A successful HTTP response may instead signal replay finality or an
+    // already-stored duplicate chunk. Count only a newly admitted payload.
+    // These counters remain logical acceptance estimates, not wire bytes.
+    if (isNewStreamChunkReceipt(response.data)) {
+      resourceProfiler.recordNetworkBytes(buffer.length, "stream");
+    }
     return {
       ok: true,
       status: response.status,
