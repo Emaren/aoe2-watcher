@@ -95,7 +95,7 @@ export function rewriteReadme(text, version) {
     /does not retroactively decide unknown games/.test(paragraphs[1]);
   const preserveLegacyMigrationCaution =
     isIntegrationCandidate &&
-    /must be verified on a real installed v1\\.5\\.10 machine/.test(paragraphs[1]);
+    /must be verified on a real installed v1\.5\.10 machine/.test(paragraphs[1]);
   paragraphs[0] = publicHeading;
   paragraphs[state.statusParagraphIndex] = publicReleaseParagraph(version);
   const preserved = [];
