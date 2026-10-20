@@ -1,0 +1,39 @@
+name: One-shot historic Watcher documentation seal
+
+on:
+  push:
+    branches:
+      - docs/archive-watcher-162-certification-20261020
+    paths:
+      - .watcher-162-archive-trigger
+
+permissions:
+  contents: write
+
+jobs:
+  seal:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: docs/archive-watcher-162-certification-20261020
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Retire helper and seal unchanged 1.6.5 code baseline
+        run: |
+          set -euo pipefail
+          test "$(git branch --show-current)" = "docs/archive-watcher-162-certification-20261020"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/refresh-watcher-162-history.yml .watcher-162-archive-trigger
+          git commit -m "chore(docs): retire one-shot historical Watcher review job"
+          python3 scripts/docs_v2_check.py --write \
+            --branch main --head 068de12018143044bc745684fe36b8a028f51387
+          python3 scripts/docs_v2_check.py
+          git add docs/DOCUMENTATION_CONTROL_PLANE.md docs/document-registry.json
+          if ! git diff --cached --quiet; then
+            git commit -m "docs(watcher): reseal archived 1.6.2 provenance in generated source registry"
+          fi
+          test -z "$(git status --porcelain)"
+          git push origin HEAD:docs/archive-watcher-162-certification-20261020
