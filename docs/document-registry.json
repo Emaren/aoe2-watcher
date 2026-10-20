@@ -11,9 +11,9 @@
       "owner": "aoe2war-watcher",
       "path": "README.md",
       "review_interval_days": 60,
-      "reviewed_at": "2026-10-13",
+      "reviewed_at": "2026-10-19",
       "sensitivity": "internal",
-      "sha256": "482cbab41057b75f4b6c33b15ac9d55c8ef948ce69809ec0ce6d89ddecfd00be",
+      "sha256": "cfff2e4eec3c891bb8913e77af953d3882173ae4693efd8dedf333c2c34671fa",
       "source_of_truth": "git",
       "status": "active",
       "systems": [
