@@ -160,18 +160,22 @@ async function readQueueFile(filePath, maxAgeMs, now = Date.now()) {
     throw unreadableQueue("invalid queue structure; preserved original queue file");
   }
 
-  const entries = parsed.filter((entry) => {
-    if (!entry || typeof entry !== "object" || Array.isArray(entry)) return false;
-    const queuedAt = Number(entry.queuedAtMs || 0);
-    return (
-      Number.isFinite(queuedAt) &&
-      queuedAt > 0 &&
-      now - queuedAt <= maxAgeMs &&
-      entry.payload &&
-      typeof entry.payload === "object" &&
-      !Array.isArray(entry.payload)
-    );
-  });
+  // Valid JSON is not necessarily a valid queue. A partially damaged array
+  // must not be rewritten while quietly losing its malformed entries.
+  // Age-expired *well-formed* events retain the established retention policy.
+  const entries = [];
+  for (const [index, entry] of parsed.entries()) {
+    const queuedAt = Number(entry?.queuedAtMs || 0);
+    if (
+      !entry || typeof entry !== "object" || Array.isArray(entry) ||
+      !Number.isFinite(queuedAt) || queuedAt <= 0 ||
+      !entry.payload || typeof entry.payload !== "object" ||
+      Array.isArray(entry.payload)
+    ) {
+      throw unreadableQueue(`invalid event at index ${index}; preserved original queue file`);
+    }
+    if (now - queuedAt <= maxAgeMs) entries.push(entry);
+  }
   return { entries, exists: true };
 }
 

@@ -589,3 +589,31 @@ test("compact atomic persistence keeps legacy pretty JSON readable while reducin
  assert.ok(bytes.length<Buffer.byteLength(JSON.stringify(after,null,2)+"\n"),"compact format should use fewer bytes for identical entries");
  assert.equal(bytes.toString("utf8").includes("\n  {"),false);
 });
+
+test("valid JSON with a malformed row is never silently rewritten or discarded",async()=>{
+  const {filePath}=tempQueue();
+  const valid={id:"telemetry_valid",eventType:"heartbeat",
+    queuedAtMs:Date.now(),payload:{event_type:"heartbeat"}};
+  const original=JSON.stringify([valid,null,{queuedAtMs:"bad",payload:{}}])+"\n";
+  fs.writeFileSync(filePath,original,"utf8");
+  const queue=createDurableTelemetryQueue({filePath});
+  await assert.rejects(queue.size(),e=>e.code==="AOE2_TELEMETRY_QUEUE_UNREADABLE");
+  await assert.rejects(queue.enqueue({id:"new",eventType:"heartbeat",
+    payload:{event_type:"heartbeat"}}),e=>e.code==="AOE2_TELEMETRY_QUEUE_UNREADABLE");
+  await assert.rejects(queue.flush(async()=>({ok:true})),
+    e=>e.code==="AOE2_TELEMETRY_QUEUE_UNREADABLE");
+  assert.equal(fs.readFileSync(filePath,"utf8"),original);
+});
+
+test("well-formed expired events still honor the existing retention deadline",async()=>{
+  const {filePath}=tempQueue();
+  const expired={eventType:"old",queuedAtMs:1,payload:{event_type:"old"}};
+  const fresh={eventType:"new",queuedAtMs:Date.now(),payload:{event_type:"new"}};
+  fs.writeFileSync(filePath,JSON.stringify([expired,fresh]),"utf8");
+  const queue=createDurableTelemetryQueue({filePath,maxAgeMs:60000});
+  assert.equal(await queue.size(),1);
+  const types=[];
+  const res=await queue.flush(async event=>{types.push(event.eventType);return {ok:true};});
+  assert.deepEqual(types,["new"]);
+  assert.equal(res.delivered,1);
+});
