@@ -185,7 +185,7 @@ async function writeQueueFile(filePath, entries) {
   await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
   const tempPath = `${filePath}.tmp-${process.pid}-${crypto.randomBytes(8).toString("hex")}`;
   try {
-    await fs.promises.writeFile(tempPath, `${JSON.stringify(entries, null, 2)}\n`, "utf8");
+    await fs.promises.writeFile(tempPath, `${JSON.stringify(entries)}\n`, "utf8");
     await fs.promises.rename(tempPath, filePath);
   } catch (error) {
     await fs.promises.rm(tempPath, { force: true }).catch(() => {});

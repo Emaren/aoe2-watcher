@@ -570,3 +570,22 @@ test("durable telemetry implementation does not use synchronous filesystem opera
   assert.match(main,/Watcher telemetry queue could not flush/);
   assert.match(main,/could not be durably queued/);
 });
+
+test("compact atomic persistence keeps legacy pretty JSON readable while reducing disk footprint",async()=>{
+ const {filePath}=tempQueue();
+ const baseline=[
+  {id:"a",eventType:"upload_failed",queuedAtMs:Date.now(),payload:{event_type:"upload_failed",metadata:{detail:"fixture"}}},
+  {id:"b",eventType:"upload_succeeded",queuedAtMs:Date.now(),payload:{event_type:"upload_succeeded",metadata:{detail:"fixture"}}},
+ ];
+ fs.writeFileSync(filePath,JSON.stringify(baseline,null,2)+"\n","utf8");
+ const before=fs.statSync(filePath).size;
+ const queue=createDurableTelemetryQueue({filePath,maxEntries:100});
+ assert.equal(await queue.size(),2);
+ await queue.enqueue({id:"c",eventType:"heartbeat",payload:{event_type:"heartbeat"}});
+ const bytes=fs.readFileSync(filePath);
+ const after=JSON.parse(bytes.toString("utf8"));
+ assert.equal(after.length,3);
+ assert.deepEqual(after.slice(0,2),baseline);
+ assert.ok(bytes.length<before,"compact 3-event persisted queue should be smaller than old pretty 2-event fixture");
+ assert.equal(bytes.toString("utf8").includes("\n  {"),false);
+});
