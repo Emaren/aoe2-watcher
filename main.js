@@ -32,6 +32,7 @@ const {
   createRuntimeEventCoalescer,
 } = require("./telemetryQueue");
 const { isAcceptedRuntimeTelemetryType } = require("./runtimeTelemetryContract");
+const { createBoundedPendingJournalWrites } = require("./runtimeJournalQueue");
 const {
   DEFAULT_FOLDER_FRESHNESS_PROBE_MS,
   DEFAULT_FOLDER_STATUS_CACHE_MS,
@@ -123,6 +124,11 @@ const RUNTIME_EVENT_JOURNAL_FLUSH_MS = Math.max(
     process.env.AOE2_RUNTIME_EVENT_JOURNAL_FLUSH_MS ||
       2000
   )
+);
+const RUNTIME_EVENT_JOURNAL_PENDING_MAX_BYTES = Math.max(
+  256 * 1024,
+  Math.min(8 * 1024 * 1024,
+    Number(process.env.AOE2_RUNTIME_EVENT_JOURNAL_PENDING_MAX_BYTES) || 1024 * 1024)
 );
 const RUNTIME_EVENT_JOURNAL_BUFFER_MAX_BYTES =
   Math.max(
@@ -233,7 +239,16 @@ const RESOURCE_IDLE_SAMPLE_MS = Math.max(
 const recentUiLogs = [];
 let resourceProfileTimer = null;
 let runtimeJournalLastError = null;
-const runtimeJournalPendingWrites = [];
+const runtimeJournalPendingWrites = createBoundedPendingJournalWrites({
+  maxBytes: RUNTIME_EVENT_JOURNAL_PENDING_MAX_BYTES,
+  onDrop: ({ droppedChunks, droppedBytes }) => {
+    // Diagnostic storage is optional. A full/unwritable disk must never
+    // turn the Watcher into an unbounded memory consumer or stall replay.
+    console.warn(
+      `Watcher diagnostic journal overflow: dropped ${droppedChunks} oldest chunk(s), ${droppedBytes} bytes; replay uploads unaffected.`
+    );
+  },
+});
 let runtimeEventJournalBuffer = "";
 let runtimeEventJournalBufferBytes = 0;
 let runtimeEventJournalFlushTimer = null;
@@ -3166,7 +3181,7 @@ function flushRuntimeEventJournal() {
     const journalPath = getRuntimeEventJournalPath();
     await fs.promises.mkdir(path.dirname(journalPath), { recursive: true });
     while (runtimeJournalPendingWrites.length > 0) {
-      const pending = runtimeJournalPendingWrites[0];
+      const pending = runtimeJournalPendingWrites.peek();
       await rotateRuntimeEventJournalIfNeeded(journalPath, Buffer.byteLength(pending, "utf8"));
       await fs.promises.appendFile(journalPath, pending, "utf8");
       runtimeJournalPendingWrites.shift();
@@ -3192,7 +3207,7 @@ function flushRuntimeEventJournalSync() {
     const journalPath = getRuntimeEventJournalPath();
     fs.mkdirSync(path.dirname(journalPath), { recursive: true });
     while (runtimeJournalPendingWrites.length > 0) {
-      const pending = runtimeJournalPendingWrites[0];
+      const pending = runtimeJournalPendingWrites.peek();
       const incomingBytes = Buffer.byteLength(pending, "utf8");
       let currentBytes = 0;
       try {
