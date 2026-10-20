@@ -88,18 +88,28 @@ export function rewriteReadme(text, version) {
     );
   }
 
+  const isIntegrationCandidate =
+    Boolean(integrationHeading && state.heading === integrationHeading);
   const preserveReplayTruth =
-    Boolean(integrationHeading && state.heading === integrationHeading) &&
+    isIntegrationCandidate &&
     /does not retroactively decide unknown games/.test(paragraphs[1]);
+  const preserveLegacyMigrationCaution =
+    isIntegrationCandidate &&
+    /must be verified on a real installed v1\\.5\\.10 machine/.test(paragraphs[1]);
   paragraphs[0] = publicHeading;
   paragraphs[state.statusParagraphIndex] = publicReleaseParagraph(version);
+  const preserved = [];
   if (preserveReplayTruth) {
-    // A candidate's publication-status paragraph also carried an independent
-    // Replay Truth invariant. Preserve that guarantee on promotion instead of
-    // silently deleting it alongside stale candidate and 1.6.4 claims.
-    paragraphs.splice(2, 0,
+    preserved.push(
       `Watcher ${version} preserves legacy Replay Truth: it does not retroactively decide unknown games. Unknown competitive results remain unknown until separately supported by outcome evidence.`);
   }
+  if (preserveLegacyMigrationCaution) {
+    preserved.push(
+      `Claims about full 1.5.10-to-${version} migration must be verified on a real installed v1.5.10 machine. A successful ordinary update from 1.6.4 cannot certify that separate legacy path.`);
+  }
+  // Never discard independent safety contracts while removing obsolete
+  // "candidate" and old public-release status assertions.
+  paragraphs.splice(2, 0, ...preserved);
 
   if (state.heading.includes("certified release")) {
     const boundaryIndex = paragraphs.findIndex((paragraph) =>
