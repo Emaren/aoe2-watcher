@@ -617,3 +617,31 @@ test("well-formed expired events still honor the existing retention deadline",as
   assert.deepEqual(types,["new"]);
   assert.equal(res.delivered,1);
 });
+
+test("atomic durable telemetry files are owner-only, even with permissive umask",async()=>{
+  if(process.platform==="win32")return; // Windows ACL semantics differ
+  const {filePath}=tempQueue();
+  const original=process.umask(0o022);
+  try {
+    const queue=createDurableTelemetryQueue({filePath});
+    await queue.enqueue({eventType:"heartbeat",payload:{event_type:"heartbeat"}});
+    assert.equal(fs.statSync(filePath).mode&0o077,0);
+    assert.equal(await queue.size(),1);
+  } finally {process.umask(original)}
+});
+
+test("symlinked durable telemetry queue is rejected and cannot overwrite the link target",async()=>{
+  if(process.platform==="win32")return; // ordinary Windows CI lacks symlink privilege
+  const {filePath}=tempQueue();
+  const target=filePath+".target";
+  const original=JSON.stringify([{eventType:"heartbeat",queuedAtMs:Date.now(),
+    payload:{event_type:"heartbeat"}}]);
+  fs.writeFileSync(target,original);
+  fs.symlinkSync(target,filePath);
+  const queue=createDurableTelemetryQueue({filePath});
+  await assert.rejects(queue.size(),e=>e.code==="AOE2_TELEMETRY_QUEUE_UNREADABLE");
+  await assert.rejects(queue.enqueue({eventType:"heartbeat",payload:{event_type:"heartbeat"}}),
+    e=>e.code==="AOE2_TELEMETRY_QUEUE_UNREADABLE");
+  assert.equal(fs.readFileSync(target,"utf8"),original);
+  assert.equal(fs.lstatSync(filePath).isSymbolicLink(),true);
+});

@@ -138,8 +138,12 @@ async function readQueueFile(filePath, maxAgeMs, now = Date.now()) {
 
   let raw;
   try {
-    const stat = await fs.promises.stat(filePath);
-    if (!stat.isFile()) throw unreadableQueue("not a regular file");
+    const stat = await fs.promises.lstat(filePath);
+    // A queue link must never let background diagnostics read another file,
+    // including a key/config file, even if its JSON shape happens to match.
+    if (!stat.isFile() || stat.isSymbolicLink()) {
+      throw unreadableQueue("not a regular file");
+    }
     if (stat.size > MAX_QUEUE_FILE_BYTES) {
       throw unreadableQueue("queue file exceeds the safe read limit");
     }
@@ -189,7 +193,10 @@ async function writeQueueFile(filePath, entries) {
   await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
   const tempPath = `${filePath}.tmp-${process.pid}-${crypto.randomBytes(8).toString("hex")}`;
   try {
-    await fs.promises.writeFile(tempPath, `${JSON.stringify(entries)}\n`, "utf8");
+    // A queue includes player/session diagnostics; never let the host umask
+    // create a world-readable temporary or persisted queue.
+    await fs.promises.writeFile(tempPath, `${JSON.stringify(entries)}\n`,
+      { encoding: "utf8", flag: "wx", mode: 0o600 });
     await fs.promises.rename(tempPath, filePath);
   } catch (error) {
     await fs.promises.rm(tempPath, { force: true }).catch(() => {});
