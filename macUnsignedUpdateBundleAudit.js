@@ -46,8 +46,10 @@ async function inspectExtractedMacBundle({
     !["arm64","x64"].includes(arch))refused("invalid_release_version_or_arch");
  const rootStat=await fs.promises.lstat(appRoot);
  if(!rootStat.isDirectory()||rootStat.isSymbolicLink())refused("bundle_root_not_real");
- const root=await fs.promises.realpath(appRoot);
- if(root!==appRoot)refused("bundle_root_resolves_elsewhere");
+ // macOS normally resolves /var to /private/var. A final-component
+ // symlink is forbidden, but a preexisting OS-owned ancestor alias is not.
+ const root=appRoot;
+ const realRoot=await fs.promises.realpath(appRoot);
 
  let itemCount=0,expandedBytes=0;
  const pending=[{dir:appRoot,depth:0}];
@@ -69,7 +71,7 @@ async function inspectExtractedMacBundle({
     let resolved;
     try{resolved=await fs.promises.realpath(full)}
     catch{refused("dangling_or_cyclic_bundle_symlink")}
-    if(!inside(root,resolved))refused("resolved_bundle_symlink_escape");
+    if(!inside(realRoot,resolved))refused("resolved_bundle_symlink_escape");
     continue;
    }
    if(stat.isDirectory()){
