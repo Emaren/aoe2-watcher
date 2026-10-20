@@ -1,19 +1,25 @@
 ---
 id: "aoe2war.aoe2-watcher.docs-watcher-1-6-2-audit"
 title: "Watcher 1.6.2 Engineering Audit"
-type: "working"
-status: "active"
+type: "historical"
+status: "historical"
 owner: "aoe2war-watcher"
 systems: ["aoe2-watcher","api-prodn"]
 audience: ["developers","operators","ai-agents"]
 source_of_truth: "git"
 authority: "watcher-1.6.2-engineering-plan"
-reviewed_at: "2026-09-29"
-review_interval_days: 14
+reviewed_at: "2026-10-20"
+review_interval_days: 0
 sensitivity: "internal"
 ---
 
 # Watcher 1.6.2 Engineering Audit
+
+**Historical certification record.** This document preserves the September 2026
+Watcher 1.6.2 engineering and publication evidence. Its statements describing
+1.6.2 as the current public release refer to the September 2026 release state;
+Watcher 1.6.5 has since been released. This is not the current updater or runtime
+implementation contract, and it does not certify any later Watcher version.
 
 ## Objective
 
