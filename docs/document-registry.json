@@ -6,6 +6,29 @@
         "operators",
         "ai-agents"
       ],
+      "authority": "repository-entrypoint",
+      "id": "aoe2war.aoe2-watcher.readme",
+      "owner": "aoe2war-watcher",
+      "path": "README.md",
+      "review_interval_days": 60,
+      "reviewed_at": "2026-10-13",
+      "sensitivity": "internal",
+      "sha256": "482cbab41057b75f4b6c33b15ac9d55c8ef948ce69809ec0ce6d89ddecfd00be",
+      "source_of_truth": "git",
+      "status": "active",
+      "systems": [
+        "aoe2-watcher",
+        "api-prodn"
+      ],
+      "title": "aoe2-watcher",
+      "type": "reference"
+    },
+    {
+      "audience": [
+        "developers",
+        "operators",
+        "ai-agents"
+      ],
       "authority": "generated-repository-index",
       "id": "aoe2war.aoe2-watcher.docs-documentation-control-plane",
       "owner": "aoe2war-watcher",
@@ -13,7 +36,7 @@
       "review_interval_days": 0,
       "reviewed_at": "2026-07-26",
       "sensitivity": "internal",
-      "sha256": "dc52116901849e3ab7db4437182ed1bb719a27e5e469a73be470a531d980966c",
+      "sha256": "fb19a001f78ec5e9e1910e63c53cf5513d60a384379c13085e9725b55171d1ed",
       "source_of_truth": "generated",
       "status": "generated",
       "systems": [
@@ -32,18 +55,18 @@
       "id": "aoe2war.aoe2-watcher.docs-watcher-1-6-2-audit",
       "owner": "aoe2war-watcher",
       "path": "docs/WATCHER_1_6_2_AUDIT.md",
-      "review_interval_days": 14,
-      "reviewed_at": "2026-09-29",
+      "review_interval_days": 0,
+      "reviewed_at": "2026-10-20",
       "sensitivity": "internal",
-      "sha256": "e90b0a07d96c74c92746212561cba2731036c9af20d926751fc3965e31f878e1",
+      "sha256": "67783b0738f4ccc1fa80c690521f2a7d7d028c2d25202c561f832090364e5502",
       "source_of_truth": "git",
-      "status": "active",
+      "status": "historical",
       "systems": [
         "aoe2-watcher",
         "api-prodn"
       ],
       "title": "Watcher 1.6.2 Engineering Audit",
-      "type": "working"
+      "type": "historical"
     },
     {
       "audience": [
@@ -81,7 +104,7 @@
       "review_interval_days": 30,
       "reviewed_at": "2026-10-08",
       "sensitivity": "internal",
-      "sha256": "037e7e053abf2f5b5b708db5695af9fcf3fc754184759ebd98b77e87c607490c",
+      "sha256": "cec506fc05cb636014f0056ca04f606849018d01a4ec23b96abb5a674c687e11",
       "source_of_truth": "git",
       "status": "active",
       "systems": [
@@ -134,29 +157,6 @@
       ],
       "title": "Watcher War Room Appearance and Safety Contract",
       "type": "working"
-    },
-    {
-      "audience": [
-        "developers",
-        "operators",
-        "ai-agents"
-      ],
-      "authority": "repository-entrypoint",
-      "id": "aoe2war.aoe2-watcher.readme",
-      "owner": "aoe2war-watcher",
-      "path": "README.md",
-      "review_interval_days": 60,
-      "reviewed_at": "2026-10-13",
-      "sensitivity": "internal",
-      "sha256": "482cbab41057b75f4b6c33b15ac9d55c8ef948ce69809ec0ce6d89ddecfd00be",
-      "source_of_truth": "git",
-      "status": "active",
-      "systems": [
-        "aoe2-watcher",
-        "api-prodn"
-      ],
-      "title": "aoe2-watcher",
-      "type": "reference"
     }
   ],
   "generated_at": "2026-10-19T23:49:00Z",
