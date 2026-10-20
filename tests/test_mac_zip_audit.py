@@ -62,6 +62,46 @@ class ZipAuditTest(unittest.TestCase):
         self.make(self.plain()+[(PREFIX+"malicious",b"x",stat.S_IFIFO|0o600)])
         with self.assertRaises(mod.UnsafeZip):
             mod.audit_native_zip(self.path, "1.6.6")
+
+    def test_refuse_regular_file_beneath_symlink_even_with_in_bundle_target(self):
+        members=self.plain()
+        members += [
+            (PREFIX+"Frameworks/Real/marker",b"real",stat.S_IFREG|0o644),
+            (PREFIX+"Frameworks/Alias",b"Real",stat.S_IFLNK|0o777),
+            (PREFIX+"Frameworks/Alias/overwritten",b"payload",stat.S_IFREG|0o644),
+        ]
+        self.make(members)
+        with self.assertRaises(mod.UnsafeZip):
+            mod.audit_native_zip(self.path, "1.6.6")
+    def test_refuse_file_as_directory_parent_and_implicit_case_collision(self):
+        for extras in [
+            [(PREFIX+"Frameworks/Locked",b"data",stat.S_IFREG|0o644),
+             (PREFIX+"Frameworks/Locked/child",b"child",stat.S_IFREG|0o644)],
+            [(PREFIX+"Frameworks/Widgets/A",b"A",stat.S_IFREG|0o644),
+             (PREFIX+"Frameworks/widgets/B",b"B",stat.S_IFREG|0o644)]
+        ]:
+            with self.subTest(extras=extras):
+                self.make(self.plain()+extras)
+                with self.assertRaises(mod.UnsafeZip):
+                    mod.audit_native_zip(self.path, "1.6.6")
+    def test_refuse_cyclic_and_dangling_symlinks(self):
+        for extras in [
+            [(PREFIX+"Frameworks/A",b"B",stat.S_IFLNK|0o777),
+             (PREFIX+"Frameworks/B",b"A",stat.S_IFLNK|0o777)],
+            [(PREFIX+"Frameworks/Missing",b"nowhere",stat.S_IFLNK|0o777)],
+        ]:
+            with self.subTest(extras=extras):
+                self.make(self.plain()+extras)
+                with self.assertRaises(mod.UnsafeZip):
+                    mod.audit_native_zip(self.path, "1.6.6")
+    def test_valid_internal_symlink_chain(self):
+        self.make(self.plain()+[
+            (PREFIX+"Frameworks/Real/Library",b"binary",stat.S_IFREG|0o755),
+            (PREFIX+"Frameworks/Current",b"Real",stat.S_IFLNK|0o777),
+            (PREFIX+"Frameworks/Library",b"Current/Library",stat.S_IFLNK|0o777),
+        ])
+        result=mod.audit_native_zip(self.path,"1.6.6")
+        self.assertEqual(result["symlinks"],2)
     def test_zip_bomb_and_wrong_version(self):
         self.make(self.plain()+[(PREFIX+"zeros",b"\x00"*(2*1024*1024),
                                   stat.S_IFREG|0o644)])

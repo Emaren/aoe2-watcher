@@ -61,6 +61,8 @@ def audit_native_zip(archive_path, expected_version=None):
     seen = set()
     links = []
     present = set()
+    entry_types = {}
+    hierarchy_case = {}
     with zipfile.ZipFile(source, "r", allowZip64=True) as package:
         members = package.infolist()
         if len(members) < 1 or len(members) > MAX_FILES:
@@ -72,6 +74,17 @@ def audit_native_zip(archive_path, expected_version=None):
                 refuse("duplicate or case-colliding ZIP member: " + entry)
             seen.add(folded)
             present.add(entry)
+            # macOS volume names are typically case-insensitive. A collision
+            # between implicit ancestor folders is as dangerous as an explicit
+            # filename collision, even when names are otherwise distinct.
+            components = entry.split("/")
+            for length in range(1, len(components) + 1):
+                prefix = "/".join(components[:length])
+                folded_prefix = prefix.casefold()
+                previous = hierarchy_case.get(folded_prefix)
+                if previous is not None and previous != prefix:
+                    refuse("case-colliding parent directories: " + entry)
+                hierarchy_case[folded_prefix] = prefix
             if info.flag_bits & 0x1:
                 refuse("encrypted ZIP members not allowed")
             if info.compress_type not in (zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED):
@@ -93,6 +106,8 @@ def audit_native_zip(archive_path, expected_version=None):
                 refuse("directory/type disagreement")
             if directory and info.file_size != 0:
                 refuse("nonempty directory entry")
+            entry_types[entry] = ("symlink" if kind == stat.S_IFLNK
+                                  else "directory" if directory else "file")
             total += info.file_size
             if total > MAX_EXPANDED:
                 refuse("archive exceeds expanded size limit")
@@ -123,11 +138,48 @@ def audit_native_zip(archive_path, expected_version=None):
                 except UnicodeDecodeError:
                     refuse("invalid UTF-8 symlink")
                 links.append((entry, validate_target(entry, target)))
+    # Refuse members whose parent is a file or a symlink. ZIP extraction tools
+    # differ in how they handle such an entry and can end up writing through an
+    # earlier symlink rather than into the intended archive path.
+    for entry in entry_types:
+        components = entry.split("/")
+        for length in range(1, len(components)):
+            parent = "/".join(components[:length])
+            if entry_types.get(parent) in ("symlink", "file"):
+                refuse("member nested under non-directory: " + entry)
+
+    symlink_map = dict(links)
+    valid_paths = set(hierarchy_case.values())
+
+    def resolve_link(initial):
+        current = initial
+        visited = set()
+        for _ in range(32):
+            if current in visited:
+                refuse("cyclic bundle symlink: " + initial)
+            visited.add(current)
+            components = current.split("/")
+            substituted = False
+            for length in range(1, len(components) + 1):
+                parent = "/".join(components[:length])
+                if parent not in symlink_map:
+                    continue
+                rest = "/".join(components[length:])
+                current = posixpath.normpath(posixpath.join(symlink_map[parent], rest))
+                if current != ROOT and not current.startswith(ROOT + "/"):
+                    refuse("symlink chain escapes application: " + initial)
+                substituted = True
+                break
+            if not substituted:
+                if current not in valid_paths:
+                    refuse("dangling bundle symlink: " + initial)
+                return
+        refuse("bundle symlink chain exceeds hop limit")
+
     for member, target in links:
-        # The target must be enclosed; it may refer to a directory not explicitly
-        # present in ZIP, but must never be absolute or lexically escape app root.
         if target == member:
             refuse("self-referential symlink")
+        resolve_link(target)
     if files == 0 or not any(x.startswith(ROOT + "/Contents/") for x in present):
         refuse("ZIP missing application contents")
     return {"files": files, "entries": len(seen), "expanded_bytes": total,
