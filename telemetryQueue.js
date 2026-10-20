@@ -137,21 +137,40 @@ async function readQueueFile(filePath, maxAgeMs, now = Date.now()) {
   if (!filePath) return { entries: [], exists: false };
 
   let raw;
+  let handle;
   try {
-    const stat = await fs.promises.lstat(filePath);
-    // A queue link must never let background diagnostics read another file,
-    // including a key/config file, even if its JSON shape happens to match.
-    if (!stat.isFile() || stat.isSymbolicLink()) {
-      throw unreadableQueue("not a regular file");
+    // macOS/Linux: O_NOFOLLOW protects the actual opened inode, not merely a
+    // pathname checked before opening. Windows lacks this flag; retain lstat
+    // refusal there and qualify its native ACLs separately.
+    if (!fs.constants.O_NOFOLLOW) {
+      const before = await fs.promises.lstat(filePath);
+      if (!before.isFile() || before.isSymbolicLink()) {
+        throw unreadableQueue("not a regular file");
+      }
     }
-    if (stat.size > MAX_QUEUE_FILE_BYTES) {
-      throw unreadableQueue("queue file exceeds the safe read limit");
+    handle = await fs.promises.open(
+      filePath,
+      fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW || 0)
+    );
+    const stat = await handle.stat();
+    if (!stat.isFile() || stat.size > MAX_QUEUE_FILE_BYTES) {
+      throw unreadableQueue("not a regular file or beyond safe read limit");
     }
-    raw = await fs.promises.readFile(filePath, "utf8");
+    const bytes = await handle.readFile();
+    // If the queue grows while reading, never parse/rewrite an unbounded
+    // partial snapshot. Preserve on-disk evidence instead.
+    if (bytes.length !== stat.size || bytes.length > MAX_QUEUE_FILE_BYTES) {
+      throw unreadableQueue("queue changed during read; preserved original");
+    }
+    raw = bytes.toString("utf8");
   } catch (error) {
     if (error?.code === "ENOENT") return { entries: [], exists: false };
-    // Keep the original bytes unchanged for recovery (EACCES, EISDIR, etc.).
+    if (error?.code === "ELOOP") {
+      throw unreadableQueue("symlinked telemetry queue refused");
+    }
     throw error;
+  } finally {
+    if (handle) await handle.close().catch(() => {});
   }
 
   let parsed;

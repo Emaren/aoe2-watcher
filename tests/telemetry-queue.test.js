@@ -645,3 +645,22 @@ test("symlinked durable telemetry queue is rejected and cannot overwrite the lin
   assert.equal(fs.readFileSync(target,"utf8"),original);
   assert.equal(fs.lstatSync(filePath).isSymbolicLink(),true);
 });
+
+test("telemetry queue opens the verified file handle without following POSIX symlinks",()=>{
+ const source=fs.readFileSync(path.join(__dirname,"..","telemetryQueue.js"),"utf8");
+ assert.match(source,/fs\.promises\.open\(/);
+ assert.match(source,/fs\.constants\.O_NOFOLLOW/);
+ assert.match(source,/await handle\.readFile\(\)/);
+ assert.doesNotMatch(source,/fs\.promises\.readFile\(filePath/);
+});
+
+test("oversized diagnostic file is rejected before reading and left intact",async()=>{
+ const {filePath}=tempQueue();
+ fs.writeFileSync(filePath,"");
+ fs.truncateSync(filePath,16*1024*1024+1);
+ const queue=createDurableTelemetryQueue({filePath});
+ await assert.rejects(queue.size(),e=>e.code==="AOE2_TELEMETRY_QUEUE_UNREADABLE");
+ await assert.rejects(queue.enqueue({eventType:"heartbeat",payload:{event_type:"heartbeat"}}),
+   e=>e.code==="AOE2_TELEMETRY_QUEUE_UNREADABLE");
+ assert.equal(fs.statSync(filePath).size,16*1024*1024+1);
+});
