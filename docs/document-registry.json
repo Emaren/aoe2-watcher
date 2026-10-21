@@ -36,7 +36,7 @@
       "review_interval_days": 0,
       "reviewed_at": "2026-07-26",
       "sensitivity": "internal",
-      "sha256": "5336d6b4adcf4d386fdf1b0ecdb5dad2406eadeeec00c5f8b11ed525e1e4b687",
+      "sha256": "bb9128fa0f9c3bf08e211b584ed041b7409ca4b6da87b1b41be38d2c152787ac",
       "source_of_truth": "generated",
       "status": "generated",
       "systems": [
@@ -709,10 +709,10 @@
       "type": "working"
     }
   ],
-  "generated_at": "2026-10-21T22:37:03.907Z",
+  "generated_at": "2026-10-21T22:40:01.223Z",
   "implementation_baseline": {
     "branch": "fix/watcher-166-bounded-background-timers-20261021",
-    "commit": "0f76e24389510a4ded5f777c0b708ed683b117cf"
+    "commit": "425eb9b2eb0ba3c3a4149563b138065a6bfad4cd"
   },
   "owner": "aoe2war-watcher",
   "repo": "aoe2-watcher",

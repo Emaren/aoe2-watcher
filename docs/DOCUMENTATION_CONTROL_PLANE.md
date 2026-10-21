@@ -19,7 +19,7 @@ Repository ID: `aoe2-watcher`
 
 Documentation owner: `aoe2war-watcher`
 
-Implementation baseline: `fix/watcher-166-bounded-background-timers-20261021` at `0f76e24389510a4ded5f777c0b708ed683b117cf`
+Implementation baseline: `fix/watcher-166-bounded-background-timers-20261021` at `425eb9b2eb0ba3c3a4149563b138065a6bfad4cd`
 
 The implementation baseline identifies the code commit described by this documentation. Documentation-only commits may follow it without creating a self-referential registry hash.
 
