@@ -46,6 +46,7 @@ const {
 } = require("./runtimePolicy");
 
 const { boundedBackgroundIntervalMs } = require("./backgroundTimerPolicy");
+const { boundedDiagnosticBytes } = require("./diagnosticLimits");
 
 const {
   detectReplayFolder,
@@ -118,27 +119,22 @@ const TELEMETRY_QUEUE_MAX_AGE_MS = Number(
   process.env.AOE2_TELEMETRY_QUEUE_MAX_AGE_MS ||
     7 * 24 * 60 * 60 * 1000
 );
-const RUNTIME_EVENT_JOURNAL_MAX_BYTES = Number(
-  process.env.AOE2_RUNTIME_EVENT_JOURNAL_MAX_BYTES ||
-    5 * 1024 * 1024
+const RUNTIME_EVENT_JOURNAL_MAX_BYTES = boundedDiagnosticBytes(
+  process.env.AOE2_RUNTIME_EVENT_JOURNAL_MAX_BYTES,
+  { fallback: 5 * 1024 * 1024, minimum: 1024 * 1024, maximum: 32 * 1024 * 1024 }
 );
 const RUNTIME_EVENT_JOURNAL_FLUSH_MS = boundedBackgroundIntervalMs(
   process.env.AOE2_RUNTIME_EVENT_JOURNAL_FLUSH_MS,
   { fallback: 2000, minimum: 250, maximum: 60_000 }
 );
-const RUNTIME_EVENT_JOURNAL_PENDING_MAX_BYTES = Math.max(
-  256 * 1024,
-  Math.min(8 * 1024 * 1024,
-    Number(process.env.AOE2_RUNTIME_EVENT_JOURNAL_PENDING_MAX_BYTES) || 1024 * 1024)
+const RUNTIME_EVENT_JOURNAL_PENDING_MAX_BYTES = boundedDiagnosticBytes(
+  process.env.AOE2_RUNTIME_EVENT_JOURNAL_PENDING_MAX_BYTES,
+  { fallback: 1024 * 1024, minimum: 256 * 1024, maximum: 8 * 1024 * 1024 }
 );
-const RUNTIME_EVENT_JOURNAL_BUFFER_MAX_BYTES =
-  Math.max(
-    8 * 1024,
-    Number(
-      process.env.AOE2_RUNTIME_EVENT_JOURNAL_BUFFER_MAX_BYTES ||
-        64 * 1024
-    )
-  );
+const RUNTIME_EVENT_JOURNAL_BUFFER_MAX_BYTES = boundedDiagnosticBytes(
+  process.env.AOE2_RUNTIME_EVENT_JOURNAL_BUFFER_MAX_BYTES,
+  { fallback: 64 * 1024, minimum: 8 * 1024, maximum: 1024 * 1024 }
+);
 const RELEASE_CHECK_TIMEOUT_MS = Number(process.env.AOE2_RELEASE_CHECK_TIMEOUT_MS || 5000);
 const AUTO_UPDATE_FEED_URL = process.env.AOE2_UPDATE_FEED_URL || "https://aoe2war.com/downloads";
 const MAC_AUTO_UPDATE_ENABLED = process.env.AOE2_ENABLE_MAC_AUTO_UPDATE === "1";
