@@ -14,7 +14,7 @@ const {
   shouldRunBackgroundUpdateCheck,
 } = require("../runtimePolicy");
 
-const { boundedBackgroundIntervalMs } = require("../backgroundTimerPolicy");
+const { boundedBackgroundIntervalMs, boundedTelemetryHeartbeatMs } = require("../backgroundTimerPolicy");
 
 test("armed but idle watcher does not block update install", () => {
   assert.equal(
@@ -186,4 +186,30 @@ test("Electron main background and journal intervals are all read through the bo
  }
  assert.match(code,/const MONITOR_REATTACH_LIMIT = \(\(\) =>/);
  assert.match(code,/Number\.isSafeInteger\(value\) && value > 0/);
+});
+
+
+test("heartbeat settings preserve explicit zero-disable without hot-looping or silent NaN disable",()=>{
+ for(const raw of [0,"0","00","-0","0e0"]){
+  assert.equal(boundedTelemetryHeartbeatMs(raw),0,String(raw));
+ }
+ for(const raw of [undefined,null,""," ","NaN","Infinity","-Infinity",
+  "-1","garbage",-1,NaN,Infinity,-Infinity]){
+  assert.equal(boundedTelemetryHeartbeatMs(raw),60000,String(raw));
+ }
+ for(const raw of ["0.1","1",1,"5000",9999]){
+  assert.equal(boundedTelemetryHeartbeatMs(raw),10000,String(raw));
+ }
+ assert.equal(boundedTelemetryHeartbeatMs("10000"),10000);
+ assert.equal(boundedTelemetryHeartbeatMs("60000"),60000);
+ assert.equal(boundedTelemetryHeartbeatMs("999999999"),3600000);
+});
+test("renderer boot and release timeout overrides use the same bounded policy",()=>{
+ const fs=require("node:fs"),path=require("node:path");
+ const src=fs.readFileSync(path.join(__dirname,"..","main.js"),"utf8");
+ assert.match(src,/const TELEMETRY_HEARTBEAT_MS = boundedTelemetryHeartbeatMs\(/);
+ assert.match(src,/const RENDERER_BOOT_TIMEOUT_MS = boundedBackgroundIntervalMs\(/);
+ assert.match(src,/const RELEASE_CHECK_TIMEOUT_MS = boundedBackgroundIntervalMs\(/);
+ assert.match(src,/const TELEMETRY_TIMEOUT_MS = Number\(/,
+  "stream and replay-adjacent request timing is untouched in this pass");
 });

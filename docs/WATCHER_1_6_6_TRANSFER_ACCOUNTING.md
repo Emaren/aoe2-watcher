@@ -73,3 +73,21 @@ network requests. Regression tests require the live Electron main
 configuration to call the finite bounded-limit helper and verify all
 three maximum budgets even with hostile environment settings.
 Physical installed memory, energy and disk-wear canaries are still HOLD.
+
+## Optional telemetry heartbeat and renderer safety timers
+
+The telemetry heartbeat normally runs once per 60 seconds; an **explicit
+numeric zero** continues to disable it. Invalid (NaN/Infinity/negative)
+overrides now fall back to the normal interval, and positive subminimum
+overrides are clamped to ten seconds rather than becoming a millisecond
+hot loop. Upper bound is one hour. The renderer-boot watchdog retains its
+twelve-second default, with a five-second to two-minute safe range.
+Release-check HTTP timeout retains a five-second default, with one- to
+sixty-second bounds. None of these adjustments add timers or work in
+normal operation; malformed environment configurations no longer create
+unnecessary wakeups, endless waits, or spurious rapid renderer recovery.
+
+This deliberately leaves the telemetry/video network request timeout
+untouched because it is shared with streaming and needs a separate
+replay/stream integration review. All source-level improvements require
+physical installed-client CPU/wakeup/battery validation before 100/100.

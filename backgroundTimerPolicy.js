@@ -28,4 +28,16 @@ function boundedBackgroundIntervalMs(
   return Math.max(minimum, Math.min(maximum, Math.floor(value)));
 }
 
-module.exports = { boundedBackgroundIntervalMs };
+// A literal numeric zero intentionally disables periodic telemetry.
+// All other malformed or tiny settings fail safe to bounded intervals.
+function boundedTelemetryHeartbeatMs(raw) {
+  if (raw === 0 || (typeof raw === "string" &&
+    raw.trim() !== "" && Number(raw) === 0)) return 0;
+  return boundedBackgroundIntervalMs(raw, {
+    fallback: 60_000,
+    minimum: 10_000,
+    maximum: 3_600_000,
+  });
+}
+
+module.exports = { boundedBackgroundIntervalMs, boundedTelemetryHeartbeatMs };

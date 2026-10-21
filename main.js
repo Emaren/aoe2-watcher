@@ -45,7 +45,7 @@ const {
   shouldRunBackgroundUpdateCheck,
 } = require("./runtimePolicy");
 
-const { boundedBackgroundIntervalMs } = require("./backgroundTimerPolicy");
+const { boundedBackgroundIntervalMs, boundedTelemetryHeartbeatMs } = require("./backgroundTimerPolicy");
 const { boundedDiagnosticBytes } = require("./diagnosticLimits");
 
 const {
@@ -109,7 +109,7 @@ const STREAM_HANDOFF_CLEAR_EVENTS = new Set([
   "monitor-stop",
   "watching-stopped",
 ]);
-const TELEMETRY_HEARTBEAT_MS = Number(process.env.AOE2_TELEMETRY_HEARTBEAT_MS || 60 * 1000);
+const TELEMETRY_HEARTBEAT_MS = boundedTelemetryHeartbeatMs(process.env.AOE2_TELEMETRY_HEARTBEAT_MS);
 const TELEMETRY_TIMEOUT_MS = Number(process.env.AOE2_TELEMETRY_TIMEOUT_MS || 5000);
 const TELEMETRY_QUEUE_MAX_ENTRIES = Number(
   process.env.AOE2_TELEMETRY_QUEUE_MAX_ENTRIES ||
@@ -135,16 +135,16 @@ const RUNTIME_EVENT_JOURNAL_BUFFER_MAX_BYTES = boundedDiagnosticBytes(
   process.env.AOE2_RUNTIME_EVENT_JOURNAL_BUFFER_MAX_BYTES,
   { fallback: 64 * 1024, minimum: 8 * 1024, maximum: 1024 * 1024 }
 );
-const RELEASE_CHECK_TIMEOUT_MS = Number(process.env.AOE2_RELEASE_CHECK_TIMEOUT_MS || 5000);
+const RELEASE_CHECK_TIMEOUT_MS = boundedBackgroundIntervalMs(
+  process.env.AOE2_RELEASE_CHECK_TIMEOUT_MS,
+  { fallback: 5000, minimum: 1000, maximum: 60_000 }
+);
 const AUTO_UPDATE_FEED_URL = process.env.AOE2_UPDATE_FEED_URL || "https://aoe2war.com/downloads";
 const MAC_AUTO_UPDATE_ENABLED = process.env.AOE2_ENABLE_MAC_AUTO_UPDATE === "1";
 const APP_SESSION_ID = createRandomId("session");
-const RENDERER_BOOT_TIMEOUT_MS = Math.max(
-  5000,
-  Number(
-    process.env.AOE2_RENDERER_BOOT_TIMEOUT_MS ||
-      DEFAULT_RENDERER_BOOT_TIMEOUT_MS
-  )
+const RENDERER_BOOT_TIMEOUT_MS = boundedBackgroundIntervalMs(
+  process.env.AOE2_RENDERER_BOOT_TIMEOUT_MS,
+  { fallback: DEFAULT_RENDERER_BOOT_TIMEOUT_MS, minimum: 5000, maximum: 120_000 }
 );
 const RENDERER_FAILURE_TELEMETRY_COOLDOWN_MS =
   30 * 1000;
