@@ -610,7 +610,7 @@
       "review_interval_days": 14,
       "reviewed_at": "2026-10-21",
       "sensitivity": "internal",
-      "sha256": "e8be3ce0697a9e382a4dad28e0a58206c608e4838dd9ad666087c1c47f4496ef",
+      "sha256": "88e947e100a95fa33d56c65019e89322330b88ac2ba7e08c4781100db59d712d",
       "source_of_truth": "git",
       "status": "draft",
       "systems": [
@@ -709,7 +709,7 @@
       "type": "working"
     }
   ],
-  "generated_at": "2026-10-21T21:53:34.272Z",
+  "generated_at": "2026-10-21T21:56:54.709Z",
   "implementation_baseline": {
     "branch": "fix/watcher-166-resource-sample-cap-20261021",
     "commit": "144afe775ff74db822f218c527a0f600964ade28"
