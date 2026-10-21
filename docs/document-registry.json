@@ -36,7 +36,7 @@
       "review_interval_days": 0,
       "reviewed_at": "2026-07-26",
       "sensitivity": "internal",
-      "sha256": "4942e30782bbc435e8a110646ee67ba73a97931be3dff787d9c950f435e6c9a1",
+      "sha256": "34475ff479aa8d93409db914edb25130e9a98aa2a59a95135dd88523bff026fa",
       "source_of_truth": "generated",
       "status": "generated",
       "systems": [
@@ -709,10 +709,10 @@
       "type": "working"
     }
   ],
-  "generated_at": "2026-10-21T23:13:17.366Z",
+  "generated_at": "2026-10-21T23:18:18.322Z",
   "implementation_baseline": {
     "branch": "test/watcher-166-native-electron-boot-20261021",
-    "commit": "141f24d99f3c479c3fe5434f26243060dbfcfb6a"
+    "commit": "37550eb19b8df68fab02305f78d2b391b5224f8e"
   },
   "owner": "aoe2war-watcher",
   "repo": "aoe2-watcher",
