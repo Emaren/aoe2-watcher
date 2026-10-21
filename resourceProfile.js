@@ -3,6 +3,9 @@
 const DEFAULT_RESOURCE_SAMPLE_MS = 15 * 1000;
 const DEFAULT_RESOURCE_IDLE_SAMPLE_MS = 60 * 1000;
 const DEFAULT_RESOURCE_WINDOW_SAMPLES = 8;
+// Each sample includes Electron process topology; never retain an unbounded
+// user-configured history in a long-running Watcher process.
+const HARD_MAX_RESOURCE_WINDOW_SAMPLES = 64;
 
 function finiteNumber(value, fallback = 0) {
   const number = Number(value);
@@ -227,8 +230,10 @@ function createResourceProfiler({
   now = () => Date.now(),
   windowSamples = DEFAULT_RESOURCE_WINDOW_SAMPLES,
 } = {}) {
-  const maxSamples =
-    Math.max(2, Math.floor(finiteNumber(windowSamples, 8)));
+  const maxSamples = Math.min(
+    HARD_MAX_RESOURCE_WINDOW_SAMPLES,
+    Math.max(2, Math.floor(finiteNumber(windowSamples, DEFAULT_RESOURCE_WINDOW_SAMPLES)))
+  );
 
   let samples = [];
   let previousSampleAt = null;
@@ -500,6 +505,7 @@ module.exports = {
   DEFAULT_RESOURCE_IDLE_SAMPLE_MS,
   DEFAULT_RESOURCE_SAMPLE_MS,
   DEFAULT_RESOURCE_WINDOW_SAMPLES,
+  HARD_MAX_RESOURCE_WINDOW_SAMPLES,
   buildProcessTopology,
   classifyPowerSignal,
   createResourceProfiler,
