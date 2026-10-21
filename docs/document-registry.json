@@ -36,7 +36,7 @@
       "review_interval_days": 0,
       "reviewed_at": "2026-07-26",
       "sensitivity": "internal",
-      "sha256": "9fd0d723ce74233f3763b1dd2fa8770d3666c581210d1cfd0deec3cdccf4006f",
+      "sha256": "bb9128fa0f9c3bf08e211b584ed041b7409ca4b6da87b1b41be38d2c152787ac",
       "source_of_truth": "generated",
       "status": "generated",
       "systems": [
@@ -610,7 +610,7 @@
       "review_interval_days": 14,
       "reviewed_at": "2026-10-21",
       "sensitivity": "internal",
-      "sha256": "88e947e100a95fa33d56c65019e89322330b88ac2ba7e08c4781100db59d712d",
+      "sha256": "9a6dc02ad2953368e7bf0c2140fcff4441702a7ef1d8f801c8291c84612b663d",
       "source_of_truth": "git",
       "status": "draft",
       "systems": [
@@ -709,10 +709,10 @@
       "type": "working"
     }
   ],
-  "generated_at": "2026-10-21T22:15:23.645Z",
+  "generated_at": "2026-10-21T22:40:01.223Z",
   "implementation_baseline": {
-    "branch": "fix/watcher-166-telemetry-powerloss-durability-20261021",
-    "commit": "c6b054490a8f95decd7e9d8e9de03bfea0674446"
+    "branch": "fix/watcher-166-bounded-background-timers-20261021",
+    "commit": "425eb9b2eb0ba3c3a4149563b138065a6bfad4cd"
   },
   "owner": "aoe2war-watcher",
   "repo": "aoe2-watcher",
