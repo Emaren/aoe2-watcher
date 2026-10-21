@@ -146,6 +146,53 @@ function boundedPositiveInteger(value, fallback, maximum) {
     : fallback;
 }
 
+function invalidQueueEvent(reason) {
+  const error = new Error("Watcher telemetry event refused: " + reason);
+  error.code = "AOE2_TELEMETRY_QUEUE_INVALID_EVENT";
+  return error;
+}
+
+// Refuse an event which would poison the queue we are about to persist.
+// A payload's toJSON() can turn an apparently valid object into a scalar;
+// assess the wire representation, not merely the input object's shape.
+function prepareQueuedEvent(entry) {
+  if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+    throw invalidQueueEvent("event must be an object");
+  }
+  const timestamp = entry.queuedAtMs === undefined
+    ? Date.now()
+    : Number(entry.queuedAtMs);
+  if (!Number.isFinite(timestamp) || timestamp <= 0) {
+    throw invalidQueueEvent("invalid queuedAtMs");
+  }
+  const candidate = { ...entry, queuedAtMs: timestamp };
+  let encoded;
+  try {
+    encoded = JSON.stringify(candidate);
+  } catch {
+    throw invalidQueueEvent("event is not JSON serializable");
+  }
+  if (typeof encoded !== "string") throw invalidQueueEvent("no serialized event");
+  let stored;
+  try {
+    stored = JSON.parse(encoded);
+  } catch {
+    throw invalidQueueEvent("invalid serialized event");
+  }
+  if (
+    !stored || typeof stored !== "object" || Array.isArray(stored) ||
+    !Number.isFinite(stored.queuedAtMs) || stored.queuedAtMs <= 0 ||
+    !stored.payload || typeof stored.payload !== "object" ||
+    Array.isArray(stored.payload)
+  ) {
+    throw invalidQueueEvent("serialized event cannot be reread");
+  }
+  // Persist the validated immutable-by-value JSON snapshot. Re-evaluating
+  // user-controlled toJSON on a later array write could produce a different
+  // (unreadable) event even though the first preflight had passed.
+  return stored;
+}
+
 async function readQueueFile(filePath, maxAgeMs, now = Date.now()) {
   if (!filePath) return { entries: [], exists: false };
 
@@ -296,12 +343,7 @@ function createDurableTelemetryQueue({
           ageLimitMs
         );
 
-        entries.push({
-          ...entry,
-          queuedAtMs:
-            Number(entry?.queuedAtMs) ||
-            Date.now(),
-        });
+        entries.push(prepareQueuedEvent(entry));
 
         const bounded =
           entries.slice(-entryLimit);
