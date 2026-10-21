@@ -1,3 +1,18 @@
+---
+id: "aoe2war.aoe2-watcher.docs-watcher-1-6-6-transfer-accounting"
+title: "Watcher 1.6.6 — Honest Resource Transfer Accounting"
+type: "working"
+status: "draft"
+owner: "aoe2war-watcher"
+systems: ["aoe2-watcher"]
+audience: ["developers","operators","ai-agents"]
+source_of_truth: "git"
+authority: "watcher-1.6.6-unreleased-engineering-evidence"
+reviewed_at: "2026-10-21"
+review_interval_days: 14
+sensitivity: "internal"
+---
+
 # Watcher 1.6.6 — Honest Resource Transfer Accounting
 
 The 1.6.5 profiler counted replay payload bytes at `upload-start` and video bytes before the `axios.post` network operation. A failed, blocked or preempted upload could therefore inflate the displayed network Mbps even though the server never acknowledged the payload.

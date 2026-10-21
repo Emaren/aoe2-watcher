@@ -1,3 +1,18 @@
+---
+id: "aoe2war.aoe2-watcher.docs-watcher-1-6-6-real-extracted-mac-bundle"
+title: "Watcher 1.6.6 — Actual extracted Mac bundle proof"
+type: "working"
+status: "draft"
+owner: "aoe2war-watcher"
+systems: ["aoe2-watcher"]
+audience: ["developers","operators","ai-agents"]
+source_of_truth: "git"
+authority: "watcher-1.6.6-unreleased-engineering-evidence"
+reviewed_at: "2026-10-21"
+review_interval_days: 14
+sensitivity: "internal"
+---
+
 # Watcher 1.6.6 — Actual extracted Mac bundle proof
 
 Release-time CI now inspects the actual native updater ZIP **both before and after extraction**. The existing release-time ZIP policy auditor checks name traversal, contained symlinks, compressed/extracted limits and integrity. A disposable macOS runner directory (0700) then receives the ZIP through Apple's system `ditto` utility.
