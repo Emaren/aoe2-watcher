@@ -17,6 +17,13 @@ test("queue benchmark summarizer requires valid delivered 200-event receipts",()
   assert.equal(ok.status,0,ok.stderr);
   assert.match(ok.stdout,/\| Duration \(ms\) \| 25 \| 12\.5 \|/);
   assert.match(ok.stdout,/not installed Watcher performance/);
+  const labeled=spawnSync(process.execPath,[script,a,b,"previous v1.6.6 source"],{encoding:"utf8"});
+  assert.equal(labeled.status,0,labeled.stderr);
+  assert.match(labeled.stdout,/pinned previous v1\.6\.6 source versus candidate/);
+  assert.match(labeled.stdout,/\| Metric \| previous v1\.6\.6 source median \| Candidate median \|/);
+  const unsafeLabel=spawnSync(process.execPath,[script,a,b,"<untrusted>"],{encoding:"utf8"});
+  assert.equal(unsafeLabel.status,1);
+
   const tampered=record(20);tampered.delivered=199;
   fs.writeFileSync(a,JSON.stringify(tampered)+"\n"+JSON.stringify(record(30))+"\n");
   const bad=spawnSync(process.execPath,[script,a,b],{encoding:"utf8"});
