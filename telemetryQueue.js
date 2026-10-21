@@ -161,21 +161,40 @@ async function readQueueFile(filePath, maxAgeMs, now = Date.now()) {
         throw unreadableQueue("not a regular file");
       }
     }
+    // Opening a FIFO without O_NONBLOCK can hang before fstat can reject it.
+    // Ordinary regular files ignore O_NONBLOCK on supported POSIX systems.
     handle = await fs.promises.open(
       filePath,
-      fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW || 0)
+      fs.constants.O_RDONLY |
+        (fs.constants.O_NOFOLLOW || 0) |
+        (fs.constants.O_NONBLOCK || 0)
     );
     const stat = await handle.stat();
     if (!stat.isFile() || stat.size > MAX_QUEUE_FILE_BYTES) {
       throw unreadableQueue("not a regular file or beyond safe read limit");
     }
-    const bytes = await handle.readFile();
-    // If the queue grows while reading, never parse/rewrite an unbounded
-    // partial snapshot. Preserve on-disk evidence instead.
-    if (bytes.length !== stat.size || bytes.length > MAX_QUEUE_FILE_BYTES) {
-      throw unreadableQueue("queue changed during read; preserved original");
+    // readFile() could keep allocating while another writer grows the inode.
+    // Read no more than the verified size plus one sentinel byte, even if it
+    // changes underneath us. The extra byte detects a concurrent append.
+    const bytes = Buffer.allocUnsafe(stat.size + 1);
+    let received = 0;
+    while (received < bytes.length) {
+      const { bytesRead } = await handle.read(
+        bytes, received, bytes.length - received, received
+      );
+      if (bytesRead === 0) break;
+      received += bytesRead;
     }
-    raw = bytes.toString("utf8");
+    const after = await handle.stat();
+    if (
+      received !== stat.size ||
+      after.size !== stat.size ||
+      after.mtimeMs !== stat.mtimeMs ||
+      after.ctimeMs !== stat.ctimeMs
+    ) {
+      throw unreadableQueue("queue changed during bounded read; preserved original");
+    }
+    raw = bytes.toString("utf8", 0, received);
   } catch (error) {
     if (error?.code === "ENOENT") return { entries: [], exists: false };
     if (error?.code === "ELOOP") {
