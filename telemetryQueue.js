@@ -187,7 +187,10 @@ function prepareQueuedEvent(entry) {
   ) {
     throw invalidQueueEvent("serialized event cannot be reread");
   }
-  return candidate;
+  // Persist the validated immutable-by-value JSON snapshot. Re-evaluating
+  // user-controlled toJSON on a later array write could produce a different
+  // (unreadable) event even though the first preflight had passed.
+  return stored;
 }
 
 async function readQueueFile(filePath, maxAgeMs, now = Date.now()) {
