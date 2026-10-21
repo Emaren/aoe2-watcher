@@ -49,6 +49,8 @@
       "streamHandoff.js",
       "captureSourceDiagnostics.js",
       "captureSourcePolicy.js",
+      "backgroundTimerPolicy.js",
+      "diagnosticLimits.js",
       "runtimePolicy.js",
       "updatePolicy.js",
       "resourceProfile.js",
