@@ -52,6 +52,29 @@ jobs:
             "$RUNNER_TEMP/telemetry-benchmark/candidate.jsonl" \
             | tee "$RUNNER_TEMP/telemetry-benchmark/summary.txt"
           cat "$RUNNER_TEMP/telemetry-benchmark/summary.txt" >> "$GITHUB_STEP_SUMMARY"
+      - name: Isolate bounded-read overhead against previous 1.6.6 source
+        env:
+          PREVIOUS_SHA: 7dfe619b504e75dc4127e4ad81afd3969d8f9d0b
+        run: |
+          set -euo pipefail
+          git cat-file -e "${PREVIOUS_SHA}^{commit}"
+          git show "${PREVIOUS_SHA}:telemetryQueue.js" > "$RUNNER_TEMP/telemetryQueue-previous-166.cjs"
+          node --check "$RUNNER_TEMP/telemetryQueue-previous-166.cjs"
+          for i in 1 2 3 4 5; do
+            if (( i % 2 == 1 )); then
+              node scripts/benchmark-telemetry-queue.cjs "$RUNNER_TEMP/telemetryQueue-previous-166.cjs" 200 >> "$RUNNER_TEMP/telemetry-benchmark/previous-166.jsonl"
+              node scripts/benchmark-telemetry-queue.cjs ./telemetryQueue.js 200 >> "$RUNNER_TEMP/telemetry-benchmark/bounded-candidate.jsonl"
+            else
+              node scripts/benchmark-telemetry-queue.cjs ./telemetryQueue.js 200 >> "$RUNNER_TEMP/telemetry-benchmark/bounded-candidate.jsonl"
+              node scripts/benchmark-telemetry-queue.cjs "$RUNNER_TEMP/telemetryQueue-previous-166.cjs" 200 >> "$RUNNER_TEMP/telemetry-benchmark/previous-166.jsonl"
+            fi
+          done
+          node scripts/summarize-telemetry-benchmark.cjs \
+            "$RUNNER_TEMP/telemetry-benchmark/previous-166.jsonl" \
+            "$RUNNER_TEMP/telemetry-benchmark/bounded-candidate.jsonl" \
+            "previous v1.6.6 source" \
+            | tee "$RUNNER_TEMP/telemetry-benchmark/previous-166-comparison.txt"
+          cat "$RUNNER_TEMP/telemetry-benchmark/previous-166-comparison.txt" >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
