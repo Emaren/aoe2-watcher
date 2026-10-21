@@ -33,7 +33,7 @@ function inspectRootModuleClosure(archivePath, files) {
   if(bytes.length>4*1024*1024)reject("unbounded root module: "+rootFile);
   const source=bytes.toString("utf8");
   const references=[];
-  const matches=source.matchAll(/\\brequire\\s*\\(\\s*["'](\\.[^"']+)["']\\s*\\)/g);
+  const matches=source.matchAll(/\brequire\s*\(\s*["'](\.[^"']+)["']\s*\)/g);
   for(const match of matches) {
    const spec=match[1];
    const joined=path.posix.normalize(path.posix.join(path.posix.dirname(rootFile),spec));
