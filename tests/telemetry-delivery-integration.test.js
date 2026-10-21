@@ -90,3 +90,28 @@ test("unreadable diagnostic queue does not throw out of send or flush or overwri
   assert.ok(h.warnings.some(x=>x.includes("queue could not flush")));
  } finally {fs.rmSync(f.dir,{recursive:true,force:true})}
 });
+
+test("unexpected redirect cannot forward telemetry API key or retire its exact-ID event", async()=>{
+  const f=temp();
+  try {
+    const queue=createDurableTelemetryQueue({filePath:f.path});
+    const redirect=new Error("unexpected redirect");
+    redirect.response={status:307,statusText:"Temporary Redirect",
+      headers:{location:"https://different-host.invalid/harvest"}};
+    const h=harness(queue,[redirect,redirect]);
+    assert.equal(await h.api.send("heartbeat",{}, {wait:true,config:h.config}),null);
+    assert.equal(await queue.size(),1);
+    assert.equal(h.calls[0].options.maxRedirects,0);
+    assert.equal(h.calls[0].options.headers["x-api-key"],h.config.uploadApiKey);
+    const persisted=JSON.parse(fs.readFileSync(f.path,"utf8"));
+    const id=persisted[0].id;
+    const outcome=await h.api.flush(h.config);
+    assert.equal(outcome.delivered,0);
+    assert.equal(outcome.remaining,1);
+    assert.equal(await queue.size(),1);
+    assert.equal(h.calls.length,2);
+    assert.equal(h.calls[1].options.maxRedirects,0);
+    assert.equal(h.calls[1].payload.metadata.telemetryEventId,id);
+    assert.equal(h.calls[0].payload.metadata.telemetryEventId,id);
+  }finally{fs.rmSync(f.dir,{recursive:true,force:true})}
+});
