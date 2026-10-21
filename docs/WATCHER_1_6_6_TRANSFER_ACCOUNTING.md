@@ -40,3 +40,20 @@ covering defaults, fractions, negative values, NaN, Infinity, and very large
 finite numbers. This is a **bounded-memory code invariant**, not evidence
 that an installed Watcher uses less RAM, CPU, power, or battery. Physical
 device measurements and installed-client release qualification remain HOLD.
+
+## Safe background timer overrides
+
+Resource profiling, the monitor watchdog, replay-folder freshness checks,
+folder-status caching, update rechecks and diagnostic journal flushes now
+use a single startup-only bounded interval policy. Malformed, non-finite
+or non-positive environment overrides fall back to established defaults;
+subminimum values are clamped to a safe floor and huge values to Node's
+finite supported timeout range. The normal timer defaults and user
+behavior remain unchanged. No new polling loops or timers were added.
+
+The monitor reattach limit is also a bounded safe integer; hostile
+environment values cannot turn the retry cap into Infinity. Pure-source
+regressions cover NaN, Infinity, whitespace, negatives and extremely
+large overrides and require Electron main to route these intervals through
+the bounded helper. This prevents avoidable tight-loop battery/CPU drains;
+it does not establish installed-device wakeup or power measurements.
