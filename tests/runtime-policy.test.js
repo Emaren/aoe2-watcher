@@ -8,6 +8,7 @@ const {
   DEFAULT_IDLE_RECOVERY_SCAN_MS,
   DEFAULT_MONITOR_WATCHDOG_MS,
   DEFAULT_UPDATE_RECHECK_MS,
+  boundedBackgroundIntervalMs,
   getUpdateBlocker,
   getUpdateTrayPresentation,
   shouldLaunchInBackground,
@@ -149,4 +150,39 @@ test("folder inspection reports bounded cost evidence for power audits", () => {
   assert.match(watcherSource, /entriesScanned/);
   assert.match(watcherSource, /inspectionDurationMs/);
   assert.match(watcherSource, /process\.hrtime\.bigint\(\)/);
+});
+
+
+test("malformed timing overrides never become Node's one-millisecond hot loop",()=>{
+ const policy={fallback:60_000,minimum:5_000};
+ for(const input of [undefined,null,""," ","NaN","Infinity","-Infinity",
+   "unparsable",0,"0",-10,"-10",NaN,Infinity,-Infinity]) {
+  assert.equal(boundedBackgroundIntervalMs(input,policy),60_000,String(input));
+ }
+ for(const input of ["0.1","1","2",1,0.01,4999,"4999"]) {
+  assert.equal(boundedBackgroundIntervalMs(input,policy),5_000,String(input));
+ }
+ assert.equal(boundedBackgroundIntervalMs("5000",policy),5000);
+ assert.equal(boundedBackgroundIntervalMs("12.9",policy),5000);
+ assert.equal(boundedBackgroundIntervalMs("20000",policy),20000);
+ assert.equal(boundedBackgroundIntervalMs("9000000000000000",policy),2_147_483_647);
+ assert.equal(boundedBackgroundIntervalMs("2500",{fallback:2000,minimum:250,maximum:60000}),2500);
+ assert.equal(boundedBackgroundIntervalMs("garbage",{fallback:2000,minimum:250,maximum:60000}),2000);
+ assert.equal(boundedBackgroundIntervalMs("3",{fallback:2000,minimum:250,maximum:60000}),250);
+ assert.throws(()=>boundedBackgroundIntervalMs("5000",{fallback:0,minimum:5}),/invalid background timer policy/);
+ assert.throws(()=>boundedBackgroundIntervalMs("5000",{fallback:5000,minimum:10000}),/invalid background timer policy/);
+});
+
+test("Electron main background and journal intervals are all read through the bounded policy",()=>{
+ const fs=require("node:fs"),path=require("node:path");
+ const code=fs.readFileSync(path.join(__dirname,"..","main.js"),"utf8");
+ for(const name of [
+  "RUNTIME_EVENT_JOURNAL_FLUSH_MS","MONITOR_WATCHDOG_MS","UPDATE_RECHECK_MS",
+  "REPLAY_FOLDER_FRESHNESS_PROBE_MS","FOLDER_STATUS_CACHE_MS",
+  "MONITOR_REATTACH_COOLDOWN_MS","RESOURCE_SAMPLE_MS","RESOURCE_IDLE_SAMPLE_MS"
+ ]) {
+  assert.match(code,new RegExp("const "+name+" = boundedBackgroundIntervalMs\\("));
+ }
+ assert.match(code,/const MONITOR_REATTACH_LIMIT = \(\(\) =>/);
+ assert.match(code,/Number\.isSafeInteger\(value\) && value > 0/);
 });
