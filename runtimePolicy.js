@@ -5,35 +5,6 @@ const DEFAULT_FINAL_SETTLE_POLL_MS = 10 * 1000;
 const DEFAULT_FOLDER_STATUS_CACHE_MS = 5 * 60 * 1000;
 const DEFAULT_UPDATE_RECHECK_MS = 6 * 60 * 60 * 1000;
 
-const MAX_NODE_TIMER_MS = 2_147_483_647;
-
-// Invalid and out-of-range environment overrides must never become an
-// effective 1 ms Node interval (or an infinite/no-op safety watchdog).
-// Normal defaults remain unchanged; this is evaluated only during boot.
-function boundedBackgroundIntervalMs(
-  raw,
-  { fallback, minimum, maximum = MAX_NODE_TIMER_MS }
-) {
-  if (
-    !Number.isSafeInteger(fallback) ||
-    !Number.isSafeInteger(minimum) ||
-    !Number.isSafeInteger(maximum) ||
-    minimum < 1 ||
-    fallback < minimum ||
-    maximum < fallback ||
-    maximum > MAX_NODE_TIMER_MS
-  ) {
-    throw new TypeError("invalid background timer policy");
-  }
-  if (
-    raw === undefined || raw === null ||
-    (typeof raw === "string" && !raw.trim())
-  ) return fallback;
-  const value = Number(raw);
-  if (!Number.isFinite(value) || value <= 0) return fallback;
-  return Math.max(minimum, Math.min(maximum, Math.floor(value)));
-}
-
 function getUpdateBlocker({
   runtimeStatus = {},
   importRunning = false,
@@ -134,7 +105,6 @@ module.exports = {
   DEFAULT_IDLE_RECOVERY_SCAN_MS,
   DEFAULT_MONITOR_WATCHDOG_MS,
   DEFAULT_UPDATE_RECHECK_MS,
-  boundedBackgroundIntervalMs,
   getUpdateBlocker,
   getUpdateTrayPresentation,
   shouldLaunchInBackground,
