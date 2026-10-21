@@ -19,7 +19,7 @@ Repository ID: `aoe2-watcher`
 
 Documentation owner: `aoe2war-watcher`
 
-Implementation baseline: `fix/watcher-166-telemetry-powerloss-durability-20261021` at `c6b054490a8f95decd7e9d8e9de03bfea0674446`
+Implementation baseline: `fix/watcher-166-bounded-background-timers-20261021` at `0f76e24389510a4ded5f777c0b708ed683b117cf`
 
 The implementation baseline identifies the code commit described by this documentation. Documentation-only commits may follow it without creating a self-referential registry hash.
 
