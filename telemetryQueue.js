@@ -194,7 +194,15 @@ async function readQueueFile(filePath, maxAgeMs, now = Date.now()) {
     ) {
       throw unreadableQueue("queue changed during bounded read; preserved original");
     }
-    raw = bytes.toString("utf8", 0, received);
+    // Buffer.toString silently substitutes U+FFFD for corrupt UTF-8. That
+    // can turn damaged but parseable JSON into a different event on rewrite.
+    // Reject the entire queue instead; preserve the original bytes.
+    try {
+      raw = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true })
+        .decode(bytes.subarray(0, received));
+    } catch {
+      throw unreadableQueue("invalid UTF-8; preserved original queue file");
+    }
   } catch (error) {
     if (error?.code === "ENOENT") return { entries: [], exists: false };
     if (error?.code === "ELOOP") {
