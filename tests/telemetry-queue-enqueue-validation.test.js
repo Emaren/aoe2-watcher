@@ -67,3 +67,40 @@ test("numeric string historical enqueue timestamps normalize to a durable finite
   assert.equal(await createDurableTelemetryQueue({filePath}).size(),1);
  }finally{fs.rmSync(dir,{recursive:true,force:true})}
 });
+
+
+test("stateful toJSON cannot switch a previously validated diagnostic into poisoned JSON",async()=>{
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),"watcher-stateful-serializer-"));
+ const filePath=path.join(dir,"queue.json");
+ try {
+  let serializations=0;
+  const queue=createDurableTelemetryQueue({filePath});
+  const id="telemetry_aabbccddeeff00112233445566778899";
+  const event={
+   id,eventType:"heartbeat",payload:{event_type:"heartbeat"},
+   toJSON(){
+    serializations++;
+    if(serializations===1)return {
+     id,eventType:"heartbeat",queuedAtMs:Date.now(),
+     payload:{event_type:"heartbeat",source:"first-canonical"},
+    };
+    return {id,queuedAtMs:"poisoned",payload:"second-mutated"};
+   },
+  };
+  assert.equal(await queue.enqueue(event),1);
+  assert.equal(serializations,1,"persist only the preflighted wire snapshot");
+  const persisted=JSON.parse(fs.readFileSync(filePath,"utf8"));
+  assert.equal(persisted.length,1);
+  assert.equal(persisted[0].id,id);
+  assert.equal(persisted[0].payload.source,"first-canonical");
+  assert.equal(await createDurableTelemetryQueue({filePath}).size(),1);
+  const delivered=[];
+  const result=await queue.flush(async item=>{
+   delivered.push(item);
+   return {ok:true};
+  });
+  assert.equal(result.delivered,1);
+  assert.equal(delivered[0].id,id);
+  assert.equal(delivered[0].payload.source,"first-canonical");
+ }finally{fs.rmSync(dir,{recursive:true,force:true})}
+});
