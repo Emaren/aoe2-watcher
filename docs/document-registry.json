@@ -36,7 +36,7 @@
       "review_interval_days": 0,
       "reviewed_at": "2026-07-26",
       "sensitivity": "internal",
-      "sha256": "71e914a90e26ff781f76b8bb0c4fb574348a86f5b5be20cafc3424e29ff2d4ea",
+      "sha256": "c30de53cd8c73d3625f72a98827baf4e17d09ea87f80542c9faf29721efc92a7",
       "source_of_truth": "generated",
       "status": "generated",
       "systems": [
@@ -709,10 +709,10 @@
       "type": "working"
     }
   ],
-  "generated_at": "2026-10-21T21:44:38.553Z",
+  "generated_at": "2026-10-21T21:53:34.272Z",
   "implementation_baseline": {
-    "branch": "docs/watcher-166-register-evidence-20261021",
-    "commit": "7e90a4a21265f5015014ab7ff05547dc47581a58"
+    "branch": "fix/watcher-166-resource-sample-cap-20261021",
+    "commit": "144afe775ff74db822f218c527a0f600964ade28"
   },
   "owner": "aoe2war-watcher",
   "repo": "aoe2-watcher",
