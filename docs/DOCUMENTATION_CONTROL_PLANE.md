@@ -19,7 +19,7 @@ Repository ID: `aoe2-watcher`
 
 Documentation owner: `aoe2war-watcher`
 
-Implementation baseline: `fix/watcher-166-mac-journal-bounded-read-20261021` at `9b7e356ebc6afcc4190f0cd7cee181e377700d76`
+Implementation baseline: `fix/watcher-166-telemetry-powerloss-durability-20261021` at `c6b054490a8f95decd7e9d8e9de03bfea0674446`
 
 The implementation baseline identifies the code commit described by this documentation. Documentation-only commits may follow it without creating a self-referential registry hash.
 

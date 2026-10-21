@@ -36,7 +36,7 @@
       "review_interval_days": 0,
       "reviewed_at": "2026-07-26",
       "sensitivity": "internal",
-      "sha256": "fac0636dd109ca88a7f30f760e76f4655523ec6fb3cba00568307f42ad9fda22",
+      "sha256": "9fd0d723ce74233f3763b1dd2fa8770d3666c581210d1cfd0deec3cdccf4006f",
       "source_of_truth": "generated",
       "status": "generated",
       "systems": [
@@ -126,7 +126,7 @@
       "review_interval_days": 14,
       "reviewed_at": "2026-10-21",
       "sensitivity": "internal",
-      "sha256": "3e5103784c83ade98b7a8950253f33c59591e5897428f87546a7f73cada87976",
+      "sha256": "aeb439991e637b42318b299a9061e040fb0af115e9b227aaed42044095c36a70",
       "source_of_truth": "git",
       "status": "draft",
       "systems": [
@@ -709,10 +709,10 @@
       "type": "working"
     }
   ],
-  "generated_at": "2026-10-21T22:01:44.391Z",
+  "generated_at": "2026-10-21T22:15:23.645Z",
   "implementation_baseline": {
-    "branch": "fix/watcher-166-mac-journal-bounded-read-20261021",
-    "commit": "9b7e356ebc6afcc4190f0cd7cee181e377700d76"
+    "branch": "fix/watcher-166-telemetry-powerloss-durability-20261021",
+    "commit": "c6b054490a8f95decd7e9d8e9de03bfea0674446"
   },
   "owner": "aoe2war-watcher",
   "repo": "aoe2-watcher",
