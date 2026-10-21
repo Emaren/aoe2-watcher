@@ -36,7 +36,7 @@
       "review_interval_days": 0,
       "reviewed_at": "2026-07-26",
       "sensitivity": "internal",
-      "sha256": "34475ff479aa8d93409db914edb25130e9a98aa2a59a95135dd88523bff026fa",
+      "sha256": "681e835ea25bcfd23902056c0d1f75747fd085a026213d9fd3190e3bae00e2f0",
       "source_of_truth": "generated",
       "status": "generated",
       "systems": [
@@ -280,7 +280,7 @@
       "review_interval_days": 14,
       "reviewed_at": "2026-10-21",
       "sensitivity": "internal",
-      "sha256": "957cfd6e4ad833974e7c1c8bfed7c5816893abac0518f2405a217916bc9eea82",
+      "sha256": "590d03efac134302939b46b73a664ebc9b57d84dcaf3f5e880157196817d501a",
       "source_of_truth": "git",
       "status": "draft",
       "systems": [
@@ -709,10 +709,10 @@
       "type": "working"
     }
   ],
-  "generated_at": "2026-10-21T23:18:18.322Z",
+  "generated_at": "2026-10-21T23:23:43.707Z",
   "implementation_baseline": {
-    "branch": "test/watcher-166-native-electron-boot-20261021",
-    "commit": "37550eb19b8df68fab02305f78d2b391b5224f8e"
+    "branch": "test/watcher-166-packaged-single-instance-20261021",
+    "commit": "c7b2cb32035a64ea35e4892ad969155530c3176d"
   },
   "owner": "aoe2war-watcher",
   "repo": "aoe2-watcher",
