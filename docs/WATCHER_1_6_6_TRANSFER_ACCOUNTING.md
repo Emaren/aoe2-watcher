@@ -57,3 +57,19 @@ regressions cover NaN, Infinity, whitespace, negatives and extremely
 large overrides and require Electron main to route these intervals through
 the bounded helper. This prevents avoidable tight-loop battery/CPU drains;
 it does not establish installed-device wakeup or power measurements.
+
+## Diagnostic journal resource ceilings
+
+The runtime journal has three separate byte budgets: rotating on-disk
+history (default 5 MiB, maximum 32 MiB), pending asynchronous write
+backlog (default 1 MiB, maximum 8 MiB), and the main-process aggregation
+buffer (default 64 KiB, maximum 1 MiB). Invalid, non-finite, blank, zero
+and negative environment values now select the established defaults;
+extreme valid overrides are clamped to their explicit upper bounds.
+
+This is a resource-limit guarantee for optional diagnostics, not a replay
+payload or video modification. It creates no new sampling timers or
+network requests. Regression tests require the live Electron main
+configuration to call the finite bounded-limit helper and verify all
+three maximum budgets even with hostile environment settings.
+Physical installed memory, energy and disk-wear canaries are still HOLD.
