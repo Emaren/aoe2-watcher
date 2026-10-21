@@ -18,7 +18,8 @@ async function audit(filePath) {
     path.basename(filePath)!=="app.asar"||filePath.includes("\0"))reject("invalid archive path");
  const st=fs.statSync(filePath);
  if(!st.isFile()||st.size<1024*1024)reject("archive missing or implausibly small");
- const files=asar.listPackage(filePath).map(x=>x.replace(/^\/+/,""));
+ // ASAR lists backslash-rooted paths on Windows; normalize before comparing.
+ const files=asar.listPackage(filePath).map(x=>x.replace(/\\/g,"/").replace(/^\/+/,""));
  const set=new Set(files);
  if(set.size!==files.length)reject("duplicate archive paths");
  for(const name of ["main.js","watcher.js","telemetryQueue.js","telemetryDelivery.js","package.json"]){
