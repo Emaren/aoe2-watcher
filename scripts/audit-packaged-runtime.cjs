@@ -13,6 +13,74 @@ function reject(message){throw new Error("Watcher ASAR runtime qualification ref
 function present(files,name){
  return files.some(file=>file===name || file.startsWith(name+"/"));
 }
+
+const FORBIDDEN_BUILD_MODULES=["sprintf-js","roarr","global-agent","electron-builder","@electron/asar"];
+const UNQUALIFIED_MAC_MODULES=[
+ "macUnsignedUpdateManifest.js","macUnsignedUpdateStaging.js",
+ "macUnsignedUpdateBundleAudit.js","macUnsignedUpdateTransaction.js",
+ "macUnsignedUpdateJournal.js","macUnsignedUpdateInstallTarget.js",
+ "macUnsignedUpdateSwapRehearsal.js",
+];
+function devOnlyDependency(pathName) {
+ return FORBIDDEN_BUILD_MODULES.some(name=>{
+  const prefix="node_modules/"+name;
+  return pathName===prefix||pathName.startsWith(prefix+"/")||
+    pathName.includes("/"+prefix+"/");
+ });
+}
+function unqualifiedMacHelper(pathName) {
+ return UNQUALIFIED_MAC_MODULES.some(name=>pathName===name||pathName.endsWith("/"+name));
+}
+async function inspectUnpackedSidecar(filePath) {
+ const root=filePath+".unpacked";
+ let stat;
+ try {stat=await fs.promises.lstat(root);}
+ catch(error) {
+  if(error?.code==="ENOENT")return {fileCount:0,bytes:0,sha256:null,followRedirectsVersions:[]};
+  throw error;
+ }
+ if(!stat.isDirectory()||stat.isSymbolicLink())reject("unpacked sidecar not a real directory");
+ const pending=[root],files=[];
+ let totalBytes=0;
+ while(pending.length){
+  const dir=pending.pop();
+  const members=await fs.promises.readdir(dir,{withFileTypes:true});
+  for(const member of members){
+   const full=path.join(dir,member.name);
+   const rel=path.relative(root,full).split(path.sep).join("/");
+   if(!rel||rel.startsWith("../")||rel.includes("\0"))reject("unpacked escape");
+   if(devOnlyDependency(rel))reject("dev-only dependency in unpacked sidecar: "+rel);
+   if(unqualifiedMacHelper(rel))reject("unqualified Mac helper in unpacked sidecar: "+rel);
+   if(member.isSymbolicLink())reject("unpacked sidecar symlink: "+rel);
+   if(member.isDirectory()){
+    pending.push(full);
+   }else if(member.isFile()){
+    const item=await fs.promises.lstat(full);
+    if(!item.isFile()||item.isSymbolicLink())reject("changed unpacked sidecar entry: "+rel);
+    totalBytes+=item.size;
+    if(totalBytes>1200*1024*1024)reject("unpacked sidecar exceeds resource cap");
+    files.push({full,rel,size:item.size});
+    if(files.length>25000)reject("unpacked sidecar file count exceeded");
+   }else reject("unpacked sidecar special file: "+rel);
+  }
+ }
+ files.sort((a,b)=>a.rel<b.rel?-1:a.rel>b.rel?1:0);
+ const digest=crypto.createHash("sha256"),versions=[];
+ for(const item of files){
+  digest.update(item.rel+"\0");
+  if(/(^|\/)node_modules\/follow-redirects\/package\.json$/.test(item.rel)){
+   if(item.size>128*1024)reject("unbounded unpacked dependency manifest");
+   const pkg=JSON.parse(await fs.promises.readFile(item.full,"utf8"));
+   if(pkg.name!=="follow-redirects"||pkg.version!=="1.16.1")
+    reject("unpatched unpacked redirect transport: "+String(pkg.version));
+   versions.push(pkg.version);
+  }
+  const stream=fs.createReadStream(item.full,{highWaterMark:1024*1024});
+  for await(const chunk of stream)digest.update(chunk);
+ }
+ return {fileCount:files.length,bytes:totalBytes,
+  sha256:digest.digest("hex"),followRedirectsVersions:versions};
+}
 async function audit(filePath) {
  if(typeof filePath!=="string"||!path.isAbsolute(filePath) ||
     path.basename(filePath)!=="app.asar"||filePath.includes("\0"))reject("invalid archive path");
@@ -27,19 +95,10 @@ async function audit(filePath) {
  }
  const appPackage=JSON.parse(asar.extractFile(filePath,"package.json").toString("utf8"));
  if(appPackage.version!=="1.6.5"||appPackage.name!=="aoe2-watcher")reject("candidate identity or version mismatch");
- for(const name of [
-  "sprintf-js","roarr","global-agent","electron-builder","@electron/asar",
- ]) {
-  if(files.some(file=>file.split("/node_modules/").some(
-   (part,index)=>index>0 && (part===name || part.startsWith(name+"/"))
-  )) || present(files,"node_modules/"+name))reject("dev-only vulnerable/packaging dependency bundled: "+name);
+ for(const item of files){
+  if(devOnlyDependency(item))reject("dev-only vulnerable/packaging dependency bundled: "+item);
+  if(unqualifiedMacHelper(item))reject("unqualified Mac helper accidentally shipped: "+item);
  }
- for(const name of [
-  "macUnsignedUpdateManifest.js","macUnsignedUpdateStaging.js",
-  "macUnsignedUpdateBundleAudit.js","macUnsignedUpdateTransaction.js",
-  "macUnsignedUpdateJournal.js","macUnsignedUpdateInstallTarget.js",
-  "macUnsignedUpdateSwapRehearsal.js",
- ]) if(set.has(name))reject("unqualified Mac helper accidentally shipped: "+name);
  const installed=files.filter(file=>/(^|\/)node_modules\/follow-redirects\/package\.json$/.test(file));
  if(!installed.length)reject("required redirected HTTP transport manifest absent");
  for(const packageFile of installed){
@@ -49,6 +108,7 @@ async function audit(filePath) {
   if(pkg.name!=="follow-redirects" || pkg.version!=="1.16.1")
    reject("runtime redirect dependency not patched: "+pkg.version);
  }
+ const sidecar=await inspectUnpackedSidecar(filePath);
  const digest=crypto.createHash("sha256");
  for await(const chunk of fs.createReadStream(filePath,{highWaterMark:1024*1024}))digest.update(chunk);
  return {
@@ -56,7 +116,8 @@ async function audit(filePath) {
   archiveSha256:digest.digest("hex"),
   archiveBytes:st.size,entryCount:files.length,
   packageVersion:appPackage.version,
-  followRedirectsVersions:installed.map(x=>"1.16.1"),
+  followRedirectsVersions:[...installed.map(x=>"1.16.1"),...sidecar.followRedirectsVersions],
+  unpackedSidecar:{fileCount:sidecar.fileCount,bytes:sidecar.bytes,sha256:sidecar.sha256},
   excludedUnqualifiedMacUpdater:true,
   excludedVulnerableDevToolchain:true,
   certifiedInstalledApp:false,
