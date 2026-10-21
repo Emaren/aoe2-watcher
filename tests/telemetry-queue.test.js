@@ -650,7 +650,10 @@ test("telemetry queue opens the verified file handle without following POSIX sym
  const source=fs.readFileSync(path.join(__dirname,"..","telemetryQueue.js"),"utf8");
  assert.match(source,/fs\.promises\.open\(/);
  assert.match(source,/fs\.constants\.O_NOFOLLOW/);
- assert.match(source,/await handle\.readFile\(\)/);
+ assert.match(source,/await handle\.read\(/);
+ assert.match(source,/Buffer\.allocUnsafe\(stat\.size \+ 1\)/);
+ assert.match(source,/fs\.constants\.O_NONBLOCK/);
+ assert.doesNotMatch(source,/await handle\.readFile\(\)/);
  assert.doesNotMatch(source,/fs\.promises\.readFile\(filePath/);
 });
 
@@ -727,4 +730,73 @@ test("flush still respects a valid finite per-cycle bound and leaves FIFO intact
    assert.equal(second.remaining,0);
    assert.deepEqual(seen,["0","1","2","3"]);
  }finally{fs.rmSync(dir,{recursive:true,force:true})}
+});
+
+
+test("POSIX diagnostic FIFO cannot hang queue open or be rewritten", {skip:process.platform==="win32",timeout:7000},()=>{
+ const {dir,filePath}=tempQueue();
+ const {spawnSync}=require("node:child_process");
+ try{
+  const made=spawnSync("mkfifo",[filePath],{encoding:"utf8",timeout:3000});
+  if(made.error?.code==="ENOENT")return;
+  assert.equal(made.status,0,made.stderr);
+  const child=[
+   'const {createDurableTelemetryQueue}=require(process.argv[1]);',
+   'createDurableTelemetryQueue({filePath:process.argv[2]}).size()',
+   '.then(()=>{console.error("FIFO accepted");process.exitCode=35;},',
+   'e=>{if(e.code!=="AOE2_TELEMETRY_QUEUE_UNREADABLE"){console.error(e);process.exitCode=36;}});'
+  ].join("\n");
+  const result=spawnSync(process.execPath,["-e",child,path.join(__dirname,"..","telemetryQueue.js"),filePath],{
+   encoding:"utf8",timeout:3000,windowsHide:true,
+  });
+  assert.equal(result.error,undefined,"FIFO read must not hang: "+String(result.error));
+  assert.equal(result.status,0,result.stderr);
+  assert.equal(fs.lstatSync(filePath).isFIFO(),true);
+ }finally{fs.rmSync(dir,{recursive:true,force:true});}
+});
+
+test("diagnostic queue uses a bounded read rather than readFile on a growing inode",()=>{
+ const code=fs.readFileSync(path.join(__dirname,"..","telemetryQueue.js"),"utf8");
+ assert.match(code,/Buffer\.allocUnsafe\(stat\.size \+ 1\)/);
+ assert.match(code,/received !== stat\.size/);
+ assert.match(code,/after\.size !== stat\.size/);
+ assert.match(code,/after\.mtimeMs !== stat\.mtimeMs/);
+ assert.match(code,/after\.ctimeMs !== stat\.ctimeMs/);
+ assert.doesNotMatch(code,/await handle\.readFile\(\)/);
+});
+
+
+test("rejects a concurrent append between initial fstat and bounded read without modifying original evidence",async()=>{
+ const {dir,filePath}=tempQueue();
+ const original=JSON.stringify([{id:"telemetry_0123456789abcdef0123456789abcdef",
+   queuedAtMs:Date.now(),payload:{event_type:"heartbeat"}}])+"\n";
+ fs.writeFileSync(filePath,original,"utf8");
+ const originalOpen=fs.promises.open;
+ let injected=0;
+ try{
+  fs.promises.open=async function(...args){
+   const handle=await originalOpen.apply(fs.promises,args);
+   if(args[0]===filePath){
+    const stat=handle.stat.bind(handle);
+    let first=true;
+    handle.stat=async function(...statArgs){
+     const snapshot=await stat(...statArgs);
+     if(first){
+      first=false; injected++;
+      // Simulates a second writer changing the same open inode after fstat.
+      fs.appendFileSync(filePath," ", "utf8");
+     }
+     return snapshot;
+    };
+   }
+   return handle;
+  };
+  const queue=createDurableTelemetryQueue({filePath});
+  await assert.rejects(queue.size(),error=>error.code==="AOE2_TELEMETRY_QUEUE_UNREADABLE");
+  assert.equal(injected,1);
+  assert.equal(fs.readFileSync(filePath,"utf8"),original+" ");
+ }finally{
+  fs.promises.open=originalOpen;
+  fs.rmSync(dir,{recursive:true,force:true});
+ }
 });

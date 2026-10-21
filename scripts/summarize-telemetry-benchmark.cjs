@@ -19,7 +19,9 @@ function median(xs) {
 }
 function clean(n) { return Math.round(n*100)/100; }
 function run(args) {
- if(args.length!==2)throw Error("Usage: summary baseline.jsonl candidate.jsonl");
+ if(args.length!==2 && args.length!==3)throw Error("Usage: summary baseline.jsonl candidate.jsonl [baseline label]");
+ const baselineLabel=args[2]||"v1.6.5";
+ if(!/^[A-Za-z0-9 .-]{1,48}$/.test(baselineLabel))throw Error("Invalid baseline display label");
  const base=parseFile(args[0]),candidate=parseFile(args[1]);
  if(base.length!==candidate.length)throw Error("Unpaired iteration counts");
  const metrics=[
@@ -31,12 +33,12 @@ function run(args) {
   ["rssDeltaMb","RSS delta (MiB)"],
  ];
  const lines=[
-  "## Watcher telemetry queue: pinned published 1.6.5 versus candidate",
+  "## Watcher telemetry queue: pinned "+(baselineLabel==="v1.6.5"?"published 1.6.5":baselineLabel)+" versus candidate",
   "",
   "Synthetic serialized diagnostic-queue benchmark on GitHub-hosted runner, **not installed Watcher performance**.",
   `Trials per version: ${base.length}; entries and deliveries per trial: 200.`,
   "",
-  "| Metric | v1.6.5 median | Candidate median |",
+  `| Metric | ${baselineLabel} median | Candidate median |`,
   "|---|---:|---:|",
  ];
  for(const [field,label] of metrics) {
