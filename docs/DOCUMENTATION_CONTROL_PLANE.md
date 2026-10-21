@@ -19,7 +19,7 @@ Repository ID: `aoe2-watcher`
 
 Documentation owner: `aoe2war-watcher`
 
-Implementation baseline: `fix/watcher-166-heartbeat-and-boot-timeout-bounds-20261021` at `90b2c38ff59c90d50376b67b2ef90f950b28a1c8`
+Implementation baseline: `test/watcher-166-native-electron-boot-20261021` at `37550eb19b8df68fab02305f78d2b391b5224f8e`
 
 The implementation baseline identifies the code commit described by this documentation. Documentation-only commits may follow it without creating a self-referential registry hash.
 

@@ -50,6 +50,9 @@ jobs:
         run: npm run pack
       - name: Audit actual Linux-unpacked Electron runtime ASAR
         run: node scripts/audit-packaged-runtime.cjs "$PWD/dist/linux-unpacked/resources/app.asar"
+      - name: Smoke actual packaged Linux Electron main process and dashboard
+        shell: bash
+        run: bash scripts/smoke-linux-electron-boot.sh
 
       # Run last so an external advisory does not hide local test failures.
       # This remains a required hard-failing security gate; do not bypass it.

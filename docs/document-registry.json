@@ -36,7 +36,7 @@
       "review_interval_days": 0,
       "reviewed_at": "2026-07-26",
       "sensitivity": "internal",
-      "sha256": "3209f13b5f40f650853327dc830f3b4ec19f35d5faddd0d00515d35edac07891",
+      "sha256": "34475ff479aa8d93409db914edb25130e9a98aa2a59a95135dd88523bff026fa",
       "source_of_truth": "generated",
       "status": "generated",
       "systems": [
@@ -280,7 +280,7 @@
       "review_interval_days": 14,
       "reviewed_at": "2026-10-21",
       "sensitivity": "internal",
-      "sha256": "979e9f2cbd3cef9aa0c54d605d2624c66b206b19c780a5f95f67ac5260dd366c",
+      "sha256": "957cfd6e4ad833974e7c1c8bfed7c5816893abac0518f2405a217916bc9eea82",
       "source_of_truth": "git",
       "status": "draft",
       "systems": [
@@ -709,10 +709,10 @@
       "type": "working"
     }
   ],
-  "generated_at": "2026-10-21T23:02:15.598Z",
+  "generated_at": "2026-10-21T23:18:18.322Z",
   "implementation_baseline": {
-    "branch": "fix/watcher-166-heartbeat-and-boot-timeout-bounds-20261021",
-    "commit": "90b2c38ff59c90d50376b67b2ef90f950b28a1c8"
+    "branch": "test/watcher-166-native-electron-boot-20261021",
+    "commit": "37550eb19b8df68fab02305f78d2b391b5224f8e"
   },
   "owner": "aoe2war-watcher",
   "repo": "aoe2-watcher",
