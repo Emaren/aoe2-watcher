@@ -36,7 +36,7 @@
       "review_interval_days": 0,
       "reviewed_at": "2026-07-26",
       "sensitivity": "internal",
-      "sha256": "a1be5eebe10910948f0c4051a1049bf4b82b24679347dc5fa35df846adf4cf5f",
+      "sha256": "b7dbe697ff5db8f9bd875a1b16290118869859c9cff18d54cf40d0110b653eca",
       "source_of_truth": "generated",
       "status": "generated",
       "systems": [
@@ -280,7 +280,7 @@
       "review_interval_days": 14,
       "reviewed_at": "2026-10-21",
       "sensitivity": "internal",
-      "sha256": "f6f4415f3120f050f003c5da2fbc4bef8b7b2834e6d06bd81b67faf320674734",
+      "sha256": "979e9f2cbd3cef9aa0c54d605d2624c66b206b19c780a5f95f67ac5260dd366c",
       "source_of_truth": "git",
       "status": "draft",
       "systems": [
@@ -709,10 +709,10 @@
       "type": "working"
     }
   ],
-  "generated_at": "2026-10-21T22:46:25.162Z",
+  "generated_at": "2026-10-21T22:56:34.620Z",
   "implementation_baseline": {
-    "branch": "fix/watcher-166-diagnostic-byte-limits-20261021",
-    "commit": "fe13b70ba94e4dff3dadd952240ec67e6ce43402"
+    "branch": "fix/watcher-166-packaged-commonjs-closure-20261021",
+    "commit": "5b097e7ccd85a2a6217d05f85e70405d50e2e1c2"
   },
   "owner": "aoe2war-watcher",
   "repo": "aoe2-watcher",
