@@ -1,3 +1,18 @@
+---
+id: "aoe2war.aoe2-watcher.docs-watcher-1-6-6-install-target-eligibility"
+title: "Watcher 1.6.6 — Read-only user-owned install-target eligibility"
+type: "working"
+status: "draft"
+owner: "aoe2war-watcher"
+systems: ["aoe2-watcher"]
+audience: ["developers","operators","ai-agents"]
+source_of_truth: "git"
+authority: "watcher-1.6.6-unreleased-engineering-evidence"
+reviewed_at: "2026-10-21"
+review_interval_days: 14
+sensitivity: "internal"
+---
+
 # Watcher 1.6.6 — Read-only user-owned install-target eligibility
 
 The Watcher presently may be installed in `/Applications/AoE2HDBets Watcher.app`. A nonprivileged user-scoped helper must **not** infer it can overwrite a root-owned application there. This source-only diagnostic classifies that exact target as `migration_required`; it does not move, delete, or elevate anything.

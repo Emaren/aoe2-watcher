@@ -1,3 +1,18 @@
+---
+id: "aoe2war.aoe2-watcher.docs-watcher-1-6-6-mac-staging"
+title: "Watcher 1.6.6 — Secure unsigned-Mac staging (isolated draft)"
+type: "working"
+status: "draft"
+owner: "aoe2war-watcher"
+systems: ["aoe2-watcher"]
+audience: ["developers","operators","ai-agents"]
+source_of_truth: "git"
+authority: "watcher-1.6.6-unreleased-engineering-evidence"
+reviewed_at: "2026-10-21"
+review_interval_days: 14
+sensitivity: "internal"
+---
+
 # Watcher 1.6.6 — Secure unsigned-Mac staging (isolated draft)
 
 This is **a disconnected pre-install module**, not a working/activated updater. The in-app unsigned Mac flow remains manual. The public release remains 1.6.5.

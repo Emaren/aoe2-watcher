@@ -1,3 +1,18 @@
+---
+id: "aoe2war.aoe2-watcher.docs-watcher-1-6-6-telemetry-delivery"
+title: "Watcher 1.6.6 — Telemetry Delivery Acknowledgment, Pass 1"
+type: "working"
+status: "draft"
+owner: "aoe2war-watcher"
+systems: ["aoe2-watcher"]
+audience: ["developers","operators","ai-agents"]
+source_of_truth: "git"
+authority: "watcher-1.6.6-unreleased-engineering-evidence"
+reviewed_at: "2026-10-21"
+review_interval_days: 14
+sensitivity: "internal"
+---
+
 # Watcher 1.6.6 — Telemetry Delivery Acknowledgment, Pass 1
 
 Status: **candidate source only**. Do not bump package version, publish binaries, merge financial branches, or claim installed-client qualification.

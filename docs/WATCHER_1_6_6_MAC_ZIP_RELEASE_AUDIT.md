@@ -1,3 +1,18 @@
+---
+id: "aoe2war.aoe2-watcher.docs-watcher-1-6-6-mac-zip-release-audit"
+title: "Watcher native macOS ZIP safety proof — release-time, zero client overhead"
+type: "working"
+status: "draft"
+owner: "aoe2war-watcher"
+systems: ["aoe2-watcher"]
+audience: ["developers","operators","ai-agents"]
+source_of_truth: "git"
+authority: "watcher-1.6.6-unreleased-engineering-evidence"
+reviewed_at: "2026-10-21"
+review_interval_days: 14
+sensitivity: "internal"
+---
+
 # Watcher native macOS ZIP safety proof — release-time, zero client overhead
 
 The real native update ZIP is examined before a candidate's macOS CI build can pass, and before the separate non-Windows release workflow can publish candidate artifacts. The auditor is Python standard-library code, **not** an installed Watcher service or custom ZIP extractor.

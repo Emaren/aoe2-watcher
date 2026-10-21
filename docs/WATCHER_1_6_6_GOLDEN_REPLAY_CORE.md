@@ -1,3 +1,18 @@
+---
+id: "aoe2war.aoe2-watcher.docs-watcher-1-6-6-golden-replay-core"
+title: "Watcher 1.6.6 — Frozen replay golden core"
+type: "working"
+status: "draft"
+owner: "aoe2war-watcher"
+systems: ["aoe2-watcher"]
+audience: ["developers","operators","ai-agents"]
+source_of_truth: "git"
+authority: "watcher-1.6.6-unreleased-engineering-evidence"
+reviewed_at: "2026-10-21"
+review_interval_days: 14
+sensitivity: "internal"
+---
+
 # Watcher 1.6.6 — Frozen replay golden core
 
 The 1.6.6 candidate must improve the surrounding telemetry, diagnostics, updater and release safety **without changing the published 1.6.5 replay engine's behavior**.

@@ -1,3 +1,18 @@
+---
+id: "aoe2war.aoe2-watcher.docs-watcher-1-6-6-mac-packaging-boundary"
+title: "Watcher 1.6.6 — Keep unfinished Mac updater modules outside distributables"
+type: "working"
+status: "draft"
+owner: "aoe2war-watcher"
+systems: ["aoe2-watcher"]
+audience: ["developers","operators","ai-agents"]
+source_of_truth: "git"
+authority: "watcher-1.6.6-unreleased-engineering-evidence"
+reviewed_at: "2026-10-21"
+review_interval_days: 14
+sensitivity: "internal"
+---
+
 # Watcher 1.6.6 — Keep unfinished Mac updater modules outside distributables
 
 The new macUnsignedUpdate* signer verification, staging, bundle audit, transaction and crash journal files are **reviewable source/test assets**. They have no production call site, verified public release key, trusted ZIP extraction implementation or independently qualified process-exit/rollback helper. Adding them to electron-builder's explicit build.files array would inflate installer payload and complicate interpretation of unfinished code as ready for use.

@@ -1,3 +1,18 @@
+---
+id: "aoe2war.aoe2-watcher.docs-watcher-1-6-6-real-mac-signer-smoke"
+title: "Watcher 1.6.6 — Real native Mac ZIP ephemeral signing smoke"
+type: "working"
+status: "draft"
+owner: "aoe2war-watcher"
+systems: ["aoe2-watcher"]
+audience: ["developers","operators","ai-agents"]
+source_of_truth: "git"
+authority: "watcher-1.6.6-unreleased-engineering-evidence"
+reviewed_at: "2026-10-21"
+review_interval_days: 14
+sensitivity: "internal"
+---
+
 # Watcher 1.6.6 — Real native Mac ZIP ephemeral signing smoke
 
 The macOS packaging and separately controlled non-Windows release-build workflows now check the **actual** Electron-built updater ZIP twice before promotion: a standard-library ZIP entry/CRC/symlink audit, then an end-to-end Ed25519 publisher/client-verifier test.
