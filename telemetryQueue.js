@@ -289,10 +289,30 @@ async function readQueueFile(filePath, maxAgeMs, now = Date.now()) {
   return { entries, exists: true };
 }
 
+// POSIX rename/unlink metadata is not power-loss durable until the parent
+// directory is synced. Windows has no portable Node directory fsync; file
+// fsync still runs, but Windows metadata durability remains unverified.
+async function syncQueueParentDirectory(filePath) {
+  if (process.platform === "win32") return;
+  let directory;
+  try {
+    directory = await fs.promises.open(
+      path.dirname(filePath),
+      fs.constants.O_RDONLY |
+        (fs.constants.O_DIRECTORY || 0) |
+        (fs.constants.O_NOFOLLOW || 0)
+    );
+    await directory.sync();
+  } finally {
+    if (directory) await directory.close().catch(() => {});
+  }
+}
+
 async function writeQueueFile(filePath, entries) {
   if (!filePath) return;
   if (!Array.isArray(entries) || entries.length === 0) {
     await fs.promises.rm(filePath, { force: true });
+    await syncQueueParentDirectory(filePath);
     return;
   }
 
@@ -304,13 +324,28 @@ async function writeQueueFile(filePath, entries) {
   }
   await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
   const tempPath = `${filePath}.tmp-${process.pid}-${crypto.randomBytes(8).toString("hex")}`;
+  let temporary;
   try {
-    // A queue includes player/session diagnostics; never let the host umask
-    // create a world-readable temporary or persisted queue.
-    await fs.promises.writeFile(tempPath, payload,
-      { encoding: "utf8", flag: "wx", mode: 0o600 });
+    // Flush real file contents before publishing the rename. A process-kill
+    // or rename-only test does not prove survival after sudden power loss.
+    temporary = await fs.promises.open(
+      tempPath,
+      fs.constants.O_WRONLY |
+        fs.constants.O_CREAT |
+        fs.constants.O_EXCL |
+        (fs.constants.O_NOFOLLOW || 0),
+      0o600
+    );
+    await temporary.writeFile(payload, "utf8");
+    await temporary.sync();
+    await temporary.close();
+    temporary = null;
     await fs.promises.rename(tempPath, filePath);
+    await syncQueueParentDirectory(filePath);
   } catch (error) {
+    if (temporary) await temporary.close().catch(() => {});
+    // A failure after rename may leave a valid on-disk queue. Never unlink
+    // the published pathname just to hide a durability uncertainty.
     await fs.promises.rm(tempPath, { force: true }).catch(() => {});
     throw error;
   }

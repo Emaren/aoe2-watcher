@@ -37,3 +37,29 @@ v1.6.5 telemetryQueue.js performed `readFileSync`, `writeFileSync`, `renameSync`
 - Failed writes and corrupt queues are surfaced in local logs. Queue repair is a separately designed, owner-consented operation.
 - Zero-loss game replay semantics rely on the unchanged replay uploader and server storage, not the optional diagnostic queue.
 - CI must prove malformed-file refusal, clean recovery, async API, bounded queue, FIFO, restart and source regressions.
+
+## Power-loss metadata durability — draft follow-up
+
+The original 1.6.6 asynchronous telemetry queue used an exclusive 0600
+write-to-temporary-file followed by atomic rename, but neither operation
+alone provides a stable-storage guarantee after sudden power loss.
+
+The source candidate now uses a FileHandle with `sync()` before rename and,
+on POSIX, synchronizes the containing directory after a rename or queue
+unlink. A file-sync failure leaves the existing last-known-good queue in
+place. A directory-sync failure after rename **refuses the enqueue success**
+but preserves the newly published valid queue; the exact telemetry event ID
+must remain deduplicated on server retries. Windows file sync is executed;
+portable Windows directory metadata sync is not available from Node and
+remains an explicit physical recovery-certification gap.
+
+CI regression tests observe file-sync → rename → parent-sync ordering and
+inject failures both before and after rename. These are controlled filesystem
+and process tests, **not** a physical power-cut canary. The added sync I/O
+has an explicit latency/disk-cost tradeoff; synthetic before/after trials
+and installed-client CPU/wakeup measurements are required for final approval.
+
+The single-Electron-instance safeguard still defines the live queue writer
+ownership boundary. Multiple independent processes writing the same queue
+file are not yet an independently certified concurrent-write protocol and
+must not be inferred safe merely because atomic rename is used.
