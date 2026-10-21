@@ -44,6 +44,11 @@ jobs:
       - name: Audit dependencies
         run: npm audit --audit-level=high
 
+      # Dev build-chain advisories are reviewed separately. Runtime modules
+      # must meet the stricter moderate-severity policy, without exemptions.
+      - name: Audit production dependencies at moderate severity
+        run: npm audit --omit=dev --audit-level=moderate
+
   windows-video-package:
     name: Windows NSIS and portable packaging smoke
     runs-on: windows-latest
