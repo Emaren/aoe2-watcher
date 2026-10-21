@@ -19,7 +19,7 @@ Repository ID: `aoe2-watcher`
 
 Documentation owner: `aoe2war-watcher`
 
-Implementation baseline: `fix/watcher-166-diagnostic-byte-limits-20261021` at `fe13b70ba94e4dff3dadd952240ec67e6ce43402`
+Implementation baseline: `fix/watcher-166-packaged-commonjs-closure-20261021` at `5b097e7ccd85a2a6217d05f85e70405d50e2e1c2`
 
 The implementation baseline identifies the code commit described by this documentation. Documentation-only commits may follow it without creating a self-referential registry hash.
 

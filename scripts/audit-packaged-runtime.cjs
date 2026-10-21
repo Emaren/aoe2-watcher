@@ -21,6 +21,34 @@ const UNQUALIFIED_MAC_MODULES=[
  "macUnsignedUpdateJournal.js","macUnsignedUpdateInstallTarget.js",
  "macUnsignedUpdateSwapRehearsal.js",
 ];
+// A successful ASAR build is not proof Electron can load its own main
+// process. Electron-builder's explicit files allowlist must contain every
+// static local CommonJS import from the app's shipped root JavaScript.
+function inspectRootModuleClosure(archivePath, files) {
+ const set=new Set(files);
+ const rootScripts=files.filter(item=>!item.includes("/") && item.endsWith(".js"));
+ const inspected=[];
+ for(const rootFile of rootScripts) {
+  const bytes=asar.extractFile(archivePath,rootFile);
+  if(bytes.length>4*1024*1024)reject("unbounded root module: "+rootFile);
+  const source=bytes.toString("utf8");
+  const references=[];
+  const matches=source.matchAll(/\brequire\s*\(\s*["'](\.[^"']+)["']\s*\)/g);
+  for(const match of matches) {
+   const spec=match[1];
+   const joined=path.posix.normalize(path.posix.join(path.posix.dirname(rootFile),spec));
+   if(joined.startsWith("../")||joined===".."||joined.startsWith("/"))
+    reject("root module import escapes archive: "+rootFile+" -> "+spec);
+   const candidates=[joined,joined+".js",joined+".json",joined+"/index.js"];
+   if(!candidates.some(item=>set.has(item)))
+    reject("missing packaged local CommonJS module: "+rootFile+" -> "+spec);
+   references.push(spec);
+  }
+  inspected.push({file:rootFile,staticLocalImports:references.length});
+ }
+ return inspected;
+}
+
 function devOnlyDependency(pathName) {
  return FORBIDDEN_BUILD_MODULES.some(name=>{
   const prefix="node_modules/"+name;
@@ -93,6 +121,7 @@ async function audit(filePath) {
  for(const name of ["main.js","watcher.js","telemetryQueue.js","telemetryDelivery.js","package.json"]){
   if(!set.has(name))reject("missing shipped runtime: "+name);
  }
+ const rootModuleClosure=inspectRootModuleClosure(filePath,files);
  const appPackage=JSON.parse(asar.extractFile(filePath,"package.json").toString("utf8"));
  if(appPackage.version!=="1.6.5"||appPackage.name!=="aoe2-watcher")reject("candidate identity or version mismatch");
  for(const item of files){
@@ -116,6 +145,7 @@ async function audit(filePath) {
   archiveSha256:digest.digest("hex"),
   archiveBytes:st.size,entryCount:files.length,
   packageVersion:appPackage.version,
+  rootModuleClosure,
   followRedirectsVersions:[...installed.map(x=>"1.16.1"),...sidecar.followRedirectsVersions],
   unpackedSidecar:{fileCount:sidecar.fileCount,bytes:sidecar.bytes,sha256:sidecar.sha256},
   excludedUnqualifiedMacUpdater:true,
