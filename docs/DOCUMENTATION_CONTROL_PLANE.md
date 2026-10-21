@@ -19,7 +19,7 @@ Repository ID: `aoe2-watcher`
 
 Documentation owner: `aoe2war-watcher`
 
-Implementation baseline: `fix/watcher-166-packaged-commonjs-closure-20261021` at `5b097e7ccd85a2a6217d05f85e70405d50e2e1c2`
+Implementation baseline: `fix/watcher-166-heartbeat-and-boot-timeout-bounds-20261021` at `90b2c38ff59c90d50376b67b2ef90f950b28a1c8`
 
 The implementation baseline identifies the code commit described by this documentation. Documentation-only commits may follow it without creating a self-referential registry hash.
 
