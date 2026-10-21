@@ -1884,6 +1884,9 @@ function isRetryableTelemetryError(
   }
 
   return (
+    // Diagnostic telemetry must not follow redirects carrying x-api-key.
+    // Preserve an unexpected 3xx as retryable instead of losing the event.
+    (status >= 300 && status < 400) ||
     status === 408 ||
     status === 425 ||
     status === 429 ||
@@ -1936,6 +1939,7 @@ async function flushWatcherTelemetryQueue(
             {
               timeout:
                 TELEMETRY_TIMEOUT_MS,
+              maxRedirects: 0,
               headers: {
                 "content-type":
                   "application/json",
@@ -2017,6 +2021,7 @@ async function postWatcherTelemetry(
       {
         timeout:
           TELEMETRY_TIMEOUT_MS,
+        maxRedirects: 0,
         headers: {
           "content-type":
             "application/json",
