@@ -1,3 +1,18 @@
+---
+id: "aoe2war.aoe2-watcher.docs-watcher-1-6-6-mac-swap-rehearsal"
+title: "Watcher 1.6.6 — Offline app-swap / rollback filesystem rehearsal"
+type: "working"
+status: "draft"
+owner: "aoe2war-watcher"
+systems: ["aoe2-watcher"]
+audience: ["developers","operators","ai-agents"]
+source_of_truth: "git"
+authority: "watcher-1.6.6-unreleased-engineering-evidence"
+reviewed_at: "2026-10-21"
+review_interval_days: 14
+sensitivity: "internal"
+---
+
 # Watcher 1.6.6 — Offline app-swap / rollback filesystem rehearsal
 
 **NOT an installed Mac updater.** This source-only module is deliberately restricted to a fresh, private, direct child of the current OS temporary directory whose name starts `watcher-swap-rehearsal-`. It cannot operate on `/Applications`, `~/Applications`, or the running Watcher app; never import it from the shipped Electron main process.

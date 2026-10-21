@@ -1,3 +1,18 @@
+---
+id: "aoe2war.aoe2-watcher.docs-watcher-1-6-6-mac-transaction-policy"
+title: "Watcher 1.6.6 — Disconnected Mac updater transaction policy"
+type: "working"
+status: "draft"
+owner: "aoe2war-watcher"
+systems: ["aoe2-watcher"]
+audience: ["developers","operators","ai-agents"]
+source_of_truth: "git"
+authority: "watcher-1.6.6-unreleased-engineering-evidence"
+reviewed_at: "2026-10-21"
+review_interval_days: 14
+sensitivity: "internal"
+---
+
 # Watcher 1.6.6 — Disconnected Mac updater transaction policy
 
 **This code does not install anything.** It declares the evidence-gated transaction sequence for a future unsigned-macOS replacement helper. The existing manual 1.6.5 update and replay engine are unchanged.

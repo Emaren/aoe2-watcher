@@ -1,3 +1,18 @@
+---
+id: "aoe2war.aoe2-watcher.docs-watcher-1-6-6-queue-benchmark"
+title: "Watcher 1.6.6 — Measured Queue Microbenchmark"
+type: "working"
+status: "draft"
+owner: "aoe2war-watcher"
+systems: ["aoe2-watcher"]
+audience: ["developers","operators","ai-agents"]
+source_of_truth: "git"
+authority: "watcher-1.6.6-unreleased-engineering-evidence"
+reviewed_at: "2026-10-21"
+review_interval_days: 14
+sensitivity: "internal"
+---
+
 # Watcher 1.6.6 — Measured Queue Microbenchmark
 
 A synthetic microbenchmark is included so we can compare the old synchronous telemetry queue and the 1.6.6 async queue **on the same host and toolchain**. It does not measure an Electron renderer, games, installed binary, video encoding, real network or power.
