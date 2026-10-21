@@ -764,3 +764,39 @@ test("diagnostic queue uses a bounded read rather than readFile on a growing ino
  assert.match(code,/after\.ctimeMs !== stat\.ctimeMs/);
  assert.doesNotMatch(code,/await handle\.readFile\(\)/);
 });
+
+
+test("rejects a concurrent append between initial fstat and bounded read without modifying original evidence",async()=>{
+ const {dir,filePath}=tempQueue();
+ const original=JSON.stringify([{id:"telemetry_0123456789abcdef0123456789abcdef",
+   queuedAtMs:Date.now(),payload:{event_type:"heartbeat"}}])+"\n";
+ fs.writeFileSync(filePath,original,"utf8");
+ const originalOpen=fs.promises.open;
+ let injected=0;
+ try{
+  fs.promises.open=async function(...args){
+   const handle=await originalOpen.apply(fs.promises,args);
+   if(args[0]===filePath){
+    const stat=handle.stat.bind(handle);
+    let first=true;
+    handle.stat=async function(...statArgs){
+     const snapshot=await stat(...statArgs);
+     if(first){
+      first=false; injected++;
+      // Simulates a second writer changing the same open inode after fstat.
+      fs.appendFileSync(filePath," ", "utf8");
+     }
+     return snapshot;
+    };
+   }
+   return handle;
+  };
+  const queue=createDurableTelemetryQueue({filePath});
+  await assert.rejects(queue.size(),error=>error.code==="AOE2_TELEMETRY_QUEUE_UNREADABLE");
+  assert.equal(injected,1);
+  assert.equal(fs.readFileSync(filePath,"utf8"),original+" ");
+ }finally{
+  fs.promises.open=originalOpen;
+  fs.rmSync(dir,{recursive:true,force:true});
+ }
+});
