@@ -38,6 +38,8 @@ jobs:
 
       - name: Package smoke test
         run: npm run pack
+      - name: Audit actual Linux-unpacked Electron runtime ASAR
+        run: node scripts/audit-packaged-runtime.cjs "$PWD/dist/linux-unpacked/resources/app.asar"
 
       # Run last so an external advisory does not hide local test failures.
       # This remains a required hard-failing security gate; do not bypass it.
@@ -74,6 +76,11 @@ jobs:
           npm test
       - name: Build both unsigned Windows candidates without publishing
         run: npm run dist:win -- --publish never
+      - name: Audit actual Windows Electron runtime ASAR
+        shell: pwsh
+        run: |
+          $asar = (Resolve-Path "dist/win-unpacked/resources/app.asar").Path
+          node scripts/audit-packaged-runtime.cjs $asar
       - name: Verify NSIS and portable executable outputs
         shell: pwsh
         run: |
@@ -140,6 +147,8 @@ jobs:
         run: npm run dist:mac -- --publish never
       - name: Build direct ZIP from exact same macOS app bundle
         run: npm run dist:manual-zip
+      - name: Audit actual macOS Electron runtime ASAR
+        run: node scripts/audit-packaged-runtime.cjs "$PWD/dist/mac-arm64/AoE2HDBets Watcher.app/Contents/Resources/app.asar"
       - name: Verify updater-native macOS ZIP and manifest integrity
         run: npm run verify:mac-updater
       - name: Audit actual updater-native ZIP filesystem safety
@@ -210,6 +219,8 @@ jobs:
         run: npm ci
       - name: Build AppImage without publishing
         run: npm run dist:linux -- --publish never
+      - name: Audit actual AppImage source Electron ASAR
+        run: node scripts/audit-packaged-runtime.cjs "$PWD/dist/linux-unpacked/resources/app.asar"
       - name: Verify versioned AppImage and its integrity
         shell: bash
         run: |
