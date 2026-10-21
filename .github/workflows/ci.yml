@@ -52,19 +52,8 @@ jobs:
         run: node scripts/audit-packaged-runtime.cjs "$PWD/dist/linux-unpacked/resources/app.asar"
       - name: Smoke actual packaged Linux Electron main process and dashboard
         shell: bash
-        run: |
-          set -euo pipefail
-          if ! command -v xvfb-run >/dev/null 2>&1; then
-            sudo apt-get update -qq
-            sudo apt-get install -y xvfb
-          fi
+        run: bash scripts/smoke-linux-electron-boot.sh
 
-          stage="$(mktemp -d "${RUNNER_TEMP}/watcher-real-boot.XXXXXX")"
-          chmod 700 "$stage"
-          mkdir -p "$stage/home/.config" "$stage/home/.local/share" "$stage/empty-replays"
-          mapfile -t executables < <(
-            find "$PWD/dist/linux-unpacked" -maxdepth 1 -type f -executable -print |
-            grep -Ei '/[^/]*watcher[^/]*
       # Run last so an external advisory does not hide local test failures.
       # This remains a required hard-failing security gate; do not bypass it.
       - name: Audit dependencies
