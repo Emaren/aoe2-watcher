@@ -39,6 +39,7 @@ const {
   DEFAULT_FOLDER_STATUS_CACHE_MS,
   DEFAULT_MONITOR_WATCHDOG_MS,
   DEFAULT_UPDATE_RECHECK_MS,
+  boundedBackgroundIntervalMs,
   getUpdateBlocker,
   getUpdateTrayPresentation,
   shouldLaunchInBackground,
@@ -120,12 +121,9 @@ const RUNTIME_EVENT_JOURNAL_MAX_BYTES = Number(
   process.env.AOE2_RUNTIME_EVENT_JOURNAL_MAX_BYTES ||
     5 * 1024 * 1024
 );
-const RUNTIME_EVENT_JOURNAL_FLUSH_MS = Math.max(
-  250,
-  Number(
-    process.env.AOE2_RUNTIME_EVENT_JOURNAL_FLUSH_MS ||
-      2000
-  )
+const RUNTIME_EVENT_JOURNAL_FLUSH_MS = boundedBackgroundIntervalMs(
+  process.env.AOE2_RUNTIME_EVENT_JOURNAL_FLUSH_MS,
+  { fallback: 2000, minimum: 250, maximum: 60_000 }
 );
 const RUNTIME_EVENT_JOURNAL_PENDING_MAX_BYTES = Math.max(
   256 * 1024,
@@ -200,43 +198,44 @@ let monitorWatchdogTimer = null;
 let monitorReattachAttempts = 0;
 let monitorLastReattachAt = 0;
 let lastReplayFolderFreshnessProbeAt = 0;
-const MONITOR_WATCHDOG_MS = Number(
-  process.env.AOE2_MONITOR_WATCHDOG_MS ||
-    DEFAULT_MONITOR_WATCHDOG_MS
+const MONITOR_WATCHDOG_MS = boundedBackgroundIntervalMs(
+  process.env.AOE2_MONITOR_WATCHDOG_MS,
+  { fallback: DEFAULT_MONITOR_WATCHDOG_MS, minimum: 5_000 }
 );
-const UPDATE_RECHECK_MS = Math.max(
-  60 * 60 * 1000,
-  Number(
-    process.env.AOE2_UPDATE_RECHECK_MS ||
-      DEFAULT_UPDATE_RECHECK_MS
-  ) || DEFAULT_UPDATE_RECHECK_MS
+const UPDATE_RECHECK_MS = boundedBackgroundIntervalMs(
+  process.env.AOE2_UPDATE_RECHECK_MS,
+  { fallback: DEFAULT_UPDATE_RECHECK_MS, minimum: 60 * 60 * 1000 }
 );
-const REPLAY_FOLDER_FRESHNESS_PROBE_MS = Number(
-  process.env.AOE2_REPLAY_FOLDER_FRESHNESS_PROBE_MS ||
-    DEFAULT_FOLDER_FRESHNESS_PROBE_MS
+const REPLAY_FOLDER_FRESHNESS_PROBE_MS = boundedBackgroundIntervalMs(
+  process.env.AOE2_REPLAY_FOLDER_FRESHNESS_PROBE_MS,
+  { fallback: DEFAULT_FOLDER_FRESHNESS_PROBE_MS, minimum: 10_000 }
 );
-const FOLDER_STATUS_CACHE_MS = Number(
-  process.env.AOE2_FOLDER_STATUS_CACHE_MS ||
-    DEFAULT_FOLDER_STATUS_CACHE_MS
+const FOLDER_STATUS_CACHE_MS = boundedBackgroundIntervalMs(
+  process.env.AOE2_FOLDER_STATUS_CACHE_MS,
+  { fallback: DEFAULT_FOLDER_STATUS_CACHE_MS, minimum: 1_000 }
 );
-const MONITOR_REATTACH_LIMIT = Number(process.env.AOE2_MONITOR_REATTACH_LIMIT || 3);
-const MONITOR_REATTACH_COOLDOWN_MS = Number(
-  process.env.AOE2_MONITOR_REATTACH_COOLDOWN_MS || 60 * 1000
+const MONITOR_REATTACH_LIMIT = (() => {
+  const value = Number(process.env.AOE2_MONITOR_REATTACH_LIMIT);
+  return Number.isSafeInteger(value) && value > 0
+    ? Math.min(value, 10)
+    : 3;
+})();
+const MONITOR_REATTACH_COOLDOWN_MS = boundedBackgroundIntervalMs(
+  process.env.AOE2_MONITOR_REATTACH_COOLDOWN_MS,
+  { fallback: 60_000, minimum: 5_000 }
 );
 const UI_LOG_BUFFER_MAX_ENTRIES = 250;
-const RESOURCE_SAMPLE_MS = Math.max(
-  5000,
-  Number(
-    process.env.AOE2_RESOURCE_SAMPLE_MS ||
-      DEFAULT_RESOURCE_SAMPLE_MS
-  )
+const RESOURCE_SAMPLE_MS = boundedBackgroundIntervalMs(
+  process.env.AOE2_RESOURCE_SAMPLE_MS,
+  { fallback: DEFAULT_RESOURCE_SAMPLE_MS, minimum: 5_000, maximum: 3_600_000 }
 );
-const RESOURCE_IDLE_SAMPLE_MS = Math.max(
-  RESOURCE_SAMPLE_MS,
-  Number(
-    process.env.AOE2_RESOURCE_IDLE_SAMPLE_MS ||
-      DEFAULT_RESOURCE_IDLE_SAMPLE_MS
-  )
+const RESOURCE_IDLE_SAMPLE_MS = boundedBackgroundIntervalMs(
+  process.env.AOE2_RESOURCE_IDLE_SAMPLE_MS,
+  {
+    fallback: Math.max(RESOURCE_SAMPLE_MS, DEFAULT_RESOURCE_IDLE_SAMPLE_MS),
+    minimum: RESOURCE_SAMPLE_MS,
+    maximum: 3_600_000,
+  }
 );
 const recentUiLogs = [];
 let resourceProfileTimer = null;
