@@ -19,7 +19,7 @@ Repository ID: `aoe2-watcher`
 
 Documentation owner: `aoe2war-watcher`
 
-Implementation baseline: `fix/watcher-166-resource-sample-cap-20261021` at `144afe775ff74db822f218c527a0f600964ade28`
+Implementation baseline: `fix/watcher-166-mac-journal-bounded-read-20261021` at `9b7e356ebc6afcc4190f0cd7cee181e377700d76`
 
 The implementation baseline identifies the code commit described by this documentation. Documentation-only commits may follow it without creating a self-referential registry hash.
 

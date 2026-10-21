@@ -112,3 +112,80 @@ test("journal cannot run a shell, install, launch, elevate, or quit the Watcher"
  const text=fs.readFileSync(path.join(__dirname,"..","macUnsignedUpdateJournal.js"),"utf8");
  assert.doesNotMatch(text,/child_process|quitAndInstall|\.app"|spawn\(|exec\(/);
 });
+
+
+test("damaged UTF-8 inside an otherwise valid transaction envelope is preserved byte-for-byte",{skip},async()=>{
+ const dir=fixture();
+ try{
+  await createMacUpdateJournal(dir,initial());
+  const filename=path.join(dir,"update-transaction.json");
+  const original=fs.readFileSync(filename);
+  const at=original.indexOf(Buffer.from('"1.6.6"'));
+  assert.ok(at>0);
+  original[at+1]=0xff;
+  fs.writeFileSync(filename,original);
+  await assert.rejects(readMacUpdateJournal(dir),/corrupt_utf8_or_json/);
+  await assert.rejects(advanceMacUpdateJournal(dir,{
+   expectedSequence:0,nextState:"bundle_verified",evidence:"verified_bundle_0001"
+  }),/corrupt_utf8_or_json/);
+  assert.deepEqual(fs.readFileSync(filename),original);
+  assert.equal(fs.existsSync(path.join(dir,"update-transaction.lock")),false);
+ }finally{clean(dir)}
+});
+
+test("concurrent journal append after opened-handle stat refuses without overwriting evidence",{skip},async()=>{
+ const dir=fixture();
+ const originalOpen=fs.promises.open;
+ let injected=0;
+ try{
+  await createMacUpdateJournal(dir,initial());
+  const filename=path.join(dir,"update-transaction.json");
+  fs.promises.open=async function(...args){
+   const handle=await originalOpen.apply(fs.promises,args);
+   if(args[0]===filename){
+    const stat=handle.stat.bind(handle);let first=true;
+    handle.stat=async function(...statArgs){
+     const snapshot=await stat(...statArgs);
+     if(first){
+      first=false;injected++;
+      fs.appendFileSync(filename," ");
+     }
+     return snapshot;
+    };
+   }
+   return handle;
+  };
+  await assert.rejects(readMacUpdateJournal(dir),
+    /journal_changed_during_bounded_read/);
+  assert.equal(injected,1);
+  const raw=fs.readFileSync(filename,"utf8");
+  assert.ok(raw.endsWith("\n "));
+ }finally{
+  fs.promises.open=originalOpen;
+  clean(dir);
+ }
+});
+
+test("journal FIFO open cannot hang without a writer on POSIX",{skip,timeout:8000},async()=>{
+ const {spawnSync}=require("node:child_process");
+ const dir=fixture();
+ try{
+  const filename=path.join(dir,"update-transaction.json");
+  const made=spawnSync("mkfifo",[filename],{encoding:"utf8",timeout:3000});
+  if(made.error?.code==="ENOENT")return;
+  assert.equal(made.status,0,made.stderr);
+  const code=[
+   'const {readMacUpdateJournal}=require(process.argv[1]);',
+   'readMacUpdateJournal(process.argv[2])',
+   '.then(()=>{console.error("FIFO was incorrectly accepted");process.exitCode=25;},',
+   'e=>{if(!/file_type_or_size/.test(e.message)){console.error(e);process.exitCode=26;}});',
+  ].join("\n");
+  const child=spawnSync(process.execPath,["-e",code,
+   path.join(__dirname,"..","macUnsignedUpdateJournal.js"),dir],{
+    encoding:"utf8",timeout:3000,windowsHide:true,
+   });
+  assert.equal(child.error,undefined,String(child.error));
+  assert.equal(child.status,0,child.stderr);
+  assert.equal(fs.lstatSync(filename).isFIFO(),true);
+ }finally{clean(dir)}
+});

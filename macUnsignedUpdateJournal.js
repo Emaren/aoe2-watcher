@@ -44,7 +44,11 @@ function seal(record){
 function parse(bytes){
  if(!Buffer.isBuffer(bytes)||bytes.length===0||bytes.length>MAX_BYTES)deny("invalid_length");
  let result;
- try{result=JSON.parse(bytes.toString("utf8"))}catch{deny("corrupt_json")}
+ try{
+  // A replacement character may hide corrupt raw bytes before a JSON check.
+  const raw=new TextDecoder("utf-8",{fatal:true,ignoreBOM:true}).decode(bytes);
+  result=JSON.parse(raw);
+ }catch{deny("corrupt_utf8_or_json")}
  if(!keysExactly(result,["schema","record","digest"])||result.schema!==1||
     !validateMacUpdateTransaction(result.record)||
     typeof result.digest!=="string"||!/^[a-f0-9]{64}$/.test(result.digest))deny("invalid_record");
@@ -55,12 +59,27 @@ function parse(bytes){
 async function readUnlocked(dir){
  let file;
  try{
+   // Reject a FIFO without waiting for its writer before fstat can run.
    file=await fs.promises.open(path.join(dir,NAME),
-     fs.constants.O_RDONLY|fs.constants.O_NOFOLLOW);
+     fs.constants.O_RDONLY|fs.constants.O_NOFOLLOW|
+     (fs.constants.O_NONBLOCK||0));
    const stat=await file.stat();
    if(!stat.isFile()||stat.size<=0||stat.size>MAX_BYTES)deny("file_type_or_size");
-   const bytes=await file.readFile();
-   return parse(bytes);
+   // FileHandle.readFile() can consume unbounded appends after this stat.
+   // Read the exact opened inode, at most the checked size plus a sentinel.
+   const bytes=Buffer.allocUnsafe(stat.size+1);
+   let count=0;
+   while(count<bytes.length){
+     const read=await file.read(bytes,count,bytes.length-count,count);
+     if(read.bytesRead===0)break;
+     count+=read.bytesRead;
+   }
+   const after=await file.stat();
+   if(count!==stat.size||after.size!==stat.size||
+      after.mtimeMs!==stat.mtimeMs||after.ctimeMs!==stat.ctimeMs){
+     deny("journal_changed_during_bounded_read");
+   }
+   return parse(bytes.subarray(0,count));
  }finally{if(file)await file.close().catch(()=>{})}
 }
 async function persistUnlocked(dir,record,{create=false}={}){
