@@ -36,7 +36,7 @@
       "review_interval_days": 0,
       "reviewed_at": "2026-07-26",
       "sensitivity": "internal",
-      "sha256": "26ea8f01ac02d413ca243fc6d7f53c27c0f57785fe4bb2d2178616ae45257e12",
+      "sha256": "a9de3c97a431530cef97a3c184ed009000b69b3e794793f8c464777a28b90b1a",
       "source_of_truth": "generated",
       "status": "generated",
       "systems": [
@@ -119,6 +119,556 @@
         "operators",
         "ai-agents"
       ],
+      "authority": "watcher-1.6.6-unreleased-engineering-evidence",
+      "id": "aoe2war.aoe2-watcher.docs-watcher-1-6-6-async-telemetry-queue",
+      "owner": "aoe2war-watcher",
+      "path": "docs/WATCHER_1_6_6_ASYNC_TELEMETRY_QUEUE.md",
+      "review_interval_days": 14,
+      "reviewed_at": "2026-10-21",
+      "sensitivity": "internal",
+      "sha256": "3e5103784c83ade98b7a8950253f33c59591e5897428f87546a7f73cada87976",
+      "source_of_truth": "git",
+      "status": "draft",
+      "systems": [
+        "aoe2-watcher"
+      ],
+      "title": "Watcher 1.6.6 \u2014 Nonblocking Durable Telemetry Persistence",
+      "type": "working"
+    },
+    {
+      "audience": [
+        "developers",
+        "operators",
+        "ai-agents"
+      ],
+      "authority": "watcher-1.6.6-unreleased-engineering-evidence",
+      "id": "aoe2war.aoe2-watcher.docs-watcher-1-6-6-compact-queue",
+      "owner": "aoe2war-watcher",
+      "path": "docs/WATCHER_1_6_6_COMPACT_QUEUE.md",
+      "review_interval_days": 14,
+      "reviewed_at": "2026-10-21",
+      "sensitivity": "internal",
+      "sha256": "aa518a762b0d9fe38a7dcb4a4bdf71bcd93725e45a1b4da23e4839e9340e637c",
+      "source_of_truth": "git",
+      "status": "draft",
+      "systems": [
+        "aoe2-watcher"
+      ],
+      "title": "Watcher 1.6.6 \u2014 Compact Queue Serialization",
+      "type": "working"
+    },
+    {
+      "audience": [
+        "developers",
+        "operators",
+        "ai-agents"
+      ],
+      "authority": "watcher-1.6.6-unreleased-engineering-evidence",
+      "id": "aoe2war.aoe2-watcher.docs-watcher-1-6-6-golden-replay-core",
+      "owner": "aoe2war-watcher",
+      "path": "docs/WATCHER_1_6_6_GOLDEN_REPLAY_CORE.md",
+      "review_interval_days": 14,
+      "reviewed_at": "2026-10-21",
+      "sensitivity": "internal",
+      "sha256": "b3dbb1b27d10d7612723c49419b1e51dad729386341f6a7b38c6a8e43fff8579",
+      "source_of_truth": "git",
+      "status": "draft",
+      "systems": [
+        "aoe2-watcher"
+      ],
+      "title": "Watcher 1.6.6 \u2014 Frozen replay golden core",
+      "type": "working"
+    },
+    {
+      "audience": [
+        "developers",
+        "operators",
+        "ai-agents"
+      ],
+      "authority": "watcher-1.6.6-unreleased-engineering-evidence",
+      "id": "aoe2war.aoe2-watcher.docs-watcher-1-6-6-install-target-eligibility",
+      "owner": "aoe2war-watcher",
+      "path": "docs/WATCHER_1_6_6_INSTALL_TARGET_ELIGIBILITY.md",
+      "review_interval_days": 14,
+      "reviewed_at": "2026-10-21",
+      "sensitivity": "internal",
+      "sha256": "0e6af02a58e1022169f3b9be506a51573f38e9ae8ce2b694906ead5adcba7378",
+      "source_of_truth": "git",
+      "status": "draft",
+      "systems": [
+        "aoe2-watcher"
+      ],
+      "title": "Watcher 1.6.6 \u2014 Read-only user-owned install-target eligibility",
+      "type": "working"
+    },
+    {
+      "audience": [
+        "developers",
+        "operators",
+        "ai-agents"
+      ],
+      "authority": "watcher-1.6.6-unreleased-engineering-evidence",
+      "id": "aoe2war.aoe2-watcher.docs-watcher-1-6-6-journal-memory",
+      "owner": "aoe2war-watcher",
+      "path": "docs/WATCHER_1_6_6_JOURNAL_MEMORY.md",
+      "review_interval_days": 14,
+      "reviewed_at": "2026-10-21",
+      "sensitivity": "internal",
+      "sha256": "5bd62aed2d811d52de5bf1db35d1607ade0f48011810db5fa174d6b3e9877024",
+      "source_of_truth": "git",
+      "status": "draft",
+      "systems": [
+        "aoe2-watcher"
+      ],
+      "title": "Watcher 1.6.6 \u2014 Bounded Journal Failure Memory (candidate)",
+      "type": "working"
+    },
+    {
+      "audience": [
+        "developers",
+        "operators",
+        "ai-agents"
+      ],
+      "authority": "watcher-1.6.6-unreleased-engineering-evidence",
+      "id": "aoe2war.aoe2-watcher.docs-watcher-1-6-6-mac-bundle-audit",
+      "owner": "aoe2war-watcher",
+      "path": "docs/WATCHER_1_6_6_MAC_BUNDLE_AUDIT.md",
+      "review_interval_days": 14,
+      "reviewed_at": "2026-10-21",
+      "sensitivity": "internal",
+      "sha256": "7c5a62e219e3e7369413c6366b1d11ff5339305cb2665fd7faef27968e6144ae",
+      "source_of_truth": "git",
+      "status": "draft",
+      "systems": [
+        "aoe2-watcher"
+      ],
+      "title": "Watcher 1.6.6 \u2014 Read-only extracted Mac bundle preflight",
+      "type": "working"
+    },
+    {
+      "audience": [
+        "developers",
+        "operators",
+        "ai-agents"
+      ],
+      "authority": "watcher-1.6.6-unreleased-engineering-evidence",
+      "id": "aoe2war.aoe2-watcher.docs-watcher-1-6-6-mac-killed-helper-recovery",
+      "owner": "aoe2war-watcher",
+      "path": "docs/WATCHER_1_6_6_MAC_KILLED_HELPER_RECOVERY.md",
+      "review_interval_days": 14,
+      "reviewed_at": "2026-10-21",
+      "sensitivity": "internal",
+      "sha256": "5431274c267bd33bd203c9fa8a572220c1dec89797b84663ce698da6f267ee24",
+      "source_of_truth": "git",
+      "status": "draft",
+      "systems": [
+        "aoe2-watcher"
+      ],
+      "title": "Watcher 1.6.6 killed-helper recovery gate",
+      "type": "working"
+    },
+    {
+      "audience": [
+        "developers",
+        "operators",
+        "ai-agents"
+      ],
+      "authority": "watcher-1.6.6-unreleased-engineering-evidence",
+      "id": "aoe2war.aoe2-watcher.docs-watcher-1-6-6-mac-packaging-boundary",
+      "owner": "aoe2war-watcher",
+      "path": "docs/WATCHER_1_6_6_MAC_PACKAGING_BOUNDARY.md",
+      "review_interval_days": 14,
+      "reviewed_at": "2026-10-21",
+      "sensitivity": "internal",
+      "sha256": "f6f4415f3120f050f003c5da2fbc4bef8b7b2834e6d06bd81b67faf320674734",
+      "source_of_truth": "git",
+      "status": "draft",
+      "systems": [
+        "aoe2-watcher"
+      ],
+      "title": "Watcher 1.6.6 \u2014 Keep unfinished Mac updater modules outside distributables",
+      "type": "working"
+    },
+    {
+      "audience": [
+        "developers",
+        "operators",
+        "ai-agents"
+      ],
+      "authority": "watcher-1.6.6-unreleased-engineering-evidence",
+      "id": "aoe2war.aoe2-watcher.docs-watcher-1-6-6-mac-staging",
+      "owner": "aoe2war-watcher",
+      "path": "docs/WATCHER_1_6_6_MAC_STAGING.md",
+      "review_interval_days": 14,
+      "reviewed_at": "2026-10-21",
+      "sensitivity": "internal",
+      "sha256": "821be5b0e9030ecbd2b8b2bb28cbfd0828abdebfaff7ec5531ce9ee0eac35904",
+      "source_of_truth": "git",
+      "status": "draft",
+      "systems": [
+        "aoe2-watcher"
+      ],
+      "title": "Watcher 1.6.6 \u2014 Secure unsigned-Mac staging (isolated draft)",
+      "type": "working"
+    },
+    {
+      "audience": [
+        "developers",
+        "operators",
+        "ai-agents"
+      ],
+      "authority": "watcher-1.6.6-unreleased-engineering-evidence",
+      "id": "aoe2war.aoe2-watcher.docs-watcher-1-6-6-mac-swap-rehearsal",
+      "owner": "aoe2war-watcher",
+      "path": "docs/WATCHER_1_6_6_MAC_SWAP_REHEARSAL.md",
+      "review_interval_days": 14,
+      "reviewed_at": "2026-10-21",
+      "sensitivity": "internal",
+      "sha256": "32dd5fe2ec209dde67a1602df47eee2dc2890d3b6876f45cf314d2023faf96f7",
+      "source_of_truth": "git",
+      "status": "draft",
+      "systems": [
+        "aoe2-watcher"
+      ],
+      "title": "Watcher 1.6.6 \u2014 Offline app-swap / rollback filesystem rehearsal",
+      "type": "working"
+    },
+    {
+      "audience": [
+        "developers",
+        "operators",
+        "ai-agents"
+      ],
+      "authority": "watcher-1.6.6-unreleased-engineering-evidence",
+      "id": "aoe2war.aoe2-watcher.docs-watcher-1-6-6-mac-transaction-journal",
+      "owner": "aoe2war-watcher",
+      "path": "docs/WATCHER_1_6_6_MAC_TRANSACTION_JOURNAL.md",
+      "review_interval_days": 14,
+      "reviewed_at": "2026-10-21",
+      "sensitivity": "internal",
+      "sha256": "dbc8d337a4b18cfcb41ab7705428fb0680d48c4bc7792f5a0971e9b558a6bbe7",
+      "source_of_truth": "git",
+      "status": "draft",
+      "systems": [
+        "aoe2-watcher"
+      ],
+      "title": "Watcher 1.6.6 \u2014 Disconnected durable Mac update transaction journal",
+      "type": "working"
+    },
+    {
+      "audience": [
+        "developers",
+        "operators",
+        "ai-agents"
+      ],
+      "authority": "watcher-1.6.6-unreleased-engineering-evidence",
+      "id": "aoe2war.aoe2-watcher.docs-watcher-1-6-6-mac-transaction-policy",
+      "owner": "aoe2war-watcher",
+      "path": "docs/WATCHER_1_6_6_MAC_TRANSACTION_POLICY.md",
+      "review_interval_days": 14,
+      "reviewed_at": "2026-10-21",
+      "sensitivity": "internal",
+      "sha256": "d980fb106ed9dad7db327aefc730c63b45d9c65800fdf598c322930a989401b6",
+      "source_of_truth": "git",
+      "status": "draft",
+      "systems": [
+        "aoe2-watcher"
+      ],
+      "title": "Watcher 1.6.6 \u2014 Disconnected Mac updater transaction policy",
+      "type": "working"
+    },
+    {
+      "audience": [
+        "developers",
+        "operators",
+        "ai-agents"
+      ],
+      "authority": "watcher-1.6.6-unreleased-engineering-evidence",
+      "id": "aoe2war.aoe2-watcher.docs-watcher-1-6-6-mac-zip-release-audit",
+      "owner": "aoe2war-watcher",
+      "path": "docs/WATCHER_1_6_6_MAC_ZIP_RELEASE_AUDIT.md",
+      "review_interval_days": 14,
+      "reviewed_at": "2026-10-21",
+      "sensitivity": "internal",
+      "sha256": "e563ea84d123cc0095a59e2b35e54a382439da91ddd09774d888907a5ded536b",
+      "source_of_truth": "git",
+      "status": "draft",
+      "systems": [
+        "aoe2-watcher"
+      ],
+      "title": "Watcher native macOS ZIP safety proof \u2014 release-time, zero client overhead",
+      "type": "working"
+    },
+    {
+      "audience": [
+        "developers",
+        "operators",
+        "ai-agents"
+      ],
+      "authority": "watcher-1.6.6-unreleased-engineering-evidence",
+      "id": "aoe2war.aoe2-watcher.docs-watcher-1-6-6-mac-zip-symlink-chain",
+      "owner": "aoe2war-watcher",
+      "path": "docs/WATCHER_1_6_6_MAC_ZIP_SYMLINK_CHAIN.md",
+      "review_interval_days": 14,
+      "reviewed_at": "2026-10-21",
+      "sensitivity": "internal",
+      "sha256": "dcdafdf70eaff10f6c3ccf8eb1f718d2cc6d8a794f3f5eeab9263049aaf4cd5a",
+      "source_of_truth": "git",
+      "status": "draft",
+      "systems": [
+        "aoe2-watcher"
+      ],
+      "title": "Watcher 1.6.6 \u2014 Native ZIP symlink-chain and parent-path hardening",
+      "type": "working"
+    },
+    {
+      "audience": [
+        "developers",
+        "operators",
+        "ai-agents"
+      ],
+      "authority": "watcher-1.6.6-unreleased-engineering-evidence",
+      "id": "aoe2war.aoe2-watcher.docs-watcher-1-6-6-offline-mac-signer",
+      "owner": "aoe2war-watcher",
+      "path": "docs/WATCHER_1_6_6_OFFLINE_MAC_SIGNER.md",
+      "review_interval_days": 14,
+      "reviewed_at": "2026-10-21",
+      "sensitivity": "internal",
+      "sha256": "d4f7d57b1c4ac02318c27f5d263699120a87398e85bc0a7108b99845bee0d2eb",
+      "source_of_truth": "git",
+      "status": "draft",
+      "systems": [
+        "aoe2-watcher"
+      ],
+      "title": "Watcher 1.6.6 \u2014 Offline Mac release signing (DRAFT)",
+      "type": "working"
+    },
+    {
+      "audience": [
+        "developers",
+        "operators",
+        "ai-agents"
+      ],
+      "authority": "watcher-1.6.6-unreleased-engineering-evidence",
+      "id": "aoe2war.aoe2-watcher.docs-watcher-1-6-6-queue-benchmark",
+      "owner": "aoe2war-watcher",
+      "path": "docs/WATCHER_1_6_6_QUEUE_BENCHMARK.md",
+      "review_interval_days": 14,
+      "reviewed_at": "2026-10-21",
+      "sensitivity": "internal",
+      "sha256": "02a2243bfda5ccba3da92aa217068432193ff1f45ac451b3068aba8b6dd4fd16",
+      "source_of_truth": "git",
+      "status": "draft",
+      "systems": [
+        "aoe2-watcher"
+      ],
+      "title": "Watcher 1.6.6 \u2014 Measured Queue Microbenchmark",
+      "type": "working"
+    },
+    {
+      "audience": [
+        "developers",
+        "operators",
+        "ai-agents"
+      ],
+      "authority": "watcher-1.6.6-unreleased-engineering-evidence",
+      "id": "aoe2war.aoe2-watcher.docs-watcher-1-6-6-queue-handle-safety",
+      "owner": "aoe2war-watcher",
+      "path": "docs/WATCHER_1_6_6_QUEUE_HANDLE_SAFETY.md",
+      "review_interval_days": 14,
+      "reviewed_at": "2026-10-21",
+      "sensitivity": "internal",
+      "sha256": "c23d69ccd91e707902babc1b129b7a95b218bd1a64f6e4980abac61a65b3be99",
+      "source_of_truth": "git",
+      "status": "draft",
+      "systems": [
+        "aoe2-watcher"
+      ],
+      "title": "Watcher 1.6.6 \u2014 Diagnostic queue handle-level read safety",
+      "type": "working"
+    },
+    {
+      "audience": [
+        "developers",
+        "operators",
+        "ai-agents"
+      ],
+      "authority": "watcher-1.6.6-unreleased-engineering-evidence",
+      "id": "aoe2war.aoe2-watcher.docs-watcher-1-6-6-queue-local-permissions",
+      "owner": "aoe2war-watcher",
+      "path": "docs/WATCHER_1_6_6_QUEUE_LOCAL_PERMISSIONS.md",
+      "review_interval_days": 14,
+      "reviewed_at": "2026-10-21",
+      "sensitivity": "internal",
+      "sha256": "284b89c57f4148f6f2974e0804f695e3c69dfa5c2c20f7d048b55d2d204339bc",
+      "source_of_truth": "git",
+      "status": "draft",
+      "systems": [
+        "aoe2-watcher"
+      ],
+      "title": "Watcher 1.6.6 \u2014 Diagnostic queue local-file hardening",
+      "type": "working"
+    },
+    {
+      "audience": [
+        "developers",
+        "operators",
+        "ai-agents"
+      ],
+      "authority": "watcher-1.6.6-unreleased-engineering-evidence",
+      "id": "aoe2war.aoe2-watcher.docs-watcher-1-6-6-real-extracted-mac-bundle",
+      "owner": "aoe2war-watcher",
+      "path": "docs/WATCHER_1_6_6_REAL_EXTRACTED_MAC_BUNDLE.md",
+      "review_interval_days": 14,
+      "reviewed_at": "2026-10-21",
+      "sensitivity": "internal",
+      "sha256": "40b94b7803d41afa3f898f4efbf93254d7c012d0800920a772ba9106e2c98f8e",
+      "source_of_truth": "git",
+      "status": "draft",
+      "systems": [
+        "aoe2-watcher"
+      ],
+      "title": "Watcher 1.6.6 \u2014 Actual extracted Mac bundle proof",
+      "type": "working"
+    },
+    {
+      "audience": [
+        "developers",
+        "operators",
+        "ai-agents"
+      ],
+      "authority": "watcher-1.6.6-unreleased-engineering-evidence",
+      "id": "aoe2war.aoe2-watcher.docs-watcher-1-6-6-real-mac-signer-smoke",
+      "owner": "aoe2war-watcher",
+      "path": "docs/WATCHER_1_6_6_REAL_MAC_SIGNER_SMOKE.md",
+      "review_interval_days": 14,
+      "reviewed_at": "2026-10-21",
+      "sensitivity": "internal",
+      "sha256": "a11228f28e476b74b7a0a2df9880fc5bb5d65445b453369ec46973ccd500c931",
+      "source_of_truth": "git",
+      "status": "draft",
+      "systems": [
+        "aoe2-watcher"
+      ],
+      "title": "Watcher 1.6.6 \u2014 Real native Mac ZIP ephemeral signing smoke",
+      "type": "working"
+    },
+    {
+      "audience": [
+        "developers",
+        "operators",
+        "ai-agents"
+      ],
+      "authority": "watcher-1.6.6-unreleased-engineering-evidence",
+      "id": "aoe2war.aoe2-watcher.docs-watcher-1-6-6-telemetry-capacity-invariant",
+      "owner": "aoe2war-watcher",
+      "path": "docs/WATCHER_1_6_6_TELEMETRY_CAPACITY_INVARIANT.md",
+      "review_interval_days": 14,
+      "reviewed_at": "2026-10-21",
+      "sensitivity": "internal",
+      "sha256": "a25bbc4b53074ed933b18c663cff74afeb5b5b3fed9b98b16f930c29045d4530",
+      "source_of_truth": "git",
+      "status": "draft",
+      "systems": [
+        "aoe2-watcher"
+      ],
+      "title": "Watcher 1.6.6 \u2014 Stop the telemetry queue from poisoning itself",
+      "type": "working"
+    },
+    {
+      "audience": [
+        "developers",
+        "operators",
+        "ai-agents"
+      ],
+      "authority": "watcher-1.6.6-unreleased-engineering-evidence",
+      "id": "aoe2war.aoe2-watcher.docs-watcher-1-6-6-telemetry-delivery",
+      "owner": "aoe2war-watcher",
+      "path": "docs/WATCHER_1_6_6_TELEMETRY_DELIVERY.md",
+      "review_interval_days": 14,
+      "reviewed_at": "2026-10-21",
+      "sensitivity": "internal",
+      "sha256": "f13e2bb6f8c0a856c7a11e7d54455390f311049803335f4469b53ff36d7d42b1",
+      "source_of_truth": "git",
+      "status": "draft",
+      "systems": [
+        "aoe2-watcher"
+      ],
+      "title": "Watcher 1.6.6 \u2014 Telemetry Delivery Acknowledgment, Pass 1",
+      "type": "working"
+    },
+    {
+      "audience": [
+        "developers",
+        "operators",
+        "ai-agents"
+      ],
+      "authority": "watcher-1.6.6-unreleased-engineering-evidence",
+      "id": "aoe2war.aoe2-watcher.docs-watcher-1-6-6-transfer-accounting",
+      "owner": "aoe2war-watcher",
+      "path": "docs/WATCHER_1_6_6_TRANSFER_ACCOUNTING.md",
+      "review_interval_days": 14,
+      "reviewed_at": "2026-10-21",
+      "sensitivity": "internal",
+      "sha256": "e8be3ce0697a9e382a4dad28e0a58206c608e4838dd9ad666087c1c47f4496ef",
+      "source_of_truth": "git",
+      "status": "draft",
+      "systems": [
+        "aoe2-watcher"
+      ],
+      "title": "Watcher 1.6.6 \u2014 Honest Resource Transfer Accounting",
+      "type": "working"
+    },
+    {
+      "audience": [
+        "developers",
+        "operators",
+        "ai-agents"
+      ],
+      "authority": "watcher-1.6.6-unreleased-engineering-evidence",
+      "id": "aoe2war.aoe2-watcher.docs-watcher-1-6-6-unsigned-mac-manifest",
+      "owner": "aoe2war-watcher",
+      "path": "docs/WATCHER_1_6_6_UNSIGNED_MAC_MANIFEST.md",
+      "review_interval_days": 14,
+      "reviewed_at": "2026-10-21",
+      "sensitivity": "internal",
+      "sha256": "51f59c7cdb766ed52c3dc2615e8367cbf586ed5dc69f00aecf6083858df084e2",
+      "source_of_truth": "git",
+      "status": "draft",
+      "systems": [
+        "aoe2-watcher"
+      ],
+      "title": "Watcher 1.6.6 \u2014 Unsigned macOS Offline Release-Manifest Verifier (preflight)",
+      "type": "working"
+    },
+    {
+      "audience": [
+        "developers",
+        "operators",
+        "ai-agents"
+      ],
+      "authority": "watcher-1.6.6-unreleased-engineering-evidence",
+      "id": "aoe2war.aoe2-watcher.docs-watcher-1-6-6-updater-native-filename",
+      "owner": "aoe2war-watcher",
+      "path": "docs/WATCHER_1_6_6_UPDATER_NATIVE_FILENAME.md",
+      "review_interval_days": 14,
+      "reviewed_at": "2026-10-21",
+      "sensitivity": "internal",
+      "sha256": "7c15768d5a4e2102efbce2651fc828970300eec56c20d87d1bdc7e349b71dc5d",
+      "source_of_truth": "git",
+      "status": "draft",
+      "systems": [
+        "aoe2-watcher"
+      ],
+      "title": "Watcher 1.6.6 \u2014 Exact macOS update artifact naming",
+      "type": "working"
+    },
+    {
+      "audience": [
+        "developers",
+        "operators",
+        "ai-agents"
+      ],
       "authority": "watcher-1.6.6-owner-approved-updater-acceptance",
       "id": "aoe2war.aoe2-watcher.docs-watcher-1-6-6-update-experience",
       "owner": "aoe2war-watcher",
@@ -159,12 +709,12 @@
       "type": "working"
     }
   ],
-  "generated_at": "2026-10-19T23:49:00Z",
+  "generated_at": "2026-10-21T21:39:54.292Z",
   "implementation_baseline": {
-    "branch": "fix/20261019-watcher-165-release-docs-sync",
-    "commit": "69d93250adad3fec1015d563b59e2d150e20f2ac"
+    "branch": "docs/watcher-166-register-evidence-20261021",
+    "commit": "f7c899b14d539c59d4f69e0d9aab8238d410849d"
   },
-  "owner": "aoe2war-watcher",
+  "owner": "aoe2-watcher",
   "repo": "aoe2-watcher",
   "schema_version": "2.1.0"
 }
