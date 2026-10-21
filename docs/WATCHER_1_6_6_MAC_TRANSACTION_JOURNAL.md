@@ -24,3 +24,19 @@ All writes require exclusive per-attempt lock and caller-supplied prior sequence
 A crash after old-app backup, swap or relaunch always yields manual `MANUAL_VERIFY_BACKUP_AND_RESTORE` recovery instructions from the state machine. No automatic rollback action exists here. A future installer may not infer a healthy installation from this journal.
 
 The journal is intentionally kept out of `main.js`, game upload logic, financial keys and any background work. Real Mac filesystem/permission/power-loss canaries remain mandatory.
+
+## Bounded read and corruption hardening
+
+The read-only journal preflight now opens its exact inode with POSIX
+`O_NOFOLLOW | O_NONBLOCK`, refuses non-regular files (including FIFOs),
+and reads no more than its prechecked size plus one sentinel byte.
+Concurrent size/mtime/ctime changes and invalid UTF-8 are refused before
+journal parsing or a transition write; existing raw bytes remain untouched.
+Failure-injection tests cover malformed bytes, an append after fstat and
+a real FIFO with no writer. The existing fsync/rename/directory-sync
+write contract remains unchanged.
+
+This is still **disconnected source code**, absent from shipped Watcher
+packages. It is not an installed Mac one-click updater, proof of recovery
+after a physical power cut, a trusted signing-key ceremony, or Gatekeeper
+authority. Physical Mac installation/rollback qualification remains HOLD.
