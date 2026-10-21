@@ -43,7 +43,9 @@ async function audit(filePath) {
  const installed=files.filter(file=>/(^|\/)node_modules\/follow-redirects\/package\.json$/.test(file));
  if(!installed.length)reject("required redirected HTTP transport manifest absent");
  for(const packageFile of installed){
-  const pkg=JSON.parse(asar.extractFile(filePath,packageFile).toString("utf8"));
+  // ASAR v3 resolves nested entries using platform-native separators.
+  const nativeEntry=packageFile.split("/").join(path.sep);
+  const pkg=JSON.parse(asar.extractFile(filePath,nativeEntry).toString("utf8"));
   if(pkg.name!=="follow-redirects" || pkg.version!=="1.16.1")
    reject("runtime redirect dependency not patched: "+pkg.version);
  }
