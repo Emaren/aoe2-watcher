@@ -709,12 +709,12 @@
       "type": "working"
     }
   ],
-  "generated_at": "2026-10-21T21:43:29.193Z",
+  "generated_at": "2026-10-21T21:44:38.553Z",
   "implementation_baseline": {
     "branch": "docs/watcher-166-register-evidence-20261021",
     "commit": "7e90a4a21265f5015014ab7ff05547dc47581a58"
   },
-  "owner": "aoe2-watcher",
+  "owner": "aoe2war-watcher",
   "repo": "aoe2-watcher",
   "schema_version": "2.1.0"
 }
