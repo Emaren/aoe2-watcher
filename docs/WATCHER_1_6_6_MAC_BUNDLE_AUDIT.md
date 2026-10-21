@@ -1,3 +1,18 @@
+---
+id: "aoe2war.aoe2-watcher.docs-watcher-1-6-6-mac-bundle-audit"
+title: "Watcher 1.6.6 — Read-only extracted Mac bundle preflight"
+type: "working"
+status: "draft"
+owner: "aoe2war-watcher"
+systems: ["aoe2-watcher"]
+audience: ["developers","operators","ai-agents"]
+source_of_truth: "git"
+authority: "watcher-1.6.6-unreleased-engineering-evidence"
+reviewed_at: "2026-10-21"
+review_interval_days: 14
+sensitivity: "internal"
+---
+
 # Watcher 1.6.6 — Read-only extracted Mac bundle preflight
 
 New `macUnsignedUpdateBundleAudit.js` validates **already safely extracted** bundle shape. This is a disconnected inspection component, not an extractor or installer. A real update needs authenticated signed manifest, verified staged ZIP and a separately reviewed extraction routine before the bundle audit may run.

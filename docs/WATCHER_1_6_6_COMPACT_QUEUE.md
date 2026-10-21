@@ -1,3 +1,18 @@
+---
+id: "aoe2war.aoe2-watcher.docs-watcher-1-6-6-compact-queue"
+title: "Watcher 1.6.6 — Compact Queue Serialization"
+type: "working"
+status: "draft"
+owner: "aoe2war-watcher"
+systems: ["aoe2-watcher"]
+audience: ["developers","operators","ai-agents"]
+source_of_truth: "git"
+authority: "watcher-1.6.6-unreleased-engineering-evidence"
+reviewed_at: "2026-10-21"
+review_interval_days: 14
+sensitivity: "internal"
+---
+
 # Watcher 1.6.6 — Compact Queue Serialization
 
 Measured synthetic GitHub CI workload before this change: five 200-event trials showed 1.6.5 synchronous queue median duration 227.04 ms and observed timer-lag max 192.67 ms, while initial asynchronous queue median duration was 325.25 ms and observed timer lag was 0.99 ms. The async path trades wall time and RSS for reducing main-thread blocking.
