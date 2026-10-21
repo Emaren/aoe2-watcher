@@ -36,7 +36,7 @@
       "review_interval_days": 0,
       "reviewed_at": "2026-07-26",
       "sensitivity": "internal",
-      "sha256": "a9de3c97a431530cef97a3c184ed009000b69b3e794793f8c464777a28b90b1a",
+      "sha256": "71e914a90e26ff781f76b8bb0c4fb574348a86f5b5be20cafc3424e29ff2d4ea",
       "source_of_truth": "generated",
       "status": "generated",
       "systems": [
@@ -709,10 +709,10 @@
       "type": "working"
     }
   ],
-  "generated_at": "2026-10-21T21:39:54.292Z",
+  "generated_at": "2026-10-21T21:41:53.275Z",
   "implementation_baseline": {
     "branch": "docs/watcher-166-register-evidence-20261021",
-    "commit": "f7c899b14d539c59d4f69e0d9aab8238d410849d"
+    "commit": "7e90a4a21265f5015014ab7ff05547dc47581a58"
   },
   "owner": "aoe2-watcher",
   "repo": "aoe2-watcher",
