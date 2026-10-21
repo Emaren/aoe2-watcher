@@ -19,7 +19,7 @@ Repository ID: `aoe2-watcher`
 
 Documentation owner: `aoe2war-watcher`
 
-Implementation baseline: `test/watcher-166-native-electron-boot-20261021` at `37550eb19b8df68fab02305f78d2b391b5224f8e`
+Implementation baseline: `test/watcher-166-packaged-single-instance-20261021` at `c7b2cb32035a64ea35e4892ad969155530c3176d`
 
 The implementation baseline identifies the code commit described by this documentation. Documentation-only commits may follow it without creating a self-referential registry hash.
 

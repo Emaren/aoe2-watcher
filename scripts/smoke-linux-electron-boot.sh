@@ -67,4 +67,34 @@ if [[ "$ready" -ne 1 ]]; then
   tail -n 90 "$stage/boot.log" >&2
   exit 1
 fi
+# A second packaged Watcher using the same isolated profile must surrender
+# the Electron single-instance lock without running a competing watcher.
+if ! timeout --signal=TERM --kill-after=2s 15s env \
+  HOME="$stage/home" \
+  XDG_CONFIG_HOME="$stage/home/.config" \
+  XDG_DATA_HOME="$stage/home/.local/share" \
+  AOE2_UPLOAD_API_KEY="" \
+  AOE2_WATCH_DIR="$stage/empty-replays" \
+  AOE2_TELEMETRY_HEARTBEAT_MS=0 \
+  AOE2_API_BASE_URL="http://127.0.0.1:9" \
+  AOE2_API_FALLBACK_BASE_URL="http://127.0.0.1:9" \
+  AOE2_TELEMETRY_BASE_URL="http://127.0.0.1:9" \
+  AOE2_UPDATE_FEED_URL="http://127.0.0.1:9/downloads" \
+  xvfb-run -a -s "-screen 0 1280x960x24" \
+  "$binary" --no-sandbox --disable-gpu --background \
+  > "$stage/second.log" 2>&1; then
+  echo "STOP: second profile-matched packaged Watcher failed to yield its lock" >&2
+  tail -n 60 "$stage/second.log" >&2
+  exit 1
+fi
+if grep -Fq 'Runtime initialized:' "$stage/second.log"; then
+  echo "STOP: second packaged Watcher initialized a competing runtime" >&2
+  tail -n 60 "$stage/second.log" >&2
+  exit 1
+fi
+if ! kill -0 "$pid" 2>/dev/null; then
+  echo "STOP: original packaged Watcher died during duplicate launch" >&2
+  exit 1
+fi
+echo "PACKAGED_LINUX_SINGLE_INSTANCE_PROFILE_OWNERSHIP_PASS"
 echo "PACKAGED_LINUX_ELECTRON_MAIN_AND_RENDERER_BOOT_PASS"

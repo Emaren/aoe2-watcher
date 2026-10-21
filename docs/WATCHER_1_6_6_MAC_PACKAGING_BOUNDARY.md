@@ -66,3 +66,19 @@ This qualifies an isolated hosted-runner **Linux GUI boot**, not an
 installed Windows/macOS app, real match/replay upload, update
 signing/rollback, or idle/live device power. The physical OS and
 protected server release gates remain separate and mandatory.
+
+## Real Linux process ownership (same-profile second instance)
+
+The hosted Linux packaged-Electron smoke now performs a **second native
+executable launch with the same isolated HOME and XDG directories**, while
+the first Watcher remains live with its dashboard renderer ready. The
+second invocation must exit within a bounded 15-second window **without
+emitting another runtime-initialized receipt**, and the original packaged
+process must remain alive. An unexpected second runtime, lock acquisition,
+timeout or first-process death fails the source-candidate CI.
+
+This validates the actual Electron `requestSingleInstanceLock()` ownership
+boundary used by the diagnostic queue on hosted Linux, without pretending
+that the queue itself supports unrestricted multi-process writers. It
+does not prove desktop installation/rollback, platform-specific Windows
+or macOS locking, physical-power behavior, or replay-finality canaries.
