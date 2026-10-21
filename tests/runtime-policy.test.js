@@ -8,12 +8,13 @@ const {
   DEFAULT_IDLE_RECOVERY_SCAN_MS,
   DEFAULT_MONITOR_WATCHDOG_MS,
   DEFAULT_UPDATE_RECHECK_MS,
-  boundedBackgroundIntervalMs,
   getUpdateBlocker,
   getUpdateTrayPresentation,
   shouldLaunchInBackground,
   shouldRunBackgroundUpdateCheck,
 } = require("../runtimePolicy");
+
+const { boundedBackgroundIntervalMs } = require("../backgroundTimerPolicy");
 
 test("armed but idle watcher does not block update install", () => {
   assert.equal(
