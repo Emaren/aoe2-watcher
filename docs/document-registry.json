@@ -36,7 +36,7 @@
       "review_interval_days": 0,
       "reviewed_at": "2026-07-26",
       "sensitivity": "internal",
-      "sha256": "c30de53cd8c73d3625f72a98827baf4e17d09ea87f80542c9faf29721efc92a7",
+      "sha256": "fac0636dd109ca88a7f30f760e76f4655523ec6fb3cba00568307f42ad9fda22",
       "source_of_truth": "generated",
       "status": "generated",
       "systems": [
@@ -346,7 +346,7 @@
       "review_interval_days": 14,
       "reviewed_at": "2026-10-21",
       "sensitivity": "internal",
-      "sha256": "dbc8d337a4b18cfcb41ab7705428fb0680d48c4bc7792f5a0971e9b558a6bbe7",
+      "sha256": "50047ef8fb1318a36be7a2220cfb0ee4d789784ba753745ea34c37f4017b95e0",
       "source_of_truth": "git",
       "status": "draft",
       "systems": [
@@ -709,10 +709,10 @@
       "type": "working"
     }
   ],
-  "generated_at": "2026-10-21T21:56:54.709Z",
+  "generated_at": "2026-10-21T22:01:44.391Z",
   "implementation_baseline": {
-    "branch": "fix/watcher-166-resource-sample-cap-20261021",
-    "commit": "144afe775ff74db822f218c527a0f600964ade28"
+    "branch": "fix/watcher-166-mac-journal-bounded-read-20261021",
+    "commit": "9b7e356ebc6afcc4190f0cd7cee181e377700d76"
   },
   "owner": "aoe2war-watcher",
   "repo": "aoe2-watcher",
