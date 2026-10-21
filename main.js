@@ -39,12 +39,13 @@ const {
   DEFAULT_FOLDER_STATUS_CACHE_MS,
   DEFAULT_MONITOR_WATCHDOG_MS,
   DEFAULT_UPDATE_RECHECK_MS,
-  boundedBackgroundIntervalMs,
   getUpdateBlocker,
   getUpdateTrayPresentation,
   shouldLaunchInBackground,
   shouldRunBackgroundUpdateCheck,
 } = require("./runtimePolicy");
+
+const { boundedBackgroundIntervalMs } = require("./backgroundTimerPolicy");
 
 const {
   detectReplayFolder,
