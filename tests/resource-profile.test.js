@@ -9,6 +9,8 @@ const {
   buildProcessTopology,
   classifyPowerSignal,
   createResourceProfiler,
+  DEFAULT_RESOURCE_WINDOW_SAMPLES,
+  HARD_MAX_RESOURCE_WINDOW_SAMPLES,
   isNewStreamChunkReceipt,
   selectResourceSampleInterval,
   summarizeAppMetrics,
@@ -375,4 +377,42 @@ test("media accounting requires actual newly created stream chunk receipt",()=>{
   assert.equal(isNewStreamChunkReceipt(null),false);
   const main=fs.readFileSync(path.join(__dirname,"..","main.js"),"utf8");
   assert.match(main,/if \(isNewStreamChunkReceipt\(response\.data\)\)/);
+});
+
+
+test("resource profiler rolling sample history is finite under hostile or malformed configuration",()=>{
+ assert.equal(DEFAULT_RESOURCE_WINDOW_SAMPLES,8);
+ assert.equal(HARD_MAX_RESOURCE_WINDOW_SAMPLES,64);
+ const configs=[
+  {value:undefined,expected:8},
+  {value:4,expected:4},
+  {value:2,expected:2},
+  {value:0,expected:2},
+  {value:-40,expected:2},
+  {value:1.8,expected:2},
+  {value:3.8,expected:3},
+  {value:Infinity,expected:8},
+  {value:NaN,expected:8},
+  {value:1e308,expected:64},
+  {value:1000000,expected:64},
+ ];
+ for(const {value,expected} of configs){
+  let t=1_000_000;
+  const prof=createResourceProfiler({
+   windowSamples:value,
+   now:()=>t++,
+   getMetrics:()=>[{type:"Browser",pid:1,cpu:{percentCPUUsage:0.5},memory:{workingSetSize:2048}}],
+  });
+  let state;
+  for(let i=0;i<256;i++){
+   state=prof.sample();
+   assert.ok(state.sampleCount<=expected);
+  }
+  assert.equal(state.sampleCount,expected,String(value));
+  assert.equal(state.sampleWindowSeconds,(expected-1)/1000);
+  assert.equal(state.powerWatts,null);
+  assert.equal(state.workloadCohorts.length,1);
+  assert.equal(state.workloadCohorts[0].samples,256,
+   "lifetime aggregate must retain its sample count even when rolling window is capped");
+ }
 });
