@@ -44,3 +44,25 @@ This check does **not** assert that every dynamic import is statically
 discoverable, that an Electron user-session boot succeeded, or that Mac
 upgrading/rollback is qualified. The disconnected Mac update helper set
 remains deliberately excluded from every production candidate.
+
+## Real Linux Electron main/renderer boot gate (source-candidate CI)
+
+Source-only tests and root CommonJS import inspection establish file
+presence, but do not establish that the actual native application starts.
+Linux CI now boots the real `dist/linux-unpacked` Electron executable
+under Xvfb and requires **both** `Runtime initialized:` and `Dashboard
+renderer ready` log receipts. A failed process, missing window bootstrap,
+unresolved runtime dependency, or 35-second readiness timeout fails the
+qualification job.
+
+The CI host uses a newly created permission-private HOME, XDG directories,
+empty replay folder, deliberately absent watcher API key and disabled
+heartbeat; API/telemetry/update addresses point to loopback. It terminates
+the entire test process group and deletes the sandbox profile afterwards.
+The smoke runs only against the built artifact; no instrumentation or extra
+polling is bundled into users' applications.
+
+This qualifies an isolated hosted-runner **Linux GUI boot**, not an
+installed Windows/macOS app, real match/replay upload, update
+signing/rollback, or idle/live device power. The physical OS and
+protected server release gates remain separate and mandatory.
