@@ -9,6 +9,9 @@ const {
   buildProcessTopology,
   classifyPowerSignal,
   createResourceProfiler,
+  DEFAULT_RESOURCE_WINDOW_SAMPLES,
+  HARD_MAX_RESOURCE_WINDOW_SAMPLES,
+  isNewStreamChunkReceipt,
   selectResourceSampleInterval,
   summarizeAppMetrics,
 } = require("../resourceProfile");
@@ -328,4 +331,88 @@ test("remote resource heartbeat uses a compact support profile instead of the fu
   assert.doesNotMatch(helper, /processTopology/);
   assert.doesNotMatch(helper, /replayUploadBytes/);
   assert.doesNotMatch(helper, /streamUploadBytes/);
+});
+
+test("transfer counters explicitly identify acknowledged logical payload rather than NIC throughput",()=>{
+  const src=fs.readFileSync(path.join(__dirname,"..","main.js"),"utf8");
+  const profileSource=fs.readFileSync(path.join(__dirname,"..","resourceProfile.js"),"utf8");
+  const start=src.indexOf("function handleWatcherRuntimeEvent(event)");
+  const end=src.indexOf("function focusMain",start);
+  assert.ok(start>0 && end>start);
+  const handler=src.slice(start,end);
+  assert.match(handler,/event\?\.type === "upload-success"/);
+  assert.doesNotMatch(handler,/event\?\.type === "upload-start"/);
+  assert.match(src,/resourceProfiler\.recordNetworkBytes\(buffer\.length, "stream"\)/);
+  assert.match(src,/networkMeasurement: profile\.networkMeasurement/);
+  assert.match(profileSource,/http-acknowledged-payload-estimate/);
+});
+test("unacknowledged transfers never enter the acknowledged-byte accounting",()=>{
+  let clock=0;
+  const profiler=createResourceProfiler({
+    now:()=>clock,
+    getMetrics:()=>[{type:"Browser",cpu:{percentCPUUsage:0},memory:{workingSetSize:1024}}],
+    getWorkload:()=>({monitorArmed:true}),
+  });
+  profiler.sample();
+  clock=10_000;
+  profiler.sample();
+  let state=profiler.getSnapshot();
+  assert.equal(state.networkMbps,0);
+  assert.equal(state.networkMeasurement,"http-acknowledged-payload-estimate");
+  profiler.recordNetworkBytes(2_000_000,"replay");
+  clock=20_000;
+  profiler.sample();
+  state=profiler.getSnapshot();
+  assert.equal(state.networkBytesThisSample,2_000_000);
+  assert.equal(state.replayUploadBytes,2_000_000);
+  assert.equal(state.networkMbps,1.6);
+});
+
+test("media accounting requires actual newly created stream chunk receipt",()=>{
+  assert.equal(isNewStreamChunkReceipt({stream:{id:14},chunkCreated:true}),true);
+  assert.equal(isNewStreamChunkReceipt({stream:{id:14},chunkCreated:false}),false);
+  assert.equal(isNewStreamChunkReceipt({finality:"replay_final"}),false);
+  assert.equal(isNewStreamChunkReceipt({stream:{id:14}}),false);
+  assert.equal(isNewStreamChunkReceipt({chunkCreated:true}),false);
+  assert.equal(isNewStreamChunkReceipt(null),false);
+  const main=fs.readFileSync(path.join(__dirname,"..","main.js"),"utf8");
+  assert.match(main,/if \(isNewStreamChunkReceipt\(response\.data\)\)/);
+});
+
+
+test("resource profiler rolling sample history is finite under hostile or malformed configuration",()=>{
+ assert.equal(DEFAULT_RESOURCE_WINDOW_SAMPLES,8);
+ assert.equal(HARD_MAX_RESOURCE_WINDOW_SAMPLES,64);
+ const configs=[
+  {value:undefined,expected:8},
+  {value:4,expected:4},
+  {value:2,expected:2},
+  {value:0,expected:2},
+  {value:-40,expected:2},
+  {value:1.8,expected:2},
+  {value:3.8,expected:3},
+  {value:Infinity,expected:8},
+  {value:NaN,expected:8},
+  {value:1e308,expected:64},
+  {value:1000000,expected:64},
+ ];
+ for(const {value,expected} of configs){
+  let t=1_000_000;
+  const prof=createResourceProfiler({
+   windowSamples:value,
+   now:()=>t++,
+   getMetrics:()=>[{type:"Browser",pid:1,cpu:{percentCPUUsage:0.5},memory:{workingSetSize:2048}}],
+  });
+  let state;
+  for(let i=0;i<256;i++){
+   state=prof.sample();
+   assert.ok(state.sampleCount<=expected);
+  }
+  assert.equal(state.sampleCount,expected,String(value));
+  assert.equal(state.sampleWindowSeconds,(expected-1)/1000);
+  assert.equal(state.powerWatts,null);
+  assert.equal(state.workloadCohorts.length,1);
+  assert.equal(state.workloadCohorts[0].samples,256,
+   "lifetime aggregate must retain its sample count even when rolling window is capped");
+ }
 });

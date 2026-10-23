@@ -499,3 +499,304 @@ test(
     }
   }
 );
+
+test("corrupt JSON is never silently treated as an empty durable queue", async () => {
+  const { filePath } = tempQueue();
+  fs.writeFileSync(filePath, "[{broken-json", "utf8");
+  const original = fs.readFileSync(filePath, "utf8");
+  const queue = createDurableTelemetryQueue({ filePath });
+  await assert.rejects(queue.enqueue({eventType:"heartbeat",payload:{event_type:"heartbeat"}}),
+    (error) => error.code === "AOE2_TELEMETRY_QUEUE_UNREADABLE");
+  await assert.rejects(queue.flush(async()=>({ok:true})),
+    (error) => error.code === "AOE2_TELEMETRY_QUEUE_UNREADABLE");
+  await assert.rejects(queue.size(),
+    (error) => error.code === "AOE2_TELEMETRY_QUEUE_UNREADABLE");
+  assert.equal(fs.readFileSync(filePath,"utf8"), original);
+});
+
+test("wrong queue JSON structure remains untouched instead of being overwritten", async () => {
+  const { filePath } = tempQueue();
+  fs.writeFileSync(filePath, '{"entries":[]}',"utf8");
+  const queue = createDurableTelemetryQueue({ filePath });
+  await assert.rejects(queue.enqueue({eventType:"heartbeat",payload:{event_type:"heartbeat"}}),
+    (error) => error.code === "AOE2_TELEMETRY_QUEUE_UNREADABLE");
+  assert.deepEqual(JSON.parse(fs.readFileSync(filePath,"utf8")),{entries:[]});
+});
+
+test("non-file queue paths fail safely without discarding an existing directory", async () => {
+  const { filePath } = tempQueue();
+  fs.mkdirSync(filePath);
+  const queue = createDurableTelemetryQueue({ filePath });
+  await assert.rejects(queue.enqueue({eventType:"heartbeat",payload:{event_type:"heartbeat"}}),
+    (error) => error.code === "AOE2_TELEMETRY_QUEUE_UNREADABLE");
+  assert.equal(fs.statSync(filePath).isDirectory(),true);
+});
+
+test("asynchronous queue persistence retains FIFO and survives rapid concurrent callers", async () => {
+  const { filePath } = tempQueue();
+  const queue = createDurableTelemetryQueue({ filePath, maxEntries: 100 });
+  const entries = Array.from({length:50},(_,i)=>({
+    id: "telemetry_" + String(i).padStart(32,"0"),
+    eventType: "upload_retry",
+    payload: { event_type:"upload_retry", number:i },
+  }));
+  await Promise.all(entries.map(e=>queue.enqueue(e)));
+  const onDisk = JSON.parse(fs.readFileSync(filePath,"utf8"));
+  assert.deepEqual(onDisk.map(e=>e.payload.number),entries.map(e=>e.payload.number));
+  const restored = createDurableTelemetryQueue({filePath});
+  assert.equal(await restored.size(),50);
+  const ids=[];
+  const result=await restored.flush(async e=>{ids.push(e.id);return {ok:true};});
+  assert.equal(result.delivered,50);
+  assert.deepEqual(ids,entries.map(e=>e.id));
+  assert.equal(fs.existsSync(filePath),false);
+  assert.deepEqual(fs.readdirSync(path.dirname(filePath)).filter(name=>name.includes(".tmp-")),[]);
+});
+
+test("queued retry after read failure does not block future recovery", async () => {
+  const {filePath}=tempQueue();
+  const queue=createDurableTelemetryQueue({filePath});
+  fs.writeFileSync(filePath,"bad","utf8");
+  await assert.rejects(queue.enqueue({eventType:"heartbeat",payload:{event_type:"heartbeat"}}));
+  fs.writeFileSync(filePath,"[]","utf8");
+  assert.equal(await queue.enqueue({eventType:"heartbeat",payload:{event_type:"heartbeat"}}),1);
+  assert.equal(await queue.size(),1);
+});
+
+test("durable telemetry implementation does not use synchronous filesystem operations in Electron",()=>{
+  const source=fs.readFileSync(path.join(__dirname,"..","telemetryQueue.js"),"utf8");
+  assert.doesNotMatch(source,/fs\.(?:existsSync|readFileSync|writeFileSync|rmSync|renameSync|mkdirSync)\s*\(/);
+  const main=fs.readFileSync(path.join(__dirname,"..","main.js"),"utf8");
+  assert.match(main,/Watcher telemetry queue could not flush/);
+  assert.match(main,/could not be durably queued/);
+});
+
+test("compact atomic persistence keeps legacy pretty JSON readable while reducing disk footprint",async()=>{
+ const {filePath}=tempQueue();
+ const baseline=[
+  {id:"a",eventType:"upload_failed",queuedAtMs:Date.now(),payload:{event_type:"upload_failed",metadata:{detail:"fixture"}}},
+  {id:"b",eventType:"upload_succeeded",queuedAtMs:Date.now(),payload:{event_type:"upload_succeeded",metadata:{detail:"fixture"}}},
+ ];
+ fs.writeFileSync(filePath,JSON.stringify(baseline,null,2)+"\n","utf8");
+ const before=fs.statSync(filePath).size;
+ const queue=createDurableTelemetryQueue({filePath,maxEntries:100});
+ assert.equal(await queue.size(),2);
+ await queue.enqueue({id:"c",eventType:"heartbeat",payload:{event_type:"heartbeat"}});
+ const bytes=fs.readFileSync(filePath);
+ const after=JSON.parse(bytes.toString("utf8"));
+ assert.equal(after.length,3);
+ assert.deepEqual(after.slice(0,2),baseline);
+ assert.ok(bytes.length<Buffer.byteLength(JSON.stringify(after,null,2)+"\n"),"compact format should use fewer bytes for identical entries");
+ assert.equal(bytes.toString("utf8").includes("\n  {"),false);
+});
+
+test("valid JSON with a malformed row is never silently rewritten or discarded",async()=>{
+  const {filePath}=tempQueue();
+  const valid={id:"telemetry_valid",eventType:"heartbeat",
+    queuedAtMs:Date.now(),payload:{event_type:"heartbeat"}};
+  const original=JSON.stringify([valid,null,{queuedAtMs:"bad",payload:{}}])+"\n";
+  fs.writeFileSync(filePath,original,"utf8");
+  const queue=createDurableTelemetryQueue({filePath});
+  await assert.rejects(queue.size(),e=>e.code==="AOE2_TELEMETRY_QUEUE_UNREADABLE");
+  await assert.rejects(queue.enqueue({id:"new",eventType:"heartbeat",
+    payload:{event_type:"heartbeat"}}),e=>e.code==="AOE2_TELEMETRY_QUEUE_UNREADABLE");
+  await assert.rejects(queue.flush(async()=>({ok:true})),
+    e=>e.code==="AOE2_TELEMETRY_QUEUE_UNREADABLE");
+  assert.equal(fs.readFileSync(filePath,"utf8"),original);
+});
+
+test("well-formed expired events still honor the existing retention deadline",async()=>{
+  const {filePath}=tempQueue();
+  const expired={eventType:"old",queuedAtMs:1,payload:{event_type:"old"}};
+  const fresh={eventType:"new",queuedAtMs:Date.now(),payload:{event_type:"new"}};
+  fs.writeFileSync(filePath,JSON.stringify([expired,fresh]),"utf8");
+  const queue=createDurableTelemetryQueue({filePath,maxAgeMs:60000});
+  assert.equal(await queue.size(),1);
+  const types=[];
+  const res=await queue.flush(async event=>{types.push(event.eventType);return {ok:true};});
+  assert.deepEqual(types,["new"]);
+  assert.equal(res.delivered,1);
+});
+
+test("atomic durable telemetry files are owner-only, even with permissive umask",async()=>{
+  if(process.platform==="win32")return; // Windows ACL semantics differ
+  const {filePath}=tempQueue();
+  const original=process.umask(0o022);
+  try {
+    const queue=createDurableTelemetryQueue({filePath});
+    await queue.enqueue({eventType:"heartbeat",payload:{event_type:"heartbeat"}});
+    assert.equal(fs.statSync(filePath).mode&0o077,0);
+    assert.equal(await queue.size(),1);
+  } finally {process.umask(original)}
+});
+
+test("symlinked durable telemetry queue is rejected and cannot overwrite the link target",async()=>{
+  if(process.platform==="win32")return; // ordinary Windows CI lacks symlink privilege
+  const {filePath}=tempQueue();
+  const target=filePath+".target";
+  const original=JSON.stringify([{eventType:"heartbeat",queuedAtMs:Date.now(),
+    payload:{event_type:"heartbeat"}}]);
+  fs.writeFileSync(target,original);
+  fs.symlinkSync(target,filePath);
+  const queue=createDurableTelemetryQueue({filePath});
+  await assert.rejects(queue.size(),e=>e.code==="AOE2_TELEMETRY_QUEUE_UNREADABLE");
+  await assert.rejects(queue.enqueue({eventType:"heartbeat",payload:{event_type:"heartbeat"}}),
+    e=>e.code==="AOE2_TELEMETRY_QUEUE_UNREADABLE");
+  assert.equal(fs.readFileSync(target,"utf8"),original);
+  assert.equal(fs.lstatSync(filePath).isSymbolicLink(),true);
+});
+
+test("telemetry queue opens the verified file handle without following POSIX symlinks",()=>{
+ const source=fs.readFileSync(path.join(__dirname,"..","telemetryQueue.js"),"utf8");
+ assert.match(source,/fs\.promises\.open\(/);
+ assert.match(source,/fs\.constants\.O_NOFOLLOW/);
+ assert.match(source,/await handle\.read\(/);
+ assert.match(source,/Buffer\.allocUnsafe\(stat\.size \+ 1\)/);
+ assert.match(source,/fs\.constants\.O_NONBLOCK/);
+ assert.doesNotMatch(source,/await handle\.readFile\(\)/);
+ assert.doesNotMatch(source,/fs\.promises\.readFile\(filePath/);
+});
+
+test("oversized diagnostic file is rejected before reading and left intact",async()=>{
+ const {filePath}=tempQueue();
+ fs.writeFileSync(filePath,"");
+ fs.truncateSync(filePath,16*1024*1024+1);
+ const queue=createDurableTelemetryQueue({filePath});
+ await assert.rejects(queue.size(),e=>e.code==="AOE2_TELEMETRY_QUEUE_UNREADABLE");
+ await assert.rejects(queue.enqueue({eventType:"heartbeat",payload:{event_type:"heartbeat"}}),
+   e=>e.code==="AOE2_TELEMETRY_QUEUE_UNREADABLE");
+ assert.equal(fs.statSync(filePath).size,16*1024*1024+1);
+});
+
+test("an over-cap diagnostic enqueue preserves the last readable durable queue",async()=>{
+ const {filePath,dir}=tempQueue();
+ try{
+   const queue=createDurableTelemetryQueue({filePath,maxEntries:3});
+   const padding="q".repeat(16*1024*1024-450);
+   assert.equal(await queue.enqueue({
+     id:"large-but-valid",eventType:"heartbeat",
+     payload:{event_type:"heartbeat",metadata:{padding}},
+   }),1);
+   assert.equal(await queue.size(),1);
+   const before=fs.statSync(filePath);
+   const digest=require("node:crypto").createHash("sha256")
+     .update(fs.readFileSync(filePath)).digest("hex");
+   await assert.rejects(queue.enqueue({
+     id:"should-not-corrupt",eventType:"heartbeat",
+     payload:{event_type:"heartbeat",metadata:{padding:"b".repeat(600)}},
+   }),e=>e.code==="AOE2_TELEMETRY_QUEUE_TOO_LARGE");
+   assert.equal(await queue.size(),1);
+   assert.equal(fs.statSync(filePath).size,before.size);
+   assert.equal(require("node:crypto").createHash("sha256")
+     .update(fs.readFileSync(filePath)).digest("hex"),digest);
+   assert.deepEqual(fs.readdirSync(dir).sort(),["queue.json"]);
+ }finally{fs.rmSync(dir,{recursive:true,force:true})}
+});
+
+test("invalid capacities and flush limits cannot silently lose events or disable sending",async()=>{
+ const cases=[{maxEntries:0,maxAgeMs:NaN},{maxEntries:-10,maxAgeMs:-1},
+   {maxEntries:Infinity,maxAgeMs:Infinity},{maxEntries:"100",maxAgeMs:"1000"}];
+ for(const config of cases){
+   const {filePath,dir}=tempQueue();
+   try{
+     const queue=createDurableTelemetryQueue({filePath,...config});
+     for(let i=0;i<4;i++)assert.equal(await queue.enqueue({
+       id:"test-"+i,eventType:"heartbeat",payload:{event_type:"heartbeat",i},
+     }),i+1);
+     assert.equal(await queue.size(),4);
+     const sent=[];
+     const result=await queue.flush(async entry=>{
+       sent.push(entry.id);return {ok:true};
+     },{limit:NaN});
+     assert.equal(result.delivered,4);
+     assert.deepEqual(sent,["test-0","test-1","test-2","test-3"]);
+     assert.equal(await queue.size(),0);
+   }finally{fs.rmSync(dir,{recursive:true,force:true})}
+ }
+});
+
+test("flush still respects a valid finite per-cycle bound and leaves FIFO intact",async()=>{
+ const {filePath,dir}=tempQueue();
+ try{
+   const queue=createDurableTelemetryQueue({filePath,maxEntries:10});
+   for(let i=0;i<4;i++)await queue.enqueue({
+     id:String(i),eventType:"heartbeat",payload:{event_type:"heartbeat",i},
+   });
+   const seen=[];
+   const first=await queue.flush(async e=>{seen.push(e.id);return {ok:true}},{limit:2});
+   assert.deepEqual(seen,["0","1"]);
+   assert.equal(first.remaining,2);
+   const second=await queue.flush(async e=>{seen.push(e.id);return {ok:true}},{limit:2});
+   assert.equal(second.remaining,0);
+   assert.deepEqual(seen,["0","1","2","3"]);
+ }finally{fs.rmSync(dir,{recursive:true,force:true})}
+});
+
+
+test("POSIX diagnostic FIFO cannot hang queue open or be rewritten", {skip:process.platform==="win32",timeout:7000},()=>{
+ const {dir,filePath}=tempQueue();
+ const {spawnSync}=require("node:child_process");
+ try{
+  const made=spawnSync("mkfifo",[filePath],{encoding:"utf8",timeout:3000});
+  if(made.error?.code==="ENOENT")return;
+  assert.equal(made.status,0,made.stderr);
+  const child=[
+   'const {createDurableTelemetryQueue}=require(process.argv[1]);',
+   'createDurableTelemetryQueue({filePath:process.argv[2]}).size()',
+   '.then(()=>{console.error("FIFO accepted");process.exitCode=35;},',
+   'e=>{if(e.code!=="AOE2_TELEMETRY_QUEUE_UNREADABLE"){console.error(e);process.exitCode=36;}});'
+  ].join("\n");
+  const result=spawnSync(process.execPath,["-e",child,path.join(__dirname,"..","telemetryQueue.js"),filePath],{
+   encoding:"utf8",timeout:3000,windowsHide:true,
+  });
+  assert.equal(result.error,undefined,"FIFO read must not hang: "+String(result.error));
+  assert.equal(result.status,0,result.stderr);
+  assert.equal(fs.lstatSync(filePath).isFIFO(),true);
+ }finally{fs.rmSync(dir,{recursive:true,force:true});}
+});
+
+test("diagnostic queue uses a bounded read rather than readFile on a growing inode",()=>{
+ const code=fs.readFileSync(path.join(__dirname,"..","telemetryQueue.js"),"utf8");
+ assert.match(code,/Buffer\.allocUnsafe\(stat\.size \+ 1\)/);
+ assert.match(code,/received !== stat\.size/);
+ assert.match(code,/after\.size !== stat\.size/);
+ assert.match(code,/after\.mtimeMs !== stat\.mtimeMs/);
+ assert.match(code,/after\.ctimeMs !== stat\.ctimeMs/);
+ assert.doesNotMatch(code,/await handle\.readFile\(\)/);
+});
+
+
+test("rejects a concurrent append between initial fstat and bounded read without modifying original evidence",async()=>{
+ const {dir,filePath}=tempQueue();
+ const original=JSON.stringify([{id:"telemetry_0123456789abcdef0123456789abcdef",
+   queuedAtMs:Date.now(),payload:{event_type:"heartbeat"}}])+"\n";
+ fs.writeFileSync(filePath,original,"utf8");
+ const originalOpen=fs.promises.open;
+ let injected=0;
+ try{
+  fs.promises.open=async function(...args){
+   const handle=await originalOpen.apply(fs.promises,args);
+   if(args[0]===filePath){
+    const stat=handle.stat.bind(handle);
+    let first=true;
+    handle.stat=async function(...statArgs){
+     const snapshot=await stat(...statArgs);
+     if(first){
+      first=false; injected++;
+      // Simulates a second writer changing the same open inode after fstat.
+      fs.appendFileSync(filePath," ", "utf8");
+     }
+     return snapshot;
+    };
+   }
+   return handle;
+  };
+  const queue=createDurableTelemetryQueue({filePath});
+  await assert.rejects(queue.size(),error=>error.code==="AOE2_TELEMETRY_QUEUE_UNREADABLE");
+  assert.equal(injected,1);
+  assert.equal(fs.readFileSync(filePath,"utf8"),original+" ");
+ }finally{
+  fs.promises.open=originalOpen;
+  fs.rmSync(dir,{recursive:true,force:true});
+ }
+});

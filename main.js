@@ -32,6 +32,8 @@ const {
   createRuntimeEventCoalescer,
 } = require("./telemetryQueue");
 const { isAcceptedRuntimeTelemetryType } = require("./runtimeTelemetryContract");
+const { assertWatcherTelemetryAck } = require("./telemetryDelivery");
+const { createBoundedPendingJournalWrites } = require("./runtimeJournalQueue");
 const {
   DEFAULT_FOLDER_FRESHNESS_PROBE_MS,
   DEFAULT_FOLDER_STATUS_CACHE_MS,
@@ -42,6 +44,9 @@ const {
   shouldLaunchInBackground,
   shouldRunBackgroundUpdateCheck,
 } = require("./runtimePolicy");
+
+const { boundedBackgroundIntervalMs, boundedTelemetryHeartbeatMs } = require("./backgroundTimerPolicy");
+const { boundedDiagnosticBytes } = require("./diagnosticLimits");
 
 const {
   detectReplayFolder,
@@ -64,6 +69,7 @@ const {
   DEFAULT_RESOURCE_SAMPLE_MS,
   createResourceProfiler,
   selectResourceSampleInterval,
+  isNewStreamChunkReceipt,
 } = require("./resourceProfile");
 const {
   DEFAULT_RENDERER_BOOT_TIMEOUT_MS,
@@ -103,7 +109,7 @@ const STREAM_HANDOFF_CLEAR_EVENTS = new Set([
   "monitor-stop",
   "watching-stopped",
 ]);
-const TELEMETRY_HEARTBEAT_MS = Number(process.env.AOE2_TELEMETRY_HEARTBEAT_MS || 60 * 1000);
+const TELEMETRY_HEARTBEAT_MS = boundedTelemetryHeartbeatMs(process.env.AOE2_TELEMETRY_HEARTBEAT_MS);
 const TELEMETRY_TIMEOUT_MS = Number(process.env.AOE2_TELEMETRY_TIMEOUT_MS || 5000);
 const TELEMETRY_QUEUE_MAX_ENTRIES = Number(
   process.env.AOE2_TELEMETRY_QUEUE_MAX_ENTRIES ||
@@ -113,35 +119,32 @@ const TELEMETRY_QUEUE_MAX_AGE_MS = Number(
   process.env.AOE2_TELEMETRY_QUEUE_MAX_AGE_MS ||
     7 * 24 * 60 * 60 * 1000
 );
-const RUNTIME_EVENT_JOURNAL_MAX_BYTES = Number(
-  process.env.AOE2_RUNTIME_EVENT_JOURNAL_MAX_BYTES ||
-    5 * 1024 * 1024
+const RUNTIME_EVENT_JOURNAL_MAX_BYTES = boundedDiagnosticBytes(
+  process.env.AOE2_RUNTIME_EVENT_JOURNAL_MAX_BYTES,
+  { fallback: 5 * 1024 * 1024, minimum: 1024 * 1024, maximum: 32 * 1024 * 1024 }
 );
-const RUNTIME_EVENT_JOURNAL_FLUSH_MS = Math.max(
-  250,
-  Number(
-    process.env.AOE2_RUNTIME_EVENT_JOURNAL_FLUSH_MS ||
-      2000
-  )
+const RUNTIME_EVENT_JOURNAL_FLUSH_MS = boundedBackgroundIntervalMs(
+  process.env.AOE2_RUNTIME_EVENT_JOURNAL_FLUSH_MS,
+  { fallback: 2000, minimum: 250, maximum: 60_000 }
 );
-const RUNTIME_EVENT_JOURNAL_BUFFER_MAX_BYTES =
-  Math.max(
-    8 * 1024,
-    Number(
-      process.env.AOE2_RUNTIME_EVENT_JOURNAL_BUFFER_MAX_BYTES ||
-        64 * 1024
-    )
-  );
-const RELEASE_CHECK_TIMEOUT_MS = Number(process.env.AOE2_RELEASE_CHECK_TIMEOUT_MS || 5000);
+const RUNTIME_EVENT_JOURNAL_PENDING_MAX_BYTES = boundedDiagnosticBytes(
+  process.env.AOE2_RUNTIME_EVENT_JOURNAL_PENDING_MAX_BYTES,
+  { fallback: 1024 * 1024, minimum: 256 * 1024, maximum: 8 * 1024 * 1024 }
+);
+const RUNTIME_EVENT_JOURNAL_BUFFER_MAX_BYTES = boundedDiagnosticBytes(
+  process.env.AOE2_RUNTIME_EVENT_JOURNAL_BUFFER_MAX_BYTES,
+  { fallback: 64 * 1024, minimum: 8 * 1024, maximum: 1024 * 1024 }
+);
+const RELEASE_CHECK_TIMEOUT_MS = boundedBackgroundIntervalMs(
+  process.env.AOE2_RELEASE_CHECK_TIMEOUT_MS,
+  { fallback: 5000, minimum: 1000, maximum: 60_000 }
+);
 const AUTO_UPDATE_FEED_URL = process.env.AOE2_UPDATE_FEED_URL || "https://aoe2war.com/downloads";
 const MAC_AUTO_UPDATE_ENABLED = process.env.AOE2_ENABLE_MAC_AUTO_UPDATE === "1";
 const APP_SESSION_ID = createRandomId("session");
-const RENDERER_BOOT_TIMEOUT_MS = Math.max(
-  5000,
-  Number(
-    process.env.AOE2_RENDERER_BOOT_TIMEOUT_MS ||
-      DEFAULT_RENDERER_BOOT_TIMEOUT_MS
-  )
+const RENDERER_BOOT_TIMEOUT_MS = boundedBackgroundIntervalMs(
+  process.env.AOE2_RENDERER_BOOT_TIMEOUT_MS,
+  { fallback: DEFAULT_RENDERER_BOOT_TIMEOUT_MS, minimum: 5000, maximum: 120_000 }
 );
 const RENDERER_FAILURE_TELEMETRY_COOLDOWN_MS =
   30 * 1000;
@@ -192,48 +195,58 @@ let monitorWatchdogTimer = null;
 let monitorReattachAttempts = 0;
 let monitorLastReattachAt = 0;
 let lastReplayFolderFreshnessProbeAt = 0;
-const MONITOR_WATCHDOG_MS = Number(
-  process.env.AOE2_MONITOR_WATCHDOG_MS ||
-    DEFAULT_MONITOR_WATCHDOG_MS
+const MONITOR_WATCHDOG_MS = boundedBackgroundIntervalMs(
+  process.env.AOE2_MONITOR_WATCHDOG_MS,
+  { fallback: DEFAULT_MONITOR_WATCHDOG_MS, minimum: 5_000 }
 );
-const UPDATE_RECHECK_MS = Math.max(
-  60 * 60 * 1000,
-  Number(
-    process.env.AOE2_UPDATE_RECHECK_MS ||
-      DEFAULT_UPDATE_RECHECK_MS
-  ) || DEFAULT_UPDATE_RECHECK_MS
+const UPDATE_RECHECK_MS = boundedBackgroundIntervalMs(
+  process.env.AOE2_UPDATE_RECHECK_MS,
+  { fallback: DEFAULT_UPDATE_RECHECK_MS, minimum: 60 * 60 * 1000 }
 );
-const REPLAY_FOLDER_FRESHNESS_PROBE_MS = Number(
-  process.env.AOE2_REPLAY_FOLDER_FRESHNESS_PROBE_MS ||
-    DEFAULT_FOLDER_FRESHNESS_PROBE_MS
+const REPLAY_FOLDER_FRESHNESS_PROBE_MS = boundedBackgroundIntervalMs(
+  process.env.AOE2_REPLAY_FOLDER_FRESHNESS_PROBE_MS,
+  { fallback: DEFAULT_FOLDER_FRESHNESS_PROBE_MS, minimum: 10_000 }
 );
-const FOLDER_STATUS_CACHE_MS = Number(
-  process.env.AOE2_FOLDER_STATUS_CACHE_MS ||
-    DEFAULT_FOLDER_STATUS_CACHE_MS
+const FOLDER_STATUS_CACHE_MS = boundedBackgroundIntervalMs(
+  process.env.AOE2_FOLDER_STATUS_CACHE_MS,
+  { fallback: DEFAULT_FOLDER_STATUS_CACHE_MS, minimum: 1_000 }
 );
-const MONITOR_REATTACH_LIMIT = Number(process.env.AOE2_MONITOR_REATTACH_LIMIT || 3);
-const MONITOR_REATTACH_COOLDOWN_MS = Number(
-  process.env.AOE2_MONITOR_REATTACH_COOLDOWN_MS || 60 * 1000
+const MONITOR_REATTACH_LIMIT = (() => {
+  const value = Number(process.env.AOE2_MONITOR_REATTACH_LIMIT);
+  return Number.isSafeInteger(value) && value > 0
+    ? Math.min(value, 10)
+    : 3;
+})();
+const MONITOR_REATTACH_COOLDOWN_MS = boundedBackgroundIntervalMs(
+  process.env.AOE2_MONITOR_REATTACH_COOLDOWN_MS,
+  { fallback: 60_000, minimum: 5_000 }
 );
 const UI_LOG_BUFFER_MAX_ENTRIES = 250;
-const RESOURCE_SAMPLE_MS = Math.max(
-  5000,
-  Number(
-    process.env.AOE2_RESOURCE_SAMPLE_MS ||
-      DEFAULT_RESOURCE_SAMPLE_MS
-  )
+const RESOURCE_SAMPLE_MS = boundedBackgroundIntervalMs(
+  process.env.AOE2_RESOURCE_SAMPLE_MS,
+  { fallback: DEFAULT_RESOURCE_SAMPLE_MS, minimum: 5_000, maximum: 3_600_000 }
 );
-const RESOURCE_IDLE_SAMPLE_MS = Math.max(
-  RESOURCE_SAMPLE_MS,
-  Number(
-    process.env.AOE2_RESOURCE_IDLE_SAMPLE_MS ||
-      DEFAULT_RESOURCE_IDLE_SAMPLE_MS
-  )
+const RESOURCE_IDLE_SAMPLE_MS = boundedBackgroundIntervalMs(
+  process.env.AOE2_RESOURCE_IDLE_SAMPLE_MS,
+  {
+    fallback: Math.max(RESOURCE_SAMPLE_MS, DEFAULT_RESOURCE_IDLE_SAMPLE_MS),
+    minimum: RESOURCE_SAMPLE_MS,
+    maximum: 3_600_000,
+  }
 );
 const recentUiLogs = [];
 let resourceProfileTimer = null;
 let runtimeJournalLastError = null;
-const runtimeJournalPendingWrites = [];
+const runtimeJournalPendingWrites = createBoundedPendingJournalWrites({
+  maxBytes: RUNTIME_EVENT_JOURNAL_PENDING_MAX_BYTES,
+  onDrop: ({ droppedChunks, droppedBytes }) => {
+    // Diagnostic storage is optional. A full/unwritable disk must never
+    // turn the Watcher into an unbounded memory consumer or stall replay.
+    console.warn(
+      `Watcher diagnostic journal overflow: dropped ${droppedChunks} oldest chunk(s), ${droppedBytes} bytes; replay uploads unaffected.`
+    );
+  },
+});
 let runtimeEventJournalBuffer = "";
 let runtimeEventJournalBufferBytes = 0;
 let runtimeEventJournalFlushTimer = null;
@@ -552,6 +565,7 @@ function buildResourceTelemetryProfile() {
     idleWakeupsAvailable:
       profile.idleWakeupsAvailable,
     networkMbps: profile.networkMbps,
+    networkMeasurement: profile.networkMeasurement,
     averageNetworkMbps:
       profile.averageNetworkMbps,
     powerSignal: profile.powerSignal
@@ -1857,6 +1871,7 @@ function normalizeRuntimeEventType(type) {
 function isRetryableTelemetryError(
   error
 ) {
+  if (error?.watcherTelemetryAckRetryable === true) return true;
   const status =
     error?.response?.status;
 
@@ -1865,6 +1880,9 @@ function isRetryableTelemetryError(
   }
 
   return (
+    // Diagnostic telemetry must not follow redirects carrying x-api-key.
+    // Preserve an unexpected 3xx as retryable instead of losing the event.
+    (status >= 300 && status < 400) ||
     status === 408 ||
     status === 425 ||
     status === 429 ||
@@ -1911,12 +1929,13 @@ async function flushWatcherTelemetryQueue(
     await queue.flush(
       async (entry) => {
         try {
-          await axios.post(
+          const response = await axios.post(
             `${baseUrl}/api/watcher/events`,
             entry.payload,
             {
               timeout:
                 TELEMETRY_TIMEOUT_MS,
+              maxRedirects: 0,
               headers: {
                 "content-type":
                   "application/json",
@@ -1929,24 +1948,24 @@ async function flushWatcherTelemetryQueue(
               },
             }
           );
-
-          return {
-            ok: true,
-          };
+          assertWatcherTelemetryAck(response.data);
+          return { ok: true };
         } catch (error) {
           return {
             ok: false,
-            retryable:
-              isRetryableTelemetryError(
-                error
-              ),
+            retryable: isRetryableTelemetryError(error),
           };
         }
       },
       {
         limit: 100,
       }
-    );
+    ).catch((error) => {
+      // A corrupt or inaccessible telemetry queue is not empty. Keep its
+      // original bytes untouched and leave replay monitoring operational.
+      console.warn(`Watcher telemetry queue could not flush: ${error.message || error}`);
+      return { attempted: 0, delivered: 0, dropped: 0, remaining: null, queueError: true };
+    });
 
   if (
     result.delivered > 0 ||
@@ -1998,6 +2017,7 @@ async function postWatcherTelemetry(
       {
         timeout:
           TELEMETRY_TIMEOUT_MS,
+        maxRedirects: 0,
         headers: {
           "content-type":
             "application/json",
@@ -2010,10 +2030,10 @@ async function postWatcherTelemetry(
         },
       }
     )
-    .then(
-      (response) =>
-        response.data
-    )
+    .then((response) => {
+      assertWatcherTelemetryAck(response.data);
+      return response.data;
+    })
     .catch(async (error) => {
       const detail =
         error?.response?.status
@@ -2034,20 +2054,24 @@ async function postWatcherTelemetry(
           getDurableTelemetryQueue();
 
         if (queue) {
-          const queued =
-            await queue.enqueue({
+          try {
+            const queued = await queue.enqueue({
               id: telemetryEventId,
               eventType,
-              payload:
-                telemetryPayload,
-              queuedAtMs:
-                Date.now(),
+              payload: telemetryPayload,
+              queuedAtMs: Date.now(),
             });
-
-          console.warn(
-            `Watcher telemetry ${eventType} failed: ${detail}; queued for retry (${queued} pending).`
-          );
-
+            console.warn(
+              `Watcher telemetry ${eventType} failed: ${detail}; queued for retry (${queued} pending).`
+            );
+          } catch (queueError) {
+            // Never create an unhandled rejection in the Electron main
+            // process. Existing bytes are preserved when the queue is corrupt
+            // or unwritable; local logging remains an explicit degraded mode.
+            console.warn(
+              `Watcher telemetry ${eventType} could not be durably queued: ${queueError.message || queueError}`
+            );
+          }
           return null;
         }
       }
@@ -2744,11 +2768,6 @@ async function postStreamChunk(payload = {}) {
   nativeStreamRequestsInFlight += 1;
   syncAutoInstallOnQuit();
   try {
-    resourceProfiler.recordNetworkBytes(
-      buffer.length,
-      "stream"
-    );
-
     const response = await axios.post(
       `${baseUrl}/api/streams/${streamId}/chunks?sequence=${sequence}`,
       buffer,
@@ -2765,6 +2784,12 @@ async function postStreamChunk(payload = {}) {
       }
     );
 
+    // A successful HTTP response may instead signal replay finality or an
+    // already-stored duplicate chunk. Count only a newly admitted payload.
+    // These counters remain logical acceptance estimates, not wire bytes.
+    if (isNewStreamChunkReceipt(response.data)) {
+      resourceProfiler.recordNetworkBytes(buffer.length, "stream");
+    }
     return {
       ok: true,
       status: response.status,
@@ -3166,7 +3191,7 @@ function flushRuntimeEventJournal() {
     const journalPath = getRuntimeEventJournalPath();
     await fs.promises.mkdir(path.dirname(journalPath), { recursive: true });
     while (runtimeJournalPendingWrites.length > 0) {
-      const pending = runtimeJournalPendingWrites[0];
+      const pending = runtimeJournalPendingWrites.peek();
       await rotateRuntimeEventJournalIfNeeded(journalPath, Buffer.byteLength(pending, "utf8"));
       await fs.promises.appendFile(journalPath, pending, "utf8");
       runtimeJournalPendingWrites.shift();
@@ -3192,7 +3217,7 @@ function flushRuntimeEventJournalSync() {
     const journalPath = getRuntimeEventJournalPath();
     fs.mkdirSync(path.dirname(journalPath), { recursive: true });
     while (runtimeJournalPendingWrites.length > 0) {
-      const pending = runtimeJournalPendingWrites[0];
+      const pending = runtimeJournalPendingWrites.peek();
       const incomingBytes = Buffer.byteLength(pending, "utf8");
       let currentBytes = 0;
       try {
@@ -3260,17 +3285,15 @@ function appendRuntimeEventJournal(
 }
 
 function handleWatcherRuntimeEvent(event) {
+  // Count a replay payload after HTTP acknowledgment, not on attempted
+  // transfer. Failed/retried attempts can generate significant network use,
+  // but exact wire bytes are not observable through this API.
   if (
-    event?.type === "upload-start" &&
-    Number.isFinite(
-      Number(event.fileSizeBytes)
-    ) &&
-    Number(event.fileSizeBytes) > 0
+    event?.type === "upload-success" &&
+    Number.isFinite(event.fileSizeBytes) &&
+    event.fileSizeBytes > 0
   ) {
-    resourceProfiler.recordNetworkBytes(
-      Number(event.fileSizeBytes),
-      "replay"
-    );
+    resourceProfiler.recordNetworkBytes(event.fileSizeBytes, "replay");
   }
 
   const priority =

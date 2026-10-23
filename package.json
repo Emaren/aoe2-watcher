@@ -9,7 +9,7 @@
   "desktopName": "com.aoe2hdbets.watcher.desktop",
   "scripts": {
     "start": "electron main.js",
-    "lint": "node --check main.js && node --check watcher.js && node --check replayProvenancePolicy.js && node --check telemetryQueue.js && node --check runtimeTelemetryContract.js && node --check networkPriority.js && node --check runtimePolicy.js && node --check updatePolicy.js && node --check resourceProfile.js && node --check rendererHealth.js && node --check captureSourceDiagnostics.js && node --check captureSourcePolicy.js && node --check runTests.js && node --check renderer.js && node --check war-room-player.js && node --check war-room-locale.js && node --check war-room.js && node --check preload.js && node --check scripts/sync-release-docs.mjs && node --check scripts/verify-mac-updater.cjs",
+    "lint": "node --check main.js && node --check watcher.js && node --check replayProvenancePolicy.js && node --check telemetryQueue.js && node --check runtimeTelemetryContract.js && node --check telemetryDelivery.js && node --check runtimeJournalQueue.js && node --check networkPriority.js && node --check backgroundTimerPolicy.js && node --check diagnosticLimits.js && node --check scripts/audit-packaged-runtime.cjs && node --check runtimePolicy.js && node --check updatePolicy.js && node --check resourceProfile.js && node --check rendererHealth.js && node --check captureSourceDiagnostics.js && node --check captureSourcePolicy.js && node --check runTests.js && node --check renderer.js && node --check war-room-player.js && node --check war-room-locale.js && node --check war-room.js && node --check preload.js && node --check scripts/sync-release-docs.mjs && node --check scripts/verify-mac-updater.cjs && node --check scripts/benchmark-telemetry-queue.cjs && node --check macUnsignedUpdateManifest.js && node --check macUnsignedUpdateStaging.js && node --check macUnsignedUpdateTransaction.js && node --check macUnsignedUpdateJournal.js && node --check macUnsignedUpdateBundleAudit.js && node --check scripts/sign-mac-release.cjs && node --check scripts/smoke-mac-signed-release.cjs && node --check scripts/verify-extracted-mac-bundle.cjs",
     "test": "node runTests.js",
     "build": "electron-builder",
     "pack": "electron-builder --dir",
@@ -19,7 +19,9 @@
     "dist:manual-zip": "node scripts/build-manual-zip.mjs",
     "verify:mac-updater": "node scripts/verify-mac-updater.cjs",
     "dist:release": "npm run dist:win && npm run dist:mac && npm run dist:manual-zip && npm run dist:linux",
-    "docs:release-sync": "node scripts/sync-release-docs.mjs"
+    "docs:release-sync": "node scripts/sync-release-docs.mjs",
+    "benchmark:telemetry": "node scripts/benchmark-telemetry-queue.cjs",
+    "release:mac:sign-offline": "node scripts/sign-mac-release.cjs"
   },
   "build": {
     "appId": "com.aoe2hdbets.watcher",
@@ -39,12 +41,16 @@
       "main.js",
       "telemetryQueue.js",
       "runtimeTelemetryContract.js",
+      "telemetryDelivery.js",
+      "runtimeJournalQueue.js",
       "networkPriority.js",
       "watcher.js",
       "replayProvenancePolicy.js",
       "streamHandoff.js",
       "captureSourceDiagnostics.js",
       "captureSourcePolicy.js",
+      "backgroundTimerPolicy.js",
+      "diagnosticLimits.js",
       "runtimePolicy.js",
       "updatePolicy.js",
       "resourceProfile.js",

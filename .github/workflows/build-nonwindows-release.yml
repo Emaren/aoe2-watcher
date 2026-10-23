@@ -52,6 +52,13 @@ jobs:
           npm run dist:mac
           npm run dist:manual-zip
           npm run verify:mac-updater
+          python3 scripts/audit_mac_updater_zip.py "dist/AoE2HDBets Watcher-${{ steps.package.outputs.version }}-arm64-mac.zip" --version "${{ steps.package.outputs.version }}"
+          node scripts/smoke-mac-signed-release.cjs "dist/AoE2HDBets Watcher-${{ steps.package.outputs.version }}-arm64-mac.zip" "${{ steps.package.outputs.version }}" "$GITHUB_SHA"
+          stage="$(mktemp -d "${RUNNER_TEMP}/watcher-mac-bundle-audit.XXXXXX")"
+          chmod 700 "$stage"
+          trap 'rm -rf "$stage"' EXIT
+          ditto -x -k "dist/AoE2HDBets Watcher-${{ steps.package.outputs.version }}-arm64-mac.zip" "$stage"
+          node scripts/verify-extracted-mac-bundle.cjs "$stage/AoE2HDBets Watcher.app" "${{ steps.package.outputs.version }}" arm64
 
       - name: Verify and attest unsigned macOS manual release
         shell: bash

@@ -3,6 +3,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
+const { createBoundedPendingJournalWrites } = require("../runtimeJournalQueue");
 
 const main = fs.readFileSync(path.join(__dirname, "..", "main.js"), "utf8");
 const start = main.indexOf("function getRuntimeEventJournalPath()");
@@ -88,6 +89,7 @@ function createJournal(options = {}) {
     fs: fakeFs,
     path,
     Buffer,
+    createBoundedPendingJournalWrites,
     app: { isReady: () => true, getPath: () => "/test/owned-user-data" },
     console: { warn: (message) => warnings.push(message) },
     setTimeout: (callback, delay) => {
@@ -111,7 +113,7 @@ function createJournal(options = {}) {
     let runtimeEventJournalBufferBytes = 0;
     let runtimeEventJournalFlushTimer = null;
     let runtimeEventJournalFlushChain = Promise.resolve();
-    let runtimeJournalPendingWrites = [];
+    let runtimeJournalPendingWrites = createBoundedPendingJournalWrites({ maxBytes: 1024 * 1024 });
     let runtimeJournalLastError = null;
     ${journalSource}
     globalThis.__test = {
@@ -122,7 +124,7 @@ function createJournal(options = {}) {
       state: () => ({
         buffered: runtimeEventJournalBuffer,
         bufferedBytes: runtimeEventJournalBufferBytes,
-        pending: runtimeJournalPendingWrites.map((chunk) => chunk),
+        pending: runtimeJournalPendingWrites.snapshot(),
         error: runtimeJournalLastError?.message || null,
         timer: runtimeEventJournalFlushTimer,
       }),

@@ -3,6 +3,9 @@
 const DEFAULT_RESOURCE_SAMPLE_MS = 15 * 1000;
 const DEFAULT_RESOURCE_IDLE_SAMPLE_MS = 60 * 1000;
 const DEFAULT_RESOURCE_WINDOW_SAMPLES = 8;
+// Each sample includes Electron process topology; never retain an unbounded
+// user-configured history in a long-running Watcher process.
+const HARD_MAX_RESOURCE_WINDOW_SAMPLES = 64;
 
 function finiteNumber(value, fallback = 0) {
   const number = Number(value);
@@ -209,14 +212,28 @@ function classifyPowerSignal({
   };
 }
 
+function isNewStreamChunkReceipt(data) {
+  return Boolean(
+    data &&
+    typeof data === "object" &&
+    !Array.isArray(data) &&
+    data.chunkCreated === true &&
+    data.stream &&
+    typeof data.stream === "object" &&
+    !Array.isArray(data.stream)
+  );
+}
+
 function createResourceProfiler({
   getMetrics = () => [],
   getWorkload = () => ({}),
   now = () => Date.now(),
   windowSamples = DEFAULT_RESOURCE_WINDOW_SAMPLES,
 } = {}) {
-  const maxSamples =
-    Math.max(2, Math.floor(finiteNumber(windowSamples, 8)));
+  const maxSamples = Math.min(
+    HARD_MAX_RESOURCE_WINDOW_SAMPLES,
+    Math.max(2, Math.floor(finiteNumber(windowSamples, DEFAULT_RESOURCE_WINDOW_SAMPLES)))
+  );
 
   let samples = [];
   let previousSampleAt = null;
@@ -354,6 +371,11 @@ function createResourceProfiler({
       networkMbps,
       networkBytesThisSample:
         networkDeltaBytes,
+      // Payload bytes on successful HTTP acknowledgment are accounted at
+      // completion, grouped by sample interval. This is NOT measured NIC
+      // throughput, network utilization, or actual bytes on the wire.
+      networkMeasurement:
+        "http-acknowledged-payload-estimate",
       workload: {
         streamActive:
           Boolean(workload.streamActive),
@@ -399,6 +421,7 @@ function createResourceProfiler({
         ...summarizeAppMetrics([]),
         networkMbps: 0,
         networkBytesThisSample: 0,
+        networkMeasurement: "http-acknowledged-payload-estimate",
         workload: {
           streamActive: false,
           importRunning: false,
@@ -482,9 +505,11 @@ module.exports = {
   DEFAULT_RESOURCE_IDLE_SAMPLE_MS,
   DEFAULT_RESOURCE_SAMPLE_MS,
   DEFAULT_RESOURCE_WINDOW_SAMPLES,
+  HARD_MAX_RESOURCE_WINDOW_SAMPLES,
   buildProcessTopology,
   classifyPowerSignal,
   createResourceProfiler,
+  isNewStreamChunkReceipt,
   selectResourceSampleInterval,
   summarizeAppMetrics,
 };

@@ -1,7 +1,9 @@
 const fs = require("fs");
 const path = require("path");
+const crypto = require("crypto");
 
 const DEFAULT_MAX_ENTRIES = 1000;
+const HARD_MAX_ENTRIES = 4096;
 const DEFAULT_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 const DEFAULT_RUNTIME_EVENT_COALESCE_WINDOW_MS = 30 * 1000;
 const DEFAULT_RUNTIME_EVENT_COALESCE_MAX_KEYS = 512;
@@ -122,64 +124,231 @@ function createRuntimeEventCoalescer({
   };
 }
 
-function readQueueFile(filePath, maxAgeMs, now = Date.now()) {
+// Persistent diagnostics are best-effort, but an unreadable queue must NEVER
+// be mistaken for an empty queue and overwritten. Replays are handled elsewhere.
+const MAX_QUEUE_FILE_BYTES = 16 * 1024 * 1024;
+
+function unreadableQueue(reason) {
+  const error = new Error("Watcher telemetry queue unavailable: " + reason);
+  error.code = "AOE2_TELEMETRY_QUEUE_UNREADABLE";
+  return error;
+}
+
+function queueCapacityError() {
+  const error = new Error("Watcher telemetry entry exceeds the bounded diagnostic queue capacity");
+  error.code = "AOE2_TELEMETRY_QUEUE_TOO_LARGE";
+  return error;
+}
+
+function boundedPositiveInteger(value, fallback, maximum) {
+  return Number.isSafeInteger(value) && value > 0
+    ? Math.min(value, maximum)
+    : fallback;
+}
+
+function invalidQueueEvent(reason) {
+  const error = new Error("Watcher telemetry event refused: " + reason);
+  error.code = "AOE2_TELEMETRY_QUEUE_INVALID_EVENT";
+  return error;
+}
+
+// Refuse an event which would poison the queue we are about to persist.
+// A payload's toJSON() can turn an apparently valid object into a scalar;
+// assess the wire representation, not merely the input object's shape.
+function prepareQueuedEvent(entry) {
+  if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+    throw invalidQueueEvent("event must be an object");
+  }
+  const timestamp = entry.queuedAtMs === undefined
+    ? Date.now()
+    : Number(entry.queuedAtMs);
+  if (!Number.isFinite(timestamp) || timestamp <= 0) {
+    throw invalidQueueEvent("invalid queuedAtMs");
+  }
+  const candidate = { ...entry, queuedAtMs: timestamp };
+  let encoded;
   try {
-    if (!filePath || !fs.existsSync(filePath)) {
-      return [];
-    }
-
-    const raw = fs.readFileSync(filePath, "utf8");
-    const parsed = JSON.parse(raw);
-
-    if (!Array.isArray(parsed)) {
-      return [];
-    }
-
-    return parsed.filter((entry) => {
-      if (!entry || typeof entry !== "object") {
-        return false;
-      }
-
-      const queuedAt = Number(entry.queuedAtMs || 0);
-
-      return (
-        queuedAt > 0 &&
-        now - queuedAt <= maxAgeMs &&
-        entry.payload &&
-        typeof entry.payload === "object"
-      );
-    });
+    encoded = JSON.stringify(candidate);
   } catch {
-    return [];
+    throw invalidQueueEvent("event is not JSON serializable");
+  }
+  if (typeof encoded !== "string") throw invalidQueueEvent("no serialized event");
+  let stored;
+  try {
+    stored = JSON.parse(encoded);
+  } catch {
+    throw invalidQueueEvent("invalid serialized event");
+  }
+  if (
+    !stored || typeof stored !== "object" || Array.isArray(stored) ||
+    !Number.isFinite(stored.queuedAtMs) || stored.queuedAtMs <= 0 ||
+    !stored.payload || typeof stored.payload !== "object" ||
+    Array.isArray(stored.payload)
+  ) {
+    throw invalidQueueEvent("serialized event cannot be reread");
+  }
+  // Persist the validated immutable-by-value JSON snapshot. Re-evaluating
+  // user-controlled toJSON on a later array write could produce a different
+  // (unreadable) event even though the first preflight had passed.
+  return stored;
+}
+
+async function readQueueFile(filePath, maxAgeMs, now = Date.now()) {
+  if (!filePath) return { entries: [], exists: false };
+
+  let raw;
+  let handle;
+  try {
+    // macOS/Linux: O_NOFOLLOW protects the actual opened inode, not merely a
+    // pathname checked before opening. Windows lacks this flag; retain lstat
+    // refusal there and qualify its native ACLs separately.
+    if (!fs.constants.O_NOFOLLOW) {
+      const before = await fs.promises.lstat(filePath);
+      if (!before.isFile() || before.isSymbolicLink()) {
+        throw unreadableQueue("not a regular file");
+      }
+    }
+    // Opening a FIFO without O_NONBLOCK can hang before fstat can reject it.
+    // Ordinary regular files ignore O_NONBLOCK on supported POSIX systems.
+    handle = await fs.promises.open(
+      filePath,
+      fs.constants.O_RDONLY |
+        (fs.constants.O_NOFOLLOW || 0) |
+        (fs.constants.O_NONBLOCK || 0)
+    );
+    const stat = await handle.stat();
+    if (!stat.isFile() || stat.size > MAX_QUEUE_FILE_BYTES) {
+      throw unreadableQueue("not a regular file or beyond safe read limit");
+    }
+    // readFile() could keep allocating while another writer grows the inode.
+    // Read no more than the verified size plus one sentinel byte, even if it
+    // changes underneath us. The extra byte detects a concurrent append.
+    const bytes = Buffer.allocUnsafe(stat.size + 1);
+    let received = 0;
+    while (received < bytes.length) {
+      const { bytesRead } = await handle.read(
+        bytes, received, bytes.length - received, received
+      );
+      if (bytesRead === 0) break;
+      received += bytesRead;
+    }
+    const after = await handle.stat();
+    if (
+      received !== stat.size ||
+      after.size !== stat.size ||
+      after.mtimeMs !== stat.mtimeMs ||
+      after.ctimeMs !== stat.ctimeMs
+    ) {
+      throw unreadableQueue("queue changed during bounded read; preserved original");
+    }
+    // Buffer.toString silently substitutes U+FFFD for corrupt UTF-8. That
+    // can turn damaged but parseable JSON into a different event on rewrite.
+    // Reject the entire queue instead; preserve the original bytes.
+    try {
+      raw = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true })
+        .decode(bytes.subarray(0, received));
+    } catch {
+      throw unreadableQueue("invalid UTF-8; preserved original queue file");
+    }
+  } catch (error) {
+    if (error?.code === "ENOENT") return { entries: [], exists: false };
+    if (error?.code === "ELOOP") {
+      throw unreadableQueue("symlinked telemetry queue refused");
+    }
+    throw error;
+  } finally {
+    if (handle) await handle.close().catch(() => {});
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw unreadableQueue("invalid JSON; preserved original queue file");
+  }
+  if (!Array.isArray(parsed)) {
+    throw unreadableQueue("invalid queue structure; preserved original queue file");
+  }
+
+  // Valid JSON is not necessarily a valid queue. A partially damaged array
+  // must not be rewritten while quietly losing its malformed entries.
+  // Age-expired *well-formed* events retain the established retention policy.
+  const entries = [];
+  for (const [index, entry] of parsed.entries()) {
+    const queuedAt = Number(entry?.queuedAtMs || 0);
+    if (
+      !entry || typeof entry !== "object" || Array.isArray(entry) ||
+      !Number.isFinite(queuedAt) || queuedAt <= 0 ||
+      !entry.payload || typeof entry.payload !== "object" ||
+      Array.isArray(entry.payload)
+    ) {
+      throw unreadableQueue(`invalid event at index ${index}; preserved original queue file`);
+    }
+    if (now - queuedAt <= maxAgeMs) entries.push(entry);
+  }
+  return { entries, exists: true };
+}
+
+// POSIX rename/unlink metadata is not power-loss durable until the parent
+// directory is synced. Windows has no portable Node directory fsync; file
+// fsync still runs, but Windows metadata durability remains unverified.
+async function syncQueueParentDirectory(filePath) {
+  if (process.platform === "win32") return;
+  let directory;
+  try {
+    directory = await fs.promises.open(
+      path.dirname(filePath),
+      fs.constants.O_RDONLY |
+        (fs.constants.O_DIRECTORY || 0) |
+        (fs.constants.O_NOFOLLOW || 0)
+    );
+    await directory.sync();
+  } finally {
+    if (directory) await directory.close().catch(() => {});
   }
 }
 
-function writeQueueFile(filePath, entries) {
-  if (!filePath) {
-    return;
-  }
-
+async function writeQueueFile(filePath, entries) {
+  if (!filePath) return;
   if (!Array.isArray(entries) || entries.length === 0) {
-    fs.rmSync(filePath, {
-      force: true,
-    });
+    await fs.promises.rm(filePath, { force: true });
+    await syncQueueParentDirectory(filePath);
     return;
   }
 
-  fs.mkdirSync(path.dirname(filePath), {
-    recursive: true,
-  });
-
-  const tempPath =
-    `${filePath}.tmp-${process.pid}-${Date.now()}`;
-
-  fs.writeFileSync(
-    tempPath,
-    `${JSON.stringify(entries, null, 2)}\n`,
-    "utf8"
-  );
-
-  fs.renameSync(tempPath, filePath);
+  // The reader refuses files above this size. Never let the writer create
+  // one itself: an oversize enqueue must leave the last durable queue intact.
+  const payload = `${JSON.stringify(entries)}\n`;
+  if (Buffer.byteLength(payload, "utf8") > MAX_QUEUE_FILE_BYTES) {
+    throw queueCapacityError();
+  }
+  await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
+  const tempPath = `${filePath}.tmp-${process.pid}-${crypto.randomBytes(8).toString("hex")}`;
+  let temporary;
+  try {
+    // Flush real file contents before publishing the rename. A process-kill
+    // or rename-only test does not prove survival after sudden power loss.
+    temporary = await fs.promises.open(
+      tempPath,
+      fs.constants.O_WRONLY |
+        fs.constants.O_CREAT |
+        fs.constants.O_EXCL |
+        (fs.constants.O_NOFOLLOW || 0),
+      0o600
+    );
+    await temporary.writeFile(payload, "utf8");
+    await temporary.sync();
+    await temporary.close();
+    temporary = null;
+    await fs.promises.rename(tempPath, filePath);
+    await syncQueueParentDirectory(filePath);
+  } catch (error) {
+    if (temporary) await temporary.close().catch(() => {});
+    // A failure after rename may leave a valid on-disk queue. Never unlink
+    // the published pathname just to hide a durability uncertainty.
+    await fs.promises.rm(tempPath, { force: true }).catch(() => {});
+    throw error;
+  }
 }
 
 function createDurableTelemetryQueue({
@@ -187,6 +356,10 @@ function createDurableTelemetryQueue({
   maxEntries = DEFAULT_MAX_ENTRIES,
   maxAgeMs = DEFAULT_MAX_AGE_MS,
 } = {}) {
+  // Malformed options previously made slice(-maxEntries) silently drop
+  // events or allowed invalid flush limits to attempt an unlimited send.
+  const entryLimit = boundedPositiveInteger(maxEntries, DEFAULT_MAX_ENTRIES, HARD_MAX_ENTRIES);
+  const ageLimitMs = boundedPositiveInteger(maxAgeMs, DEFAULT_MAX_AGE_MS, Number.MAX_SAFE_INTEGER);
   let operation = Promise.resolve();
 
   function run(task) {
@@ -200,22 +373,17 @@ function createDurableTelemetryQueue({
   return {
     enqueue(entry) {
       return run(async () => {
-        const entries = readQueueFile(
+        const { entries } = await readQueueFile(
           filePath,
-          maxAgeMs
+          ageLimitMs
         );
 
-        entries.push({
-          ...entry,
-          queuedAtMs:
-            Number(entry?.queuedAtMs) ||
-            Date.now(),
-        });
+        entries.push(prepareQueuedEvent(entry));
 
         const bounded =
-          entries.slice(-maxEntries);
+          entries.slice(-entryLimit);
 
-        writeQueueFile(
+        await writeQueueFile(
           filePath,
           bounded
         );
@@ -225,21 +393,16 @@ function createDurableTelemetryQueue({
     },
 
     flush(sender, { limit = 100 } = {}) {
+      const sendLimit = boundedPositiveInteger(limit, 100, HARD_MAX_ENTRIES);
       return run(async () => {
-        const entries = readQueueFile(
+        const { entries, exists } = await readQueueFile(
           filePath,
-          maxAgeMs
+          ageLimitMs
         );
 
         if (entries.length === 0) {
-          if (
-            filePath &&
-            fs.existsSync(filePath)
-          ) {
-            writeQueueFile(
-              filePath,
-              []
-            );
+          if (exists) {
+            await writeQueueFile(filePath, []);
           }
 
           return {
@@ -263,7 +426,7 @@ function createDurableTelemetryQueue({
         ) {
           const entry = entries[index];
 
-          if (attempted >= limit) {
+          if (attempted >= sendLimit) {
             remaining.push(
               ...entries.slice(index)
             );
@@ -307,7 +470,7 @@ function createDurableTelemetryQueue({
           remaining.length !== entries.length;
 
         if (queueChanged) {
-          writeQueueFile(
+          await writeQueueFile(
             filePath,
             remaining
           );
@@ -324,10 +487,8 @@ function createDurableTelemetryQueue({
 
     size() {
       return run(async () => {
-        return readQueueFile(
-          filePath,
-          maxAgeMs
-        ).length;
+        const { entries } = await readQueueFile(filePath, ageLimitMs);
+        return entries.length;
       });
     },
   };

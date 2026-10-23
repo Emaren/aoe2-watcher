@@ -17,6 +17,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # DocsV2 verifies a real implementation ancestor and source-only
+          # changes since it; the default depth=1 cannot establish either.
+          fetch-depth: 0
 
       - name: Set up Node
         uses: actions/setup-node@v4
@@ -27,19 +31,38 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # DocsV2 is a release gate, not optional reference material. The
+      # generated registry must classify every Markdown source and bind the
+      # reviewed implementation SHA without modifying source on CI.
+      - name: Verify source-bound DocsV2 registry and index
+        run: python3 scripts/docs_v2_check.py
+
       - name: Lint runtime JavaScript
         run: npm run lint
 
       - name: Run Watcher contracts
         run: npm test
 
+      - name: Prove native Mac ZIP auditor rejects unsafe entries
+        run: python3 -m unittest discover -s tests -p 'test_mac_zip_audit.py'
+
       - name: Package smoke test
         run: npm run pack
+      - name: Audit actual Linux-unpacked Electron runtime ASAR
+        run: node scripts/audit-packaged-runtime.cjs "$PWD/dist/linux-unpacked/resources/app.asar"
+      - name: Smoke actual packaged Linux Electron main process and dashboard
+        shell: bash
+        run: bash scripts/smoke-linux-electron-boot.sh
 
       # Run last so an external advisory does not hide local test failures.
       # This remains a required hard-failing security gate; do not bypass it.
       - name: Audit dependencies
         run: npm audit --audit-level=high
+
+      # Dev build-chain advisories are reviewed separately. Runtime modules
+      # must meet the stricter moderate-severity policy, without exemptions.
+      - name: Audit production dependencies at moderate severity
+        run: npm audit --omit=dev --audit-level=moderate
 
   windows-video-package:
     name: Windows NSIS and portable packaging smoke
@@ -66,6 +89,11 @@ jobs:
           npm test
       - name: Build both unsigned Windows candidates without publishing
         run: npm run dist:win -- --publish never
+      - name: Audit actual Windows Electron runtime ASAR
+        shell: pwsh
+        run: |
+          $asar = (Resolve-Path "dist/win-unpacked/resources/app.asar").Path
+          node scripts/audit-packaged-runtime.cjs $asar
       - name: Verify NSIS and portable executable outputs
         shell: pwsh
         run: |
@@ -132,8 +160,27 @@ jobs:
         run: npm run dist:mac -- --publish never
       - name: Build direct ZIP from exact same macOS app bundle
         run: npm run dist:manual-zip
+      - name: Audit actual macOS Electron runtime ASAR
+        run: node scripts/audit-packaged-runtime.cjs "$PWD/dist/mac-arm64/AoE2HDBets Watcher.app/Contents/Resources/app.asar"
       - name: Verify updater-native macOS ZIP and manifest integrity
         run: npm run verify:mac-updater
+      - name: Audit actual updater-native ZIP filesystem safety
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./package.json').version")"
+          python3 scripts/audit_mac_updater_zip.py "dist/AoE2HDBets Watcher-${version}-arm64-mac.zip" --version "$version"
+          node scripts/smoke-mac-signed-release.cjs "dist/AoE2HDBets Watcher-${version}-arm64-mac.zip" "$version" "$GITHUB_SHA"
+      - name: Validate real native updater ZIP after isolated macOS extraction
+        shell: bash
+        run: |
+          set -euo pipefail
+          stage="$(mktemp -d "${RUNNER_TEMP}/watcher-mac-bundle-audit.XXXXXX")"
+          chmod 700 "$stage"
+          trap 'rm -rf "$stage"' EXIT
+          version="$(node -p "require('./package.json').version")"
+          ditto -x -k "dist/AoE2HDBets Watcher-${version}-arm64-mac.zip" "$stage"
+          node scripts/verify-extracted-mac-bundle.cjs "$stage/AoE2HDBets Watcher.app" "$version" arm64
       - name: Check DMG/ZIP artifacts, safe readme and content hashes
         shell: bash
         run: |
@@ -185,6 +232,8 @@ jobs:
         run: npm ci
       - name: Build AppImage without publishing
         run: npm run dist:linux -- --publish never
+      - name: Audit actual AppImage source Electron ASAR
+        run: node scripts/audit-packaged-runtime.cjs "$PWD/dist/linux-unpacked/resources/app.asar"
       - name: Verify versioned AppImage and its integrity
         shell: bash
         run: |
