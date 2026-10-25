@@ -49,7 +49,7 @@ jobs:
         run: |
           set -euo pipefail
           rm -rf dist
-          npm run dist:mac
+          npm run dist:mac -- --config.mac.identity=-
           npm run dist:manual-zip
           npm run verify:mac-updater
           python3 scripts/audit_mac_updater_zip.py "dist/AoE2HDBets Watcher-${{ steps.package.outputs.version }}-arm64-mac.zip" --version "${{ steps.package.outputs.version }}"
@@ -60,6 +60,36 @@ jobs:
           ditto -x -k "dist/AoE2HDBets Watcher-${{ steps.package.outputs.version }}-arm64-mac.zip" "$stage"
           node scripts/verify-extracted-mac-bundle.cjs "$stage/AoE2HDBets Watcher.app" "${{ steps.package.outputs.version }}" arm64
 
+      - name: Verify sealed unsigned Mac app and all actual distribution forms
+        shell: bash
+        run: |
+          set -euo pipefail
+          app="dist/mac-arm64/AoE2HDBets Watcher.app"
+          bash scripts/verify-mac-adhoc-seal.sh "$app"
+          version="$(node -p "require('./package.json').version")"
+          stage="$(mktemp -d "${RUNNER_TEMP}/watcher-mac-distribution-seal.XXXXXX")"
+          chmod 700 "$stage"
+          mount="$stage/mount"
+          attached=0
+          cleanup() {
+            if [ "$attached" -eq 1 ]; then hdiutil detach -quiet "$mount" || true; fi
+            rm -rf "$stage"
+          }
+          trap cleanup EXIT
+          mkdir -p "$stage/native" "$stage/direct" "$mount"
+          ditto -x -k "dist/AoE2HDBets Watcher-${version}-arm64-mac.zip" "$stage/native"
+          ditto -x -k "dist/aoe2hdbets-watcher-direct.zip" "$stage/direct"
+          bash scripts/verify-mac-adhoc-seal.sh "$stage/native/AoE2HDBets Watcher.app"
+          bash scripts/verify-mac-adhoc-seal.sh "$stage/direct/AoE2HDBets Watcher Direct/AoE2HDBets Watcher.app"
+          hdiutil attach -quiet -readonly -nobrowse -noautoopen -mountpoint "$mount" "dist/AoE2HDBets Watcher-${version}-arm64.dmg"
+          attached=1
+          bash scripts/verify-mac-adhoc-seal.sh "$mount/AoE2HDBets Watcher.app"
+          for file in "Contents/MacOS/AoE2HDBets Watcher" "Contents/Resources/app.asar" "Contents/_CodeSignature/CodeResources"; do
+            cmp -s "$app/$file" "$stage/native/AoE2HDBets Watcher.app/$file" || { echo "STOP: native ZIP payload differs" >&2; exit 6; }
+            cmp -s "$app/$file" "$stage/direct/AoE2HDBets Watcher Direct/AoE2HDBets Watcher.app/$file" || { echo "STOP: direct ZIP payload differs" >&2; exit 6; }
+            cmp -s "$app/$file" "$mount/AoE2HDBets Watcher.app/$file" || { echo "STOP: DMG payload differs" >&2; exit 6; }
+          done
+          echo "MAC_UNSIGNED_DMG_ZIP_SEAL_AND_PAYLOAD_PARITY_PASS"
       - name: Verify and attest unsigned macOS manual release
         shell: bash
         run: |
