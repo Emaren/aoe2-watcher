@@ -18,6 +18,14 @@ test("macOS candidate and unsigned publisher explicitly request an ad-hoc identi
     assert.match(workflow,/cmp -s "\$app\/\$file"/);
   }
 });
+test("credential-free PR macOS job opts into ad-hoc signing without publisher credentials",()=>{
+  const mac=candidate.slice(candidate.indexOf("  macos-video-package:"));
+  assert.match(mac,/contents: read/);
+  assert.match(mac,/CSC_IDENTITY_AUTO_DISCOVERY: "false"/);
+  assert.match(mac,/CSC_FOR_PULL_REQUEST: "true"/);
+  assert.match(mac,/--config\.mac\.identity=-/);
+  assert.doesNotMatch(mac,/CSC_LINK:|CSC_KEY_PASSWORD:|APPLE_APP_SPECIFIC_PASSWORD:|APPLE_TEAM_ID:/);
+});
 test("seal checker rejects absence and bogus identity rather than trusting an archive checksum",()=>{
   assert.match(script,/Contents\/_CodeSignature\/CodeResources/);
   assert.match(script,/! -s "\$seal"/);
