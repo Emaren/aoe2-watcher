@@ -142,6 +142,9 @@ jobs:
       contents: read
     env:
       CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      # Safe here only: read-only PR job, no certificate/private release secrets,
+      # explicitly configured ad-hoc '-' identity. Never use in signed publisher.
+      CSC_FOR_PULL_REQUEST: "true"
     steps:
       - name: Checkout Watcher candidate
         uses: actions/checkout@v4
@@ -157,7 +160,7 @@ jobs:
           npm run lint
           npm test
       - name: Build unsigned macOS arm64 DMG without publishing
-        run: npm run dist:mac -- --publish never
+        run: npm run dist:mac -- --publish never --config.mac.identity=-
       - name: Build direct ZIP from exact same macOS app bundle
         run: npm run dist:manual-zip
       - name: Audit actual macOS Electron runtime ASAR
@@ -181,6 +184,36 @@ jobs:
           version="$(node -p "require('./package.json').version")"
           ditto -x -k "dist/AoE2HDBets Watcher-${version}-arm64-mac.zip" "$stage"
           node scripts/verify-extracted-mac-bundle.cjs "$stage/AoE2HDBets Watcher.app" "$version" arm64
+      - name: Verify sealed unsigned Mac app and all actual distribution forms
+        shell: bash
+        run: |
+          set -euo pipefail
+          app="dist/mac-arm64/AoE2HDBets Watcher.app"
+          bash scripts/verify-mac-adhoc-seal.sh "$app"
+          version="$(node -p "require('./package.json').version")"
+          stage="$(mktemp -d "${RUNNER_TEMP}/watcher-mac-distribution-seal.XXXXXX")"
+          chmod 700 "$stage"
+          mount="$stage/mount"
+          attached=0
+          cleanup() {
+            if [ "$attached" -eq 1 ]; then hdiutil detach -quiet "$mount" || true; fi
+            rm -rf "$stage"
+          }
+          trap cleanup EXIT
+          mkdir -p "$stage/native" "$stage/direct" "$mount"
+          ditto -x -k "dist/AoE2HDBets Watcher-${version}-arm64-mac.zip" "$stage/native"
+          ditto -x -k "dist/aoe2hdbets-watcher-direct.zip" "$stage/direct"
+          bash scripts/verify-mac-adhoc-seal.sh "$stage/native/AoE2HDBets Watcher.app"
+          bash scripts/verify-mac-adhoc-seal.sh "$stage/direct/AoE2HDBets Watcher Direct/AoE2HDBets Watcher.app"
+          hdiutil attach -quiet -readonly -nobrowse -noautoopen -mountpoint "$mount" "dist/AoE2HDBets Watcher-${version}-arm64.dmg"
+          attached=1
+          bash scripts/verify-mac-adhoc-seal.sh "$mount/AoE2HDBets Watcher.app"
+          for file in "Contents/MacOS/AoE2HDBets Watcher" "Contents/Resources/app.asar" "Contents/_CodeSignature/CodeResources"; do
+            cmp -s "$app/$file" "$stage/native/AoE2HDBets Watcher.app/$file" || { echo "STOP: native ZIP payload differs" >&2; exit 6; }
+            cmp -s "$app/$file" "$stage/direct/AoE2HDBets Watcher Direct/AoE2HDBets Watcher.app/$file" || { echo "STOP: direct ZIP payload differs" >&2; exit 6; }
+            cmp -s "$app/$file" "$mount/AoE2HDBets Watcher.app/$file" || { echo "STOP: DMG payload differs" >&2; exit 6; }
+          done
+          echo "MAC_UNSIGNED_DMG_ZIP_SEAL_AND_PAYLOAD_PARITY_PASS"
       - name: Check DMG/ZIP artifacts, safe readme and content hashes
         shell: bash
         run: |
